@@ -1,11 +1,33 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
-const uploadDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+// Determine upload directory: local ../uploads or OS tempdir (e.g. /tmp for serverless/Lambda)
+let uploadDir = path.join(__dirname, '../uploads');
+
+function getSafeUploadDir() {
+  try {
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    return uploadDir;
+  } catch (err) {
+    // In serverless / read-only environments (like Vercel / Lambda /var/task), fall back to /tmp
+    const tmpUploadDir = path.join(os.tmpdir(), 'pulsechat_uploads');
+    try {
+      if (!fs.existsSync(tmpUploadDir)) {
+        fs.mkdirSync(tmpUploadDir, { recursive: true });
+      }
+      return tmpUploadDir;
+    } catch (tmpErr) {
+      console.warn('[Upload] Falling back to os.tmpdir():', tmpErr.message);
+      return os.tmpdir();
+    }
+  }
 }
+
+uploadDir = getSafeUploadDir();
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -46,4 +68,5 @@ const upload = multer({
   fileFilter
 });
 
+upload.uploadDir = uploadDir;
 module.exports = upload;

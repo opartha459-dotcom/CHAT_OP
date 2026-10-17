@@ -81,7 +81,11 @@ const authLimiter = rateLimit({
 });
 
 // Serve uploaded static files
+const uploadMiddleware = require('./middlewares/upload');
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+if (uploadMiddleware.uploadDir && uploadMiddleware.uploadDir !== path.join(__dirname, 'uploads')) {
+  app.use('/uploads', express.static(uploadMiddleware.uploadDir));
+}
 
 // Root endpoint
 app.get('/', (req, res) => {
