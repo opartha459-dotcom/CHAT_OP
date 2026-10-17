@@ -148,8 +148,18 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`[Server] PulseChat API server running on port ${PORT}`);
-});
+if (!process.env.VERCEL) {
+  server.listen(PORT, () => {
+    console.log(`[Server] PulseChat API server running on port ${PORT}`);
+  });
+}
 
-module.exports = { app, server };
+// Attach server and app properties for backwards compatibility and tests
+app.server = server;
+app.app = app;
+
+// Vercel serverless requires the default export to be a function or server
+module.exports = app;
+module.exports.app = app;
+module.exports.server = server;
+module.exports.default = app;
