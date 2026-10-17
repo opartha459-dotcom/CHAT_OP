@@ -6,6 +6,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const { Server } = require('socket.io');
+const mongoose = require('mongoose');
 
 const connectDB = require('./config/db');
 const setupSockets = require('./sockets');
@@ -82,14 +83,42 @@ const authLimiter = rateLimit({
 // Serve uploaded static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Health check
-app.get('/api/health', (req, res) => {
+// Root endpoint
+app.get('/', (req, res) => {
+  const isDbConnected = mongoose.connection.readyState === 1;
   res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    service: 'PulseChat Real-Time API'
+    status: 'online',
+    message: 'PulseChat Real-Time Encrypted Messenger API is running',
+    version: '1.0.0',
+    database: isDbConnected ? 'connected' : 'disconnected',
+    uptime: `${Math.floor(process.uptime())}s`,
+    endpoints: {
+      health: '/health',
+      apiHealth: '/api/health',
+      auth: '/api/auth',
+      chats: '/api/chats',
+      messages: '/api/messages',
+      users: '/api/users',
+      groups: '/api/groups'
+    },
+    timestamp: new Date().toISOString()
   });
 });
+
+// Health check endpoint (for Render / Railway / Uptime monitoring)
+const healthHandler = (req, res) => {
+  const isDbConnected = mongoose.connection.readyState === 1;
+  res.status(isDbConnected ? 200 : 503).json({
+    status: isDbConnected ? 'healthy' : 'degraded',
+    service: 'PulseChat Real-Time API',
+    database: isDbConnected ? 'connected' : 'disconnected',
+    uptime: `${Math.floor(process.uptime())}s`,
+    timestamp: new Date().toISOString()
+  });
+};
+
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
 
 // Mount Routes
 app.use('/api/auth', authLimiter, authRoutes);

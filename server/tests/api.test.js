@@ -445,6 +445,44 @@ test('Full-Stack Chat API Suite', async (t) => {
     assert.strictEqual(gdprRes.body.profile.username, user1Data.username);
   });
 
+  await t.test('9. Root and Health Check Endpoints (/ and /health)', async () => {
+    // Test GET /
+    const rootRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: '/',
+      method: 'GET'
+    });
+
+    assert.strictEqual(rootRes.status, 200);
+    assert.strictEqual(rootRes.body.status, 'online');
+    assert.strictEqual(rootRes.body.database, 'connected');
+    assert.ok(rootRes.body.uptime);
+
+    // Test GET /health
+    const healthRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: '/health',
+      method: 'GET'
+    });
+
+    assert.strictEqual(healthRes.status, 200);
+    assert.strictEqual(healthRes.body.status, 'healthy');
+    assert.strictEqual(healthRes.body.database, 'connected');
+
+    // Test GET /api/health
+    const apiHealthRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: '/api/health',
+      method: 'GET'
+    });
+
+    assert.strictEqual(apiHealthRes.status, 200);
+    assert.strictEqual(apiHealthRes.body.status, 'healthy');
+  });
+
   // Cleanup server
   server.close();
   await mongoose.connection.close();
