@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <!-- Deep Cyber Squircle Background -->
+    <linearGradient id="favBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#090d16" />
+    </linearGradient>
+
+    <!-- Holographic Cyber Rim Border -->
+    <linearGradient id="favBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="35%" stop-color="#818cf8" />
+      <stop offset="70%" stop-color="#c084fc" />
+      <stop offset="100%" stop-color="#f43f5e" />
+    </linearGradient>
+
+    <!-- Electric Pulse Heartbeat Gradient -->
+    <linearGradient id="favWave" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00f2fe" />
+      <stop offset="30%" stop-color="#38bdf8" />
+      <stop offset="65%" stop-color="#a855f7" />
+      <stop offset="100%" stop-color="#f43f5e" />
+    </linearGradient>
+
+    <!-- Glassmorphic Bubble Gradient -->
+    <linearGradient id="favBubble" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.38" />
+      <stop offset="100%" stop-color="#a855f7" stop-opacity="0.14" />
+    </linearGradient>
+
+    <!-- Drop Glow Filter -->
+    <filter id="favGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="16" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <filter id="favSpark" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="20" result="spark" />
+      <feComposite in="SourceGraphic" in2="spark" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Ambient Glow Behind Icon -->
+  <rect x="36" y="36" width="440" height="440" rx="120" fill="url(#favBorder)" opacity="0.35" filter="url(#favSpark)" />
+
+  <!-- Housing Squircle with Cyber Border -->
+  <rect x="32" y="32" width="448" height="448" rx="116" fill="url(#favBg)" stroke="url(#favBorder)" stroke-width="12" />
+
+  <!-- Inner Glass Contour -->
+  <rect x="52" y="52" width="408" height="408" rx="96" fill="none" stroke="white" stroke-opacity="0.08" stroke-width="6" />
+
+  <!-- Stylized Modern Chat Silhouette -->
+  <path d="M 138 235 C 138 174, 189 128, 256 128 C 323 128, 374 174, 374 235 C 374 296, 323 342, 256 342 C 230 342, 205 334, 184 322 L 133 348 L 146 302 C 141 282, 138 261, 138 235 Z"
+        fill="url(#favBubble)"
+        stroke="white"
+        stroke-opacity="0.22"
+        stroke-width="8"
+        stroke-linejoin="round" />
+
+  <!-- Radiating Broadcast Ripples -->
+  <path d="M 395 189 C 420 215, 420 255, 395 281" stroke="#38bdf8" stroke-width="11" stroke-linecap="round" opacity="0.8" />
+  <path d="M 425 159 C 460 200, 460 270, 425 311" stroke="#c084fc" stroke-width="9" stroke-linecap="round" opacity="0.45" />
+
+  <!-- Dynamic Heartbeat / Pulse Wave -->
+  <path d="M 108 246 L 169 246 L 200 184 L 241 312 L 276 170 L 312 276 L 343 246 L 404 246"
+        fill="none"
+        stroke="url(#favWave)"
+        stroke-width="21"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        filter="url(#favGlow)" />
+
+  <!-- Glowing Pulse Nodes (Sparks) -->
+  <circle cx="200" cy="184" r="14" fill="#00f2fe" filter="url(#favSpark)" />
+  <circle cx="276" cy="170" r="16" fill="#ffffff" filter="url(#favSpark)" />
+  <circle cx="241" cy="312" r="14" fill="#f43f5e" filter="url(#favSpark)" />
+
+  <!-- Top Diamond Star Spark -->
+  <path d="M 256 102 L 264 122 L 284 130 L 264 138 L 256 158 L 248 138 L 228 130 L 248 122 Z"
+        fill="#38bdf8"
+        opacity="0.9"
+        filter="url(#favGlow)" />
+</svg>
