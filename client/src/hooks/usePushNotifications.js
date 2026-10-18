@@ -43,10 +43,16 @@ export const usePushNotifications = () => {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
 
       const registration = await navigator.serviceWorker.ready;
-      const token = localStorage.getItem('token');
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const token = localStorage.getItem('pulsechat_token') || localStorage.getItem('token');
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      };
 
-      const keyRes = await fetch('/api/users/push-key', { headers });
+      const keyRes = await fetch('/api/users/push-key', {
+        credentials: 'include',
+        headers
+      });
       if (!keyRes.ok) return false;
 
       const { publicKey } = await keyRes.json();
@@ -64,10 +70,8 @@ export const usePushNotifications = () => {
       if (subscription) {
         await fetch('/api/users/push-subscribe', {
           method: 'POST',
-          headers: {
-            ...headers,
-            'Content-Type': 'application/json'
-          },
+          credentials: 'include',
+          headers,
           body: JSON.stringify({ subscription: subscription.toJSON() })
         });
         setIsSubscribed(true);

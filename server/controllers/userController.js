@@ -374,6 +374,32 @@ const unsubscribePush = async (req, res) => {
   }
 };
 
+// @desc Get active call info by callId (used for instant call pickup from push notifications)
+// @route GET /api/users/call/:callId
+const getCallInfo = (req, res) => {
+  const { callId } = req.params;
+  const setupSockets = require('../sockets');
+  const call = setupSockets.getActiveCall ? setupSockets.getActiveCall(callId) : null;
+  if (!call || call.logged) {
+    return res.status(404).json({ success: false, message: 'Call has ended or does not exist.' });
+  }
+  return res.json({
+    success: true,
+    call: {
+      callId,
+      conversationId: call.conversationId,
+      isGroup: call.isGroup,
+      callType: call.callType,
+      caller: {
+        _id: call.callerId,
+        username: call.callerUsername || 'Caller',
+        nickname: call.callerNickname || 'Caller',
+        avatar: call.callerAvatar || ''
+      }
+    }
+  });
+};
+
 module.exports = {
   searchUsers,
   getUserProfile,
@@ -388,5 +414,6 @@ module.exports = {
   uploadFile,
   getPushPublicKey,
   subscribePush,
-  unsubscribePush
+  unsubscribePush,
+  getCallInfo
 };

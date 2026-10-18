@@ -86,9 +86,10 @@ self.addEventListener('push', (event) => {
       // Repeating ring vibration pattern like Telegram & WhatsApp
       vibrate: [1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500],
       data: {
-        url: `/?callId=${data.callId}&action=answer`,
+        url: `/?callId=${data.callId}&action=incoming`,
         callId: data.callId,
-        type: 'incoming_call'
+        type: 'incoming_call',
+        callData: data
       },
       actions: [
         { action: 'answer', title: '📞 Answer' },
@@ -96,7 +97,24 @@ self.addEventListener('push', (event) => {
       ]
     };
 
-    event.waitUntil(self.registration.showNotification(title, options));
+    event.waitUntil(
+      (async () => {
+        // Automatically focus any open PulseChat tab/window and open call modal
+        const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+        for (const client of windowClients) {
+          if (client.url.includes(self.location.origin)) {
+            client.postMessage({
+              type: 'INCOMING_CALL_POPUP',
+              callData: data
+            });
+            if ('focus' in client) {
+              client.focus().catch(() => {});
+            }
+          }
+        }
+        await self.registration.showNotification(title, options);
+      })()
+    );
   } else {
     const title = data.title || 'PulseChat';
     const options = {
@@ -119,17 +137,22 @@ self.addEventListener('notificationclick', (event) => {
   }
 
   const notificationData = event.notification.data || {};
-  const targetUrl = notificationData.url || '/';
+  const isAnswer = event.action === 'answer';
+  const targetUrl = notificationData.callId
+    ? `/?callId=${notificationData.callId}&action=${isAnswer ? 'answer' : 'incoming'}`
+    : notificationData.url || '/';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
       // Focus existing window if open
       for (const client of windowClients) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
+        if (client.url.includes(self.location.origin)) {
           if ('navigate' in client && targetUrl !== '/') {
             client.navigate(targetUrl);
           }
-          return client.focus();
+          if ('focus' in client) {
+            return client.focus();
+          }
         }
       }
       // If no window open, launch app window with target URL

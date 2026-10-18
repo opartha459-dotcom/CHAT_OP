@@ -592,4 +592,6 @@ const setupSockets = (io) => {
   });
 };
 
+setupSockets.getActiveCall = (callId) => activeCalls.get(callId);
+
 module.exports = setupSockets;

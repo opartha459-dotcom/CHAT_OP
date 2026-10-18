@@ -604,9 +604,42 @@ export const CallProvider = ({ children }) => {
     });
   }, [socket, currentCall]);
 
-  // Handle incoming call triggered via Push Notification when app was closed (?callId=...&action=answer)
+  // Listen for Service Worker postMessage (INCOMING_CALL_POPUP when phone/tab wakes up in background)
   useEffect(() => {
-    if (!socket || !user) return;
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+
+    const handleSwMessage = (event) => {
+      if (event.data?.type === 'INCOMING_CALL_POPUP' && event.data.callData) {
+        const d = event.data.callData;
+        if (callState === 'idle') {
+          setCurrentCall({
+            callId: d.callId,
+            conversationId: d.conversationId,
+            isGroup: d.isGroup,
+            callType: d.callType,
+            caller: {
+              _id: d.callerId,
+              username: d.callerName,
+              nickname: d.callerName,
+              avatar: d.callerAvatar
+            }
+          });
+          setCallState('incoming');
+          setIsCallModalOpen(true);
+          startIncomingRingtone();
+        }
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+    };
+  }, [callState]);
+
+  // Handle incoming call triggered via Push Notification when app was closed (?callId=...&action=...)
+  useEffect(() => {
+    if (!user) return;
 
     const urlParams = new URLSearchParams(window.location.search);
     const pushCallId = urlParams.get('callId');
@@ -615,36 +648,59 @@ export const CallProvider = ({ children }) => {
     if (pushCallId && callState === 'idle') {
       window.history.replaceState({}, document.title, window.location.pathname);
 
-      socket.emit('call:query', { callId: pushCallId }, async (callInfo) => {
-        if (callInfo) {
-          setCurrentCall(callInfo);
-          if (pushAction === 'answer') {
-            try {
-              stopRingtone();
-              playCallConnectedSound();
-              await acquireMedia(callInfo.callType || 'video');
-              setCallState('connected');
-              setIsCallModalOpen(true);
-              if (!callTimerRef.current) {
-                callTimerRef.current = setInterval(() => {
-                  setCallDuration((prev) => prev + 1);
-                }, 1000);
-              }
-              socket.emit('call:join', { callId: pushCallId });
-            } catch (err) {
-              setCallState('incoming');
-              setIsCallModalOpen(true);
-              startIncomingRingtone();
+      const loadCallFromRest = async () => {
+        try {
+          const storedToken = localStorage.getItem('pulsechat_token') || localStorage.getItem('token');
+          const res = await fetch(`/api/users/call/${encodeURIComponent(pushCallId)}`, {
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {})
             }
-          } else {
-            setCallState('incoming');
-            setIsCallModalOpen(true);
-            startIncomingRingtone();
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.call) {
+              const callInfo = data.call;
+              setCurrentCall(callInfo);
+
+              if (pushAction === 'answer') {
+                try {
+                  stopRingtone();
+                  playCallConnectedSound();
+                  await acquireMedia(callInfo.callType || 'video');
+                  setCallState('connected');
+                  setIsCallModalOpen(true);
+                  if (!callTimerRef.current) {
+                    callTimerRef.current = setInterval(() => {
+                      setCallDuration((prev) => prev + 1);
+                    }, 1000);
+                  }
+                  if (socket) {
+                    socket.emit('call:join', { callId: pushCallId });
+                  }
+                } catch (err) {
+                  setCallState('incoming');
+                  setIsCallModalOpen(true);
+                  startIncomingRingtone();
+                }
+              } else {
+                // Automatically open incoming call interface and ring
+                setCallState('incoming');
+                setIsCallModalOpen(true);
+                startIncomingRingtone();
+              }
+            }
           }
+        } catch (err) {
+          console.warn('[CallContext] REST call loader notice:', err);
         }
-      });
+      };
+
+      loadCallFromRest();
     }
-  }, [socket, user, callState, acquireMedia]);
+  }, [user, callState, acquireMedia, socket]);
 
   // Socket WebRTC Event Listeners
   useEffect(() => {

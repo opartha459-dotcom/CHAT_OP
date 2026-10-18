@@ -14,14 +14,16 @@ const {
   uploadFile,
   getPushPublicKey,
   subscribePush,
-  unsubscribePush
+  unsubscribePush,
+  getCallInfo
 } = require('../controllers/userController');
 const { protect } = require('../middlewares/auth');
 const upload = require('../middlewares/upload');
 
-router.get('/push-key', protect, getPushPublicKey);
+router.get('/push-key', getPushPublicKey);
 router.post('/push-subscribe', protect, subscribePush);
 router.post('/push-unsubscribe', protect, unsubscribePush);
+router.get('/call/:callId', protect, getCallInfo);
 
 router.get('/search', protect, searchUsers);
 router.get('/blocked', protect, getBlockedUsers);
