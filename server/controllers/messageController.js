@@ -352,11 +352,55 @@ const searchMessages = async (req, res) => {
   }
 };
 
+// @desc Get call history for the current user
+// @route GET /api/messages/calls/history
+const getCallHistory = async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+
+    // Find all conversations user is a part of
+    const userConversations = await Conversation.find({
+      participants: currentUserId
+    }).select('_id');
+
+    const convIds = userConversations.map((c) => c._id);
+
+    // Find all call messages in those conversations
+    const callMessages = await Message.find({
+      conversation: { $in: convIds },
+      messageType: 'call',
+      deletedFor: { $ne: currentUserId }
+    })
+      .sort({ createdAt: -1 })
+      .limit(60)
+      .populate('sender', 'username nickname avatar')
+      .populate({
+        path: 'conversation',
+        select: 'type groupDetails participants isGroup otherUser',
+        populate: {
+          path: 'participants',
+          select: 'username nickname avatar status lastSeen'
+        }
+      })
+      .lean();
+
+    return res.json({
+      success: true,
+      calls: callMessages
+    });
+  } catch (error) {
+    console.error('[Get Call History Error]', error);
+    return res.status(500).json({ success: false, message: 'Error retrieving call history.' });
+  }
+};
+
 module.exports = {
   getMessages,
   sendMessage,
   editMessage,
   deleteMessage,
   reactToMessage,
-  searchMessages
+  searchMessages,
+  getCallHistory
 };
+

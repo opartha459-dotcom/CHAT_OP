@@ -135,3 +135,29 @@ html.dark body {
 .dark ::-webkit-scrollbar-thumb:hover {
   background: rgba(107, 114, 128, 0.8);
 }
+
+@keyframes floatFade {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.7);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0px) scale(1.15);
+  }
+  30% {
+    transform: translateY(-25px) scale(1);
+  }
+  75% {
+    opacity: 0.9;
+    transform: translateY(-90px) scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-160px) scale(0.9);
+  }
+}
+
+.animate-float-fade {
+  animation: floatFade 3.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}

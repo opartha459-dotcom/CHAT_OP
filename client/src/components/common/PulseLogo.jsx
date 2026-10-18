@@ -12,7 +12,8 @@ export const PulseLogo = ({
   animated = true,
   className = '',
   textClassName = '',
-  iconOnly = false
+  iconOnly = false,
+  showBeacon = false
 }) => {
   // Size presets
   const sizeMap = {
@@ -170,27 +171,28 @@ export const PulseLogo = ({
 
       {/* Typography */}
       {showText && !iconOnly && (
-        <div className="flex flex-col">
+        <div className="flex flex-col justify-center">
           <div className="flex items-center space-x-1.5">
             <span
-              className={`font-black tracking-tight leading-none ${currentSize.font} ${textClassName || 'text-white'
-                }`}
+              className={`font-extrabold tracking-tight leading-none ${currentSize.font} ${
+                textClassName || 'text-slate-900 dark:text-white'
+              }`}
             >
-              <span className="bg-gradient-to-r from-cyan-400 via-indigo-200 to-fuchsia-400 bg-clip-text text-transparent">
-                Pulse
-              </span>
-              <span className="text-white">Chat</span>
+              <span className="text-indigo-600 dark:text-indigo-400">Pulse</span>
+              <span className="text-slate-900 dark:text-white">Chat</span>
             </span>
 
-            {/* Glowing live indicator beacon */}
-            <span className="relative flex h-2 w-2 ml-0.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-400 shadow-[0_0_8px_rgba(56,189,248,0.8)]"></span>
-            </span>
+            {/* Optional glowing live indicator beacon */}
+            {showBeacon && (
+              <span className="relative flex h-2 w-2 ml-1">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-400 shadow-[0_0_8px_rgba(56,189,248,0.8)]"></span>
+              </span>
+            )}
           </div>
 
           {subtitle && (
-            <span className="text-[10px] font-semibold text-slate-400 tracking-wider uppercase mt-0.5">
+            <span className="text-[10px] font-medium text-slate-400 tracking-wider uppercase mt-0.5">
               {subtitle}
             </span>
           )}

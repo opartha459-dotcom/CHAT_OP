@@ -6,11 +6,13 @@ const {
   editMessage,
   deleteMessage,
   reactToMessage,
-  searchMessages
+  searchMessages,
+  getCallHistory
 } = require('../controllers/messageController');
 const { protect } = require('../middlewares/auth');
 
 router.get('/search', protect, searchMessages);
+router.get('/calls/history', protect, getCallHistory);
 router.get('/:conversationId', protect, getMessages);
 router.post('/:conversationId', protect, sendMessage);
 router.put('/:id', protect, editMessage);

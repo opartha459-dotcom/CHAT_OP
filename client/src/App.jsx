@@ -4,6 +4,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
 import { ChatProvider, useChat } from './context/ChatContext';
+import { CallProvider } from './context/CallContext';
 
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
@@ -11,6 +12,8 @@ import { RegisterPage } from './pages/RegisterPage';
 import { ChatDashboard } from './pages/ChatDashboard';
 import { DashboardSkeleton, AuthCardSkeleton } from './components/common/Skeleton';
 import { PulseLogo } from './components/common/PulseLogo';
+import { IncomingCallModal } from './components/call/IncomingCallModal';
+import { ActiveCallModal } from './components/call/ActiveCallModal';
 import { Loader2 } from 'lucide-react';
 
 // Protected Route wrapper with Dashboard Skeleton loader
@@ -104,52 +107,58 @@ export default function App() {
       <AuthProvider>
         <SocketProvider>
           <ChatProvider>
-            <BrowserRouter>
-              <Routes>
-                <Route
-                  path="/"
-                  element={
-                    <PublicRoute>
-                      <LandingPage />
-                    </PublicRoute>
-                  }
-                />
-                <Route
-                  path="/login"
-                  element={
-                    <PublicRoute>
-                      <LoginPage />
-                    </PublicRoute>
-                  }
-                />
-                <Route
-                  path="/register"
-                  element={
-                    <PublicRoute>
-                      <RegisterPage />
-                    </PublicRoute>
-                  }
-                />
-                <Route
-                  path="/chat"
-                  element={
-                    <ProtectedRoute>
-                      <ChatDashboard />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/join/:code"
-                  element={
-                    <ProtectedRoute>
-                      <JoinGroupHandler />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Fallback to Home / Chat with replace */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </BrowserRouter>
+            <CallProvider>
+              <BrowserRouter>
+                <Routes>
+                  <Route
+                    path="/"
+                    element={
+                      <PublicRoute>
+                        <LandingPage />
+                      </PublicRoute>
+                    }
+                  />
+                  <Route
+                    path="/login"
+                    element={
+                      <PublicRoute>
+                        <LoginPage />
+                      </PublicRoute>
+                    }
+                  />
+                  <Route
+                    path="/register"
+                    element={
+                      <PublicRoute>
+                        <RegisterPage />
+                      </PublicRoute>
+                    }
+                  />
+                  <Route
+                    path="/chat"
+                    element={
+                      <ProtectedRoute>
+                        <ChatDashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/join/:code"
+                    element={
+                      <ProtectedRoute>
+                        <JoinGroupHandler />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Fallback to Home / Chat with replace */}
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+
+                {/* WebRTC Audio/Video Call Modals */}
+                <IncomingCallModal />
+                <ActiveCallModal />
+              </BrowserRouter>
+            </CallProvider>
           </ChatProvider>
         </SocketProvider>
       </AuthProvider>

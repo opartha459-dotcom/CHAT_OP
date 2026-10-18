@@ -29,8 +29,18 @@ const messageSchema = new mongoose.Schema(
     },
     messageType: {
       type: String,
-      enum: ['text', 'image', 'video', 'file', 'audio', 'system'],
+      enum: ['text', 'image', 'video', 'file', 'audio', 'system', 'call'],
       default: 'text'
+    },
+    callMetadata: {
+      callId: { type: String, default: '' },
+      callType: { type: String, enum: ['audio', 'video'], default: 'audio' },
+      status: {
+        type: String,
+        enum: ['completed', 'missed', 'rejected', 'busy', 'cancelled'],
+        default: 'completed'
+      },
+      duration: { type: Number, default: 0 } // in seconds
     },
     fileUrl: {
       type: String,

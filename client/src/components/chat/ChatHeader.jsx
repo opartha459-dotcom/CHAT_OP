@@ -12,10 +12,13 @@ import {
   Flag,
   UserX,
   Users,
-  ChevronLeft
+  ChevronLeft,
+  Phone,
+  Video
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { useSocket } from '../../context/SocketContext';
+import { useCall } from '../../context/CallContext';
 import { Avatar } from '../common/Avatar';
 import { ExportModal } from '../modals/ExportModal';
 import { ReportModal } from '../modals/ReportModal';
@@ -24,6 +27,7 @@ import { E2EEVerifyModal } from '../modals/E2EEVerifyModal';
 export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
   const { activeConversation, togglePin, toggleArchive, toggleMute, deleteConversation, selectConversation } = useChat();
   const { onlineUsers, typingMap } = useSocket();
+  const { startCall } = useCall();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -114,6 +118,38 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
 
         {/* Action Controls */}
         <div className="flex items-center space-x-1">
+          <button
+            onClick={() =>
+              startCall({
+                conversationId: activeConversation._id,
+                isGroup,
+                callType: 'audio',
+                targetUser: !isGroup ? activeConversation.otherUser : null,
+                participants: isGroup ? activeConversation.participants : []
+              })
+            }
+            title={`Start ${isGroup ? 'Group ' : ''}Voice Call`}
+            className="p-2 text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
+          >
+            <Phone className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() =>
+              startCall({
+                conversationId: activeConversation._id,
+                isGroup,
+                callType: 'video',
+                targetUser: !isGroup ? activeConversation.otherUser : null,
+                participants: isGroup ? activeConversation.participants : []
+              })
+            }
+            title={`Start ${isGroup ? 'Group ' : ''}Video Call`}
+            className="p-2 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
+          >
+            <Video className="w-4 h-4" />
+          </button>
+
           <button
             onClick={onToggleSearch}
             title="Search Messages"

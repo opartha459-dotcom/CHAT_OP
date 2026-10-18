@@ -19,10 +19,20 @@ import {
   UserPlus,
   UserMinus,
   Settings,
-  Shield
+  Shield,
+  Phone,
+  PhoneIncoming,
+  PhoneOutgoing,
+  PhoneMissed,
+  PhoneOff,
+  Video,
+  VideoOff,
+  ArrowDownLeft,
+  ArrowUpRight
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
+import { useCall } from '../../context/CallContext';
 import { Avatar } from '../common/Avatar';
 import { ReportModal } from '../modals/ReportModal';
 import { JoinGroupModal } from '../modals/JoinGroupModal';
@@ -127,7 +137,8 @@ const RenderMessageContent = ({ content, isMe, onOpenJoinModal }) => {
 
 export const MessageBubble = ({ message, isGroup = false }) => {
   const { user } = useAuth();
-  const { setReplyMessage, editMessage, deleteMessage, reactToMessage } = useChat();
+  const { setReplyMessage, editMessage, deleteMessage, reactToMessage, activeConversation } = useChat();
+  const { startCall } = useCall();
 
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
@@ -167,6 +178,162 @@ export const MessageBubble = ({ message, isGroup = false }) => {
       deleteMessage(message._id, type);
     }
   };
+
+  // Dedicated Call History / Missed Call Bubble
+  if (message.messageType === 'call') {
+    const callMeta = message.callMetadata || {};
+    const isVideo = callMeta.callType === 'video';
+    const status = callMeta.status || 'completed';
+    const duration = callMeta.duration || 0;
+    const mins = Math.floor(duration / 60);
+    const secs = duration % 60;
+    const durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+    const isMissed = !isMe && (status === 'missed' || status === 'busy');
+    const isBusy = status === 'busy';
+
+    let title = '';
+    let subtitle = '';
+    let themeBadge = '';
+    let IconComponent = isVideo ? Video : Phone;
+
+    if (isMe) {
+      if (status === 'completed') {
+        title = isVideo ? 'Outgoing Video Call' : 'Outgoing Voice Call';
+        subtitle = `${durationStr} • ${timeString}`;
+        themeBadge = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+        IconComponent = isVideo ? Video : PhoneOutgoing;
+      } else if (status === 'busy') {
+        title = isVideo ? 'Video Call (Busy)' : 'Voice Call (Busy)';
+        subtitle = `User was on another call • ${timeString}`;
+        themeBadge = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
+        IconComponent = isVideo ? VideoOff : PhoneOff;
+      } else if (status === 'rejected') {
+        title = isVideo ? 'Video Call' : 'Voice Call';
+        subtitle = `Declined • ${timeString}`;
+        themeBadge = 'bg-slate-500/10 text-slate-500 dark:text-slate-400 border-slate-500/20';
+        IconComponent = isVideo ? VideoOff : PhoneOff;
+      } else {
+        title = isVideo ? 'Outgoing Video Call' : 'Outgoing Voice Call';
+        subtitle = `Unanswered • ${timeString}`;
+        themeBadge = 'bg-slate-500/10 text-slate-500 dark:text-slate-400 border-slate-500/20';
+        IconComponent = isVideo ? VideoOff : PhoneMissed;
+      }
+    } else {
+      if (status === 'completed') {
+        title = isVideo ? 'Incoming Video Call' : 'Incoming Voice Call';
+        subtitle = `${durationStr} • ${timeString}`;
+        themeBadge = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+        IconComponent = isVideo ? Video : PhoneIncoming;
+      } else if (status === 'busy') {
+        title = isVideo ? 'Missed Video Call' : 'Missed Voice Call';
+        subtitle = `Missed (You were in a call) • ${timeString}`;
+        themeBadge = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30';
+        IconComponent = isVideo ? VideoOff : PhoneMissed;
+      } else if (status === 'rejected') {
+        title = isVideo ? 'Declined Video Call' : 'Declined Voice Call';
+        subtitle = `Declined by you • ${timeString}`;
+        themeBadge = 'bg-slate-500/10 text-slate-500 dark:text-slate-400 border-slate-500/20';
+        IconComponent = isVideo ? VideoOff : PhoneOff;
+      } else {
+        title = isVideo ? 'Missed Video Call' : 'Missed Voice Call';
+        subtitle = `Missed call • ${timeString}`;
+        themeBadge = 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30';
+        IconComponent = isVideo ? VideoOff : PhoneMissed;
+      }
+    }
+
+    const handleCallBack = (type = isVideo ? 'video' : 'audio') => {
+      const conv = activeConversation;
+      if (!conv) return;
+      const isGroupConv = conv.type === 'group';
+      let targetUser = null;
+      if (!isGroupConv) {
+        targetUser = !isMe
+          ? message.sender
+          : conv.otherUser ||
+            conv.participants?.find((p) => (p._id || p) !== user?._id);
+      }
+      startCall({
+        conversationId: conv._id,
+        isGroup: isGroupConv,
+        callType: type,
+        targetUser,
+        participants: conv.participants || []
+      });
+    };
+
+    return (
+      <div className={`flex items-end space-x-2 my-2.5 select-none ${isMe ? 'justify-end' : 'justify-start'}`}>
+        {!isMe && isGroup && (
+          <Avatar
+            src={message.sender?.avatar}
+            name={message.sender?.nickname || message.sender?.username}
+            size="sm"
+          />
+        )}
+        <div
+          className={`flex flex-col p-3.5 rounded-2xl border shadow-xs max-w-xs sm:max-w-sm transition ${
+            isMissed
+              ? 'bg-rose-50/80 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50'
+              : isBusy
+              ? 'bg-amber-50/80 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50'
+              : isMe
+              ? 'bg-indigo-50/60 dark:bg-indigo-950/30 border-indigo-200/60 dark:border-indigo-800/40'
+              : 'bg-white dark:bg-slate-800/90 border-slate-200/80 dark:border-slate-700/80'
+          }`}
+        >
+          <div className="flex items-center space-x-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${themeBadge}`}>
+              <IconComponent className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center space-x-1.5">
+                <span className={`text-xs font-bold truncate ${isMissed ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-slate-100'}`}>
+                  {title}
+                </span>
+                {isMe ? (
+                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                ) : (
+                  <ArrowDownLeft className={`w-3.5 h-3.5 flex-shrink-0 ${isMissed ? 'text-rose-500' : 'text-slate-400'}`} />
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                {subtitle}
+              </p>
+            </div>
+          </div>
+
+          {/* Action buttons (Call Back) */}
+          <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2">
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">
+              {timeString}
+            </span>
+            <div className="flex items-center space-x-1.5">
+              <button
+                type="button"
+                onClick={() => handleCallBack('audio')}
+                title="Call Back (Voice)"
+                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 transition active:scale-95"
+              >
+                <Phone className="w-3 h-3" />
+                <span>Call</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCallBack('video')}
+                title="Call Back (Video)"
+                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 transition active:scale-95"
+              >
+                <Video className="w-3 h-3" />
+                <span>Video</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Check if message is a system notification (group creation, settings update, join, leave, etc.)
   const isSystemMessage =
