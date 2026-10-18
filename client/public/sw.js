@@ -86,7 +86,7 @@ self.addEventListener('push', (event) => {
       // Repeating ring vibration pattern like Telegram & WhatsApp
       vibrate: [1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500],
       data: {
-        url: `/?callId=${data.callId}&action=incoming`,
+        url: `/chat?callId=${data.callId}&action=incoming`,
         callId: data.callId,
         type: 'incoming_call',
         callData: data
@@ -121,7 +121,7 @@ self.addEventListener('push', (event) => {
       body: data.body || 'You have a new message',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
-      data: { url: data.url || '/' }
+      data: { url: data.url || '/chat' }
     };
     event.waitUntil(self.registration.showNotification(title, options));
   }
@@ -139,16 +139,22 @@ self.addEventListener('notificationclick', (event) => {
   const notificationData = event.notification.data || {};
   const isAnswer = event.action === 'answer';
   const targetUrl = notificationData.callId
-    ? `/?callId=${notificationData.callId}&action=${isAnswer ? 'answer' : 'incoming'}`
-    : notificationData.url || '/';
+    ? `/chat?callId=${notificationData.callId}&action=${isAnswer ? 'answer' : 'incoming'}`
+    : notificationData.url || '/chat';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Focus existing window if open
+      // Focus existing window if open and notify of call action
       for (const client of windowClients) {
         if (client.url.includes(self.location.origin)) {
-          if ('navigate' in client && targetUrl !== '/') {
-            client.navigate(targetUrl);
+          client.postMessage({
+            type: 'INCOMING_CALL_ACTION',
+            callId: notificationData.callId,
+            action: isAnswer ? 'answer' : 'incoming',
+            callData: notificationData.callData
+          });
+          if ('navigate' in client) {
+            client.navigate(targetUrl).catch(() => {});
           }
           if ('focus' in client) {
             return client.focus();

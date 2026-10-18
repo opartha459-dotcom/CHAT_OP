@@ -306,30 +306,44 @@ export const CallProvider = ({ children }) => {
     }
   }, [socket, user, acquireMedia, cleanupCall]);
 
-  // Accept incoming call
-  const acceptCall = useCallback(async () => {
-    if (!socket || !currentCall) return;
+  // Accept incoming call (supports direct parameter override for cold launch / notification tap)
+  const acceptCall = useCallback(async (incomingCallOverride) => {
+    const callToAccept = incomingCallOverride || currentCall;
+    if (!callToAccept) return;
 
     try {
       stopRingtone();
       playCallConnectedSound();
 
-      await acquireMedia(currentCall.callType);
+      await acquireMedia(callToAccept.callType || 'video');
+      setCurrentCall(callToAccept);
       setCallState('connected');
       setIsCallModalOpen(true);
 
       // Start duration counter
-      callTimerRef.current = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
-      }, 1000);
+      if (!callTimerRef.current) {
+        callTimerRef.current = setInterval(() => {
+          setCallDuration((prev) => prev + 1);
+        }, 1000);
+      }
 
-      // Join the call room
-      socket.emit('call:join', { callId: currentCall.callId });
+      // Join the call room (queue join if socket is still establishing connection)
+      const joinCall = () => {
+        if (socket && socket.connected) {
+          socket.emit('call:join', { callId: callToAccept.callId });
+        } else if (socket) {
+          socket.once('connect', () => {
+            socket.emit('call:join', { callId: callToAccept.callId });
+          });
+        }
+      };
+
+      joinCall();
     } catch (err) {
       alert(err.message || 'Could not access camera/microphone.');
       rejectCall();
     }
-  }, [socket, currentCall, acquireMedia]);
+  }, [socket, currentCall, acquireMedia, rejectCall]);
 
   // Reject incoming call
   const rejectCall = useCallback(() => {
@@ -604,26 +618,34 @@ export const CallProvider = ({ children }) => {
     });
   }, [socket, currentCall]);
 
-  // Listen for Service Worker postMessage (INCOMING_CALL_POPUP when phone/tab wakes up in background)
+  // Listen for Service Worker postMessage (when phone wakes up in background or notification is tapped)
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
 
     const handleSwMessage = (event) => {
-      if (event.data?.type === 'INCOMING_CALL_POPUP' && event.data.callData) {
-        const d = event.data.callData;
-        if (callState === 'idle') {
-          setCurrentCall({
-            callId: d.callId,
-            conversationId: d.conversationId,
-            isGroup: d.isGroup,
-            callType: d.callType,
-            caller: {
-              _id: d.callerId,
-              username: d.callerName,
-              nickname: d.callerName,
-              avatar: d.callerAvatar
-            }
-          });
+      const msg = event.data;
+      if (!msg) return;
+
+      if ((msg.type === 'INCOMING_CALL_POPUP' || msg.type === 'INCOMING_CALL_ACTION') && (msg.callData || msg.callId)) {
+        const d = msg.callData || {};
+        const callInfo = {
+          callId: msg.callId || d.callId,
+          conversationId: d.conversationId,
+          isGroup: d.isGroup,
+          callType: d.callType || 'video',
+          caller: {
+            _id: d.callerId,
+            username: d.callerName || 'Caller',
+            nickname: d.callerName || 'Caller',
+            avatar: d.callerAvatar || ''
+          }
+        };
+
+        setCurrentCall(callInfo);
+
+        if (msg.action === 'answer') {
+          acceptCall(callInfo);
+        } else {
           setCallState('incoming');
           setIsCallModalOpen(true);
           startIncomingRingtone();
@@ -635,30 +657,20 @@ export const CallProvider = ({ children }) => {
     return () => {
       navigator.serviceWorker.removeEventListener('message', handleSwMessage);
     };
-  }, [callState]);
+  }, [acceptCall]);
 
   // Handle incoming call triggered via Push Notification when app was closed (?callId=...&action=...)
   useEffect(() => {
-    if (!user) return;
-
     const urlParams = new URLSearchParams(window.location.search);
     const pushCallId = urlParams.get('callId');
     const pushAction = urlParams.get('action');
 
-    if (pushCallId && callState === 'idle') {
+    if (pushCallId) {
       window.history.replaceState({}, document.title, window.location.pathname);
 
       const loadCallFromRest = async () => {
         try {
-          const storedToken = localStorage.getItem('pulsechat_token') || localStorage.getItem('token');
-          const res = await fetch(`/api/users/call/${encodeURIComponent(pushCallId)}`, {
-            credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {})
-            }
-          });
-
+          const res = await fetch(`/api/users/call/${encodeURIComponent(pushCallId)}`);
           if (res.ok) {
             const data = await res.json();
             if (data.success && data.call) {
@@ -666,25 +678,7 @@ export const CallProvider = ({ children }) => {
               setCurrentCall(callInfo);
 
               if (pushAction === 'answer') {
-                try {
-                  stopRingtone();
-                  playCallConnectedSound();
-                  await acquireMedia(callInfo.callType || 'video');
-                  setCallState('connected');
-                  setIsCallModalOpen(true);
-                  if (!callTimerRef.current) {
-                    callTimerRef.current = setInterval(() => {
-                      setCallDuration((prev) => prev + 1);
-                    }, 1000);
-                  }
-                  if (socket) {
-                    socket.emit('call:join', { callId: pushCallId });
-                  }
-                } catch (err) {
-                  setCallState('incoming');
-                  setIsCallModalOpen(true);
-                  startIncomingRingtone();
-                }
+                acceptCall(callInfo);
               } else {
                 // Automatically open incoming call interface and ring
                 setCallState('incoming');
@@ -700,7 +694,7 @@ export const CallProvider = ({ children }) => {
 
       loadCallFromRest();
     }
-  }, [user, callState, acquireMedia, socket]);
+  }, [acceptCall]);
 
   // Socket WebRTC Event Listeners
   useEffect(() => {

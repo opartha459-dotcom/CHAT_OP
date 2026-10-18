@@ -48,9 +48,10 @@ const PublicRoute = ({ children }) => {
   }
 
   if (isAuthenticated) {
+    const search = location.search || '';
     const from = location.state?.from
       ? `${location.state.from.pathname}${location.state.from.search || ''}`
-      : '/chat';
+      : `/chat${search}`;
     return <Navigate to={from} replace />;
   }
 
