@@ -1,8 +1,0 @@
-{
-  "name": "pulsechat-client-bridge",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "build": "node build-client.js"
-  }
-}
