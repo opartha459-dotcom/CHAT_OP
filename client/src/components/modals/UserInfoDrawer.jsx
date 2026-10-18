@@ -35,13 +35,18 @@ export const UserInfoDrawer = ({ isOpen, onClose, targetUser }) => {
 
   return (
     <>
-      <div className="fixed inset-y-0 right-0 z-40 w-full md:w-80 lg:w-96 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
-        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-white">Contact Info</h2>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+      <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="hidden md:block flex-1" onClick={onClose} />
+        <div className="w-full sm:w-96 h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 overflow-hidden">
+          <div className="h-14 px-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 sticky top-0 z-10 flex-shrink-0">
+            <h2 className="text-sm font-bold text-slate-800 dark:text-white">Contact Info</h2>
+            <button
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
           <div className="flex flex-col items-center text-center">
@@ -91,6 +96,7 @@ export const UserInfoDrawer = ({ isOpen, onClose, targetUser }) => {
           </div>
         </div>
       </div>
+    </div>
 
       <ReportModal
         isOpen={reportModalOpen}

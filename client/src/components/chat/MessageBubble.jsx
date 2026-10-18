@@ -20,6 +20,7 @@ import {
   UserMinus,
   Settings,
   Shield,
+  Crown,
   Phone,
   PhoneIncoming,
   PhoneOutgoing,
@@ -146,9 +147,15 @@ export const MessageBubble = ({ message, isGroup = false }) => {
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [joinModalCode, setJoinModalCode] = useState(null);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
 
-  const isMe = (message.sender?._id || message.sender)?.toString() === user?._id?.toString();
+  const senderId = (message.sender?._id || message.sender)?.toString();
+  const isMe = senderId === user?._id?.toString();
   const isDeleted = message.isDeletedForEveryone;
+
+  // Group role checks
+  const isSenderOwner = isGroup && (activeConversation?.groupDetails?.owner?._id || activeConversation?.groupDetails?.owner)?.toString() === senderId;
+  const isSenderAdmin = isGroup && activeConversation?.groupDetails?.admins?.some((a) => (a._id || a)?.toString() === senderId);
 
   const timeString = new Date(message.createdAt || Date.now()).toLocaleTimeString([], {
     hour: '2-digit',
@@ -399,11 +406,25 @@ export const MessageBubble = ({ message, isGroup = false }) => {
 
         {/* Message wrapper */}
         <div className={`relative max-w-[85%] md:max-w-[70%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-          {/* Sender nickname in group */}
+          {/* Sender nickname & role badge in group */}
           {!isMe && isGroup && (
-            <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 mb-1 ml-1">
-              {message.sender?.nickname || message.sender?.username}
-            </span>
+            <div className="flex items-center space-x-1.5 mb-1 ml-1 select-none">
+              <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
+                {message.sender?.nickname || message.sender?.username}
+              </span>
+              {isSenderOwner && (
+                <span className="inline-flex items-center space-x-0.5 text-[9px] font-bold px-1.5 py-0.2 bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 rounded shadow-2xs">
+                  <Crown className="w-2.5 h-2.5" />
+                  <span>Owner</span>
+                </span>
+              )}
+              {!isSenderOwner && isSenderAdmin && (
+                <span className="inline-flex items-center space-x-0.5 text-[9px] font-bold px-1.5 py-0.2 bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 rounded shadow-2xs">
+                  <Shield className="w-2.5 h-2.5" />
+                  <span>Admin</span>
+                </span>
+              )}
+            </div>
           )}
 
           {/* Replied preview header */}
@@ -422,7 +443,8 @@ export const MessageBubble = ({ message, isGroup = false }) => {
 
           {/* Bubble content */}
           <div
-            className={`relative px-4 py-2.5 rounded-2xl shadow-sm text-sm break-words ${
+            onClick={() => setMobileActionsOpen((prev) => !prev)}
+            className={`relative px-4 py-2.5 rounded-2xl shadow-sm text-sm break-words cursor-pointer md:cursor-auto ${
               isMe
                 ? 'bg-accent text-white rounded-br-xs'
                 : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-100 dark:border-slate-700/60 rounded-bl-xs'
@@ -563,10 +585,12 @@ export const MessageBubble = ({ message, isGroup = false }) => {
           )}
         </div>
 
-        {/* Hover Micro-Actions Toolbar */}
+        {/* Micro-Actions Toolbar (Mobile tap or Desktop hover) */}
         {!isDeleted && (
           <div
-            className={`opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-0.5 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-md ${
+            className={`${
+              mobileActionsOpen ? 'flex opacity-100 scale-100 z-20 shadow-lg' : 'hidden md:flex opacity-0 group-hover:opacity-100'
+            } transition-all duration-150 items-center space-x-0.5 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-md ${
               isMe ? 'order-first' : 'order-last'
             }`}
           >

@@ -61,12 +61,13 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
           {/* Back button on mobile */}
           <button
             onClick={onBack}
-            className="md:hidden p-1.5 text-slate-500 hover:text-slate-800 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="md:hidden p-2 -ml-1 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition active:scale-95 cursor-pointer flex-shrink-0"
+            title="Back to chats"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
 
-          <div className="cursor-pointer" onClick={onOpenInfo}>
+          <div className="cursor-pointer flex-shrink-0" onClick={onOpenInfo}>
             <Avatar
               src={avatarUrl}
               name={title}
@@ -76,9 +77,9 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
             />
           </div>
 
-          <div className="overflow-hidden cursor-pointer" onClick={onOpenInfo}>
+          <div className="overflow-hidden cursor-pointer min-w-0" onClick={onOpenInfo}>
             <div className="flex items-center space-x-1.5">
-              <span className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+              <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
                 {title}
               </span>
               <button
@@ -88,7 +89,7 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
                   setE2EEModalOpen(true);
                 }}
                 title="End-to-End Encrypted. Click to verify safety fingerprint."
-                className="text-emerald-600 dark:text-emerald-400 hover:opacity-80 transition"
+                className="text-emerald-600 dark:text-emerald-400 hover:opacity-80 transition flex-shrink-0"
               >
                 <ShieldCheck className="w-4 h-4" />
               </button>
@@ -100,17 +101,17 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
                   {typers.join(', ')} {typers.length === 1 ? 'is' : 'are'} typing...
                 </span>
               ) : isGroup ? (
-                <span className="text-slate-400">
-                  {activeConversation.participants?.length || 0} members
+                <span className="text-slate-400 text-[11px] hover:text-indigo-500 transition">
+                  {activeConversation.participants?.length || 0} members · Tap for info
                 </span>
               ) : isOnline ? (
-                <span className="text-emerald-500 font-medium">Online</span>
+                <span className="text-emerald-500 font-medium text-[11px]">Online</span>
               ) : activeConversation.otherUser?.lastSeen ? (
-                <span className="text-slate-400">
+                <span className="text-slate-400 text-[11px]">
                   Last seen {new Date(activeConversation.otherUser.lastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               ) : (
-                <span className="text-slate-400">Offline</span>
+                <span className="text-slate-400 text-[11px]">Offline</span>
               )}
             </div>
           </div>
@@ -164,7 +165,7 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
           <button
             onClick={onToggleSearch}
             title="Search Messages"
-            className="p-2 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+            className="hidden sm:flex p-2 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
           >
             <Search className="w-4 h-4" />
           </button>
@@ -172,7 +173,7 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
           <button
             onClick={() => setExportModalOpen(true)}
             title="Export Conversation Transcript"
-            className="p-2 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+            className="hidden sm:flex p-2 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
           >
             <Download className="w-4 h-4" />
           </button>
@@ -181,16 +182,43 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
           <div className="relative">
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+              className="p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
             >
               <MoreVertical className="w-4 h-4" />
             </button>
 
             {menuOpen && (
               <div
-                className="absolute right-0 mt-1 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl py-1.5 z-40 text-xs font-medium text-slate-700 dark:text-slate-300 animate-in fade-in zoom-in-95 duration-100"
+                className="absolute right-0 mt-1 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl py-1.5 z-40 text-xs font-medium text-slate-700 dark:text-slate-300 animate-in fade-in zoom-in-95 duration-100"
                 onClick={() => setMenuOpen(false)}
               >
+                {/* Mobile-only shortcuts */}
+                <button
+                  onClick={onOpenInfo}
+                  className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center space-x-2"
+                >
+                  <Users className="w-4 h-4 text-indigo-500" />
+                  <span>{isGroup ? 'Group Information' : 'Contact Info'}</span>
+                </button>
+
+                <button
+                  onClick={onToggleSearch}
+                  className="sm:hidden w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center space-x-2"
+                >
+                  <Search className="w-4 h-4 text-slate-400" />
+                  <span>Search Messages</span>
+                </button>
+
+                <button
+                  onClick={() => setExportModalOpen(true)}
+                  className="sm:hidden w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center space-x-2"
+                >
+                  <Download className="w-4 h-4 text-slate-400" />
+                  <span>Export Chat History</span>
+                </button>
+
+                <div className="sm:hidden my-1 border-t border-slate-100 dark:border-slate-800" />
+
                 <button
                   onClick={() => togglePin(activeConversation._id)}
                   className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center space-x-2"
