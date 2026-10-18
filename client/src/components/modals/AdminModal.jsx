@@ -25,10 +25,13 @@ import {
   Layers
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useChat } from '../../context/ChatContext';
+import { getConversationCryptoKey, decryptMessage } from '../../utils/crypto';
 import { Avatar } from '../common/Avatar';
 
 export const AdminModal = ({ isOpen, onClose }) => {
   const { user, token } = useAuth();
+  const { selectConversation } = useChat();
   const [activeTab, setActiveTab] = useState('stats');
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
@@ -77,7 +80,33 @@ export const AdminModal = ({ isOpen, onClose }) => {
     // Load reports
     fetch('/api/admin/reports?status=pending', { headers: authHeaders(), credentials: 'include' })
       .then((r) => r.json())
-      .then((d) => d.success && setReports(d.reports))
+      .then(async (d) => {
+        if (d.success) {
+          const decryptedReports = await Promise.all(
+            (d.reports || []).map(async (r) => {
+              const repMsg = r.reportedMessage;
+              if (repMsg?.isEncrypted && repMsg?.encryptionMetadata?.iv && repMsg?.conversation) {
+                try {
+                  const convKey = await getConversationCryptoKey(repMsg.conversation);
+                  if (convKey) {
+                    const decrypted = await decryptMessage(
+                      repMsg.content,
+                      repMsg.encryptionMetadata.iv,
+                      convKey
+                    );
+                    return {
+                      ...r,
+                      reportedMessage: { ...repMsg, content: decrypted }
+                    };
+                  }
+                } catch (e) {}
+              }
+              return r;
+            })
+          );
+          setReports(decryptedReports);
+        }
+      })
       .catch(console.error);
 
     // Load audit logs
@@ -234,7 +263,39 @@ export const AdminModal = ({ isOpen, onClose }) => {
       });
       const data = await res.json();
       if (data.success) {
-        setChatMessages(data.messages || []);
+        const convKey = await getConversationCryptoKey(conv._id);
+        const decrypted = await Promise.all(
+          (data.messages || []).map(async (msg) => {
+            let content = msg.content;
+            if (msg.isEncrypted && msg.encryptionMetadata?.iv && convKey) {
+              try {
+                content = await decryptMessage(msg.content, msg.encryptionMetadata.iv, convKey);
+              } catch (e) {
+                console.warn('Admin decryption failed for msg:', msg._id, e);
+              }
+            }
+
+            let replyTo = msg.replyTo;
+            if (replyTo?.isEncrypted && replyTo?.encryptionMetadata?.iv && convKey) {
+              try {
+                const repPlain = await decryptMessage(
+                  replyTo.content,
+                  replyTo.encryptionMetadata.iv,
+                  convKey
+                );
+                replyTo = { ...replyTo, content: repPlain };
+              } catch (e) {}
+            }
+
+            return {
+              ...msg,
+              content,
+              replyTo,
+              wasEncrypted: msg.isEncrypted
+            };
+          })
+        );
+        setChatMessages(decrypted);
       }
     } catch (err) {
       showMsg('Error loading conversation messages.');
@@ -628,7 +689,19 @@ export const AdminModal = ({ isOpen, onClose }) => {
                                   className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 font-semibold rounded-lg text-xs flex items-center space-x-1.5 transition cursor-pointer"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
-                                  <span>View Chat Messages</span>
+                                  <span>View Messages</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    selectConversation(conv);
+                                    onClose();
+                                  }}
+                                  className="px-2.5 py-1 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-xs flex items-center space-x-1 transition cursor-pointer"
+                                  title="Open conversation directly in main chat window"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                  <span>Open</span>
                                 </button>
 
                                 <button
@@ -677,13 +750,27 @@ export const AdminModal = ({ isOpen, onClose }) => {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => handleDeleteConversation(selectedChat._id)}
-                      className="px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg border border-rose-200 dark:border-rose-900/60 flex items-center space-x-1"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete Chat</span>
-                    </button>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => {
+                          selectConversation(selectedChat);
+                          onClose();
+                        }}
+                        className="px-2.5 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg border border-indigo-200 dark:border-indigo-900/60 flex items-center space-x-1 transition cursor-pointer"
+                        title="Open this conversation in the main chat view"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Open in Chat</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteConversation(selectedChat._id)}
+                        className="px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg border border-rose-200 dark:border-rose-900/60 flex items-center space-x-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete Chat</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Messages Stream */}
@@ -737,17 +824,16 @@ export const AdminModal = ({ isOpen, onClose }) => {
 
                             {/* Message Content */}
                             <div className="text-slate-700 dark:text-slate-200 pl-7 text-xs leading-relaxed">
-                              {msg.isEncrypted ? (
-                                <div className="space-y-1">
-                                  <span className="inline-flex items-center space-x-1 px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] rounded font-medium">
-                                    <Lock className="w-3 h-3" />
-                                    <span>E2EE Encrypted Message</span>
-                                  </span>
-                                  <div className="font-mono text-[11px] text-slate-400 break-all select-all bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg">
-                                    {msg.content}
-                                  </div>
+                              {msg.replyTo && (
+                                <div className="mb-1.5 p-1.5 rounded-md bg-slate-100 dark:bg-slate-800/80 border-l-2 border-indigo-500 text-[11px] text-slate-500 dark:text-slate-400">
+                                  <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                                    @{msg.replyTo.sender?.nickname || msg.replyTo.sender?.username || 'User'}:
+                                  </span>{' '}
+                                  <span className="line-clamp-1">{msg.replyTo.content}</span>
                                 </div>
-                              ) : msg.messageType === 'call' ? (
+                              )}
+
+                              {msg.messageType === 'call' ? (
                                 <div className="inline-flex items-center space-x-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300">
                                   {msg.callMetadata?.callType === 'video' ? (
                                     <Video className="w-4 h-4 text-indigo-500" />
@@ -761,7 +847,19 @@ export const AdminModal = ({ isOpen, onClose }) => {
                                   </span>
                                 </div>
                               ) : (
-                                <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                                <div className="space-y-1">
+                                  {msg.wasEncrypted && (
+                                    <div className="flex items-center space-x-1 mb-0.5">
+                                      <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] rounded font-medium">
+                                        <Lock className="w-2.5 h-2.5" />
+                                        <span>Decrypted E2EE</span>
+                                      </span>
+                                    </div>
+                                  )}
+                                  <p className="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100 text-xs leading-relaxed">
+                                    {msg.content}
+                                  </p>
+                                </div>
                               )}
 
                               {/* Media/file attachments */}
@@ -845,9 +943,15 @@ export const AdminModal = ({ isOpen, onClose }) => {
                         </p>
                       )}
                       {r.reportedMessage && (
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          Message Content: "{r.reportedMessage.content}"
-                        </p>
+                        <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-1 flex items-start gap-1.5">
+                          {r.reportedMessage.isEncrypted && (
+                            <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[9px] rounded font-medium flex-shrink-0">
+                              <Lock className="w-2.5 h-2.5" />
+                              <span>E2EE</span>
+                            </span>
+                          )}
+                          <span>Message Content: "{r.reportedMessage.content}"</span>
+                        </div>
                       )}
                     </div>
                   </div>

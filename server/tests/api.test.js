@@ -441,6 +441,17 @@ test('Full-Stack Chat API Suite', async (t) => {
       });
       assert.strictEqual(adminMessagesRes.status, 200);
       assert.ok(Array.isArray(adminMessagesRes.body.messages));
+
+      // Admin can also view messages directly through /api/messages/:id (platform moderation oversight)
+      const directMessagesRes = await makeRequest({
+        hostname: 'localhost',
+        port: 5001,
+        path: `/api/messages/${convIdToInspect}`,
+        method: 'GET',
+        headers: { Authorization: `Bearer ${adminToken}` }
+      });
+      assert.strictEqual(directMessagesRes.status, 200);
+      assert.ok(Array.isArray(directMessagesRes.body.messages));
     }
 
     // Admin deletes a disposable test user

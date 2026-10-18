@@ -202,7 +202,7 @@ const getReports = async (req, res) => {
       .populate('reportedUser', 'username nickname avatar isBanned')
       .populate({
         path: 'reportedMessage',
-        select: 'content fileUrl sender createdAt',
+        select: 'content fileUrl sender createdAt isEncrypted encryptionMetadata conversation',
         populate: { path: 'sender', select: 'username nickname' }
       })
       .populate('reportedGroup', 'groupDetails.name groupDetails.avatar')
@@ -356,7 +356,7 @@ const getAllChats = async (req, res) => {
         .populate('groupDetails.admins', 'username nickname avatar')
         .populate({
           path: 'lastMessage',
-          select: 'content messageType fileUrl sender createdAt isEncrypted',
+          select: 'content messageType fileUrl sender createdAt isEncrypted encryptionMetadata',
           populate: { path: 'sender', select: 'username nickname' }
         })
         .sort({ updatedAt: -1 })
@@ -410,7 +410,7 @@ const getChatMessages = async (req, res) => {
       .populate('sender', 'username nickname email avatar role')
       .populate({
         path: 'replyTo',
-        select: 'content fileUrl sender messageType',
+        select: 'content fileUrl sender messageType isEncrypted encryptionMetadata',
         populate: { path: 'sender', select: 'username nickname' }
       })
       .sort({ createdAt: 1 })

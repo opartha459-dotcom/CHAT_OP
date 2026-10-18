@@ -270,12 +270,16 @@ const markAsRead = async (req, res) => {
     const { id } = req.params;
     const currentUserId = req.user._id;
 
-    const conversation = await Conversation.findOne({ _id: id, participants: currentUserId });
+    const convFilter = { _id: id };
+    if (req.user?.role !== 'admin') {
+      convFilter.participants = currentUserId;
+    }
+    const conversation = await Conversation.findOne(convFilter);
     if (!conversation) {
       return res.status(404).json({ success: false, message: 'Conversation not found.' });
     }
 
-    if (conversation.unreadCounts) {
+    if (conversation.unreadCounts && typeof conversation.unreadCounts.set === 'function') {
       conversation.unreadCounts.set(currentUserId.toString(), 0);
       await conversation.save();
     }

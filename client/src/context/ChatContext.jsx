@@ -42,12 +42,31 @@ export const ChatProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         const activeId = activeConversationRef.current?._id;
-        const normalized = data.conversations.map((c) => {
-          if (activeId && c._id === activeId) {
-            return { ...c, unreadCount: 0 };
-          }
-          return c;
-        });
+        const normalized = await Promise.all(
+          data.conversations.map(async (c) => {
+            let lastMessage = c.lastMessage;
+            if (lastMessage?.isEncrypted && lastMessage?.encryptionMetadata?.iv) {
+              try {
+                const convKey = await getConversationCryptoKey(c._id);
+                if (convKey) {
+                  const plaintext = await decryptMessage(
+                    lastMessage.content,
+                    lastMessage.encryptionMetadata.iv,
+                    convKey
+                  );
+                  lastMessage = { ...lastMessage, content: plaintext };
+                }
+              } catch (e) {
+                console.warn('Failed to decrypt lastMessage preview:', e);
+              }
+            }
+            const item = { ...c, lastMessage };
+            if (activeId && c._id === activeId) {
+              return { ...item, unreadCount: 0 };
+            }
+            return item;
+          })
+        );
         setConversations(normalized);
       }
     } catch (err) {

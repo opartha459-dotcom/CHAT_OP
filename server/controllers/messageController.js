@@ -10,20 +10,23 @@ const getMessages = async (req, res) => {
     const { before, limit = 40 } = req.query;
     const currentUserId = req.user._id;
 
-    // Verify user is in conversation
-    const conversation = await Conversation.findOne({
-      _id: conversationId,
-      participants: currentUserId
-    });
+    // Verify user is in conversation (or is admin with platform oversight)
+    const convFilter = { _id: conversationId };
+    if (req.user?.role !== 'admin') {
+      convFilter.participants = currentUserId;
+    }
+    const conversation = await Conversation.findOne(convFilter);
 
     if (!conversation) {
       return res.status(403).json({ success: false, message: 'Access denied to conversation messages.' });
     }
 
     const query = {
-      conversation: conversationId,
-      deletedFor: { $ne: currentUserId }
+      conversation: conversationId
     };
+    if (req.user?.role !== 'admin') {
+      query.deletedFor = { $ne: currentUserId };
+    }
 
     if (before) {
       query.createdAt = { $lt: new Date(before) };
