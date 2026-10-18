@@ -147,17 +147,17 @@ export const MessageBubble = ({ message, isGroup = false }) => {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [joinModalCode, setJoinModalCode] = useState(null);
 
-  const isMe = message.sender?._id === user?._id;
+  const isMe = (message.sender?._id || message.sender)?.toString() === user?._id?.toString();
   const isDeleted = message.isDeletedForEveryone;
 
-  const timeString = new Date(message.createdAt).toLocaleTimeString([], {
+  const timeString = new Date(message.createdAt || Date.now()).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit'
   });
 
   // Calculate read / delivered indicators
-  const isRead = message.readBy && message.readBy.some((r) => r.user !== user?._id);
-  const isDelivered = message.deliveredTo && message.deliveredTo.some((d) => d.user !== user?._id);
+  const isRead = message.readBy && message.readBy.some((r) => (r.user?._id || r.user || r)?.toString() !== user?._id?.toString());
+  const isDelivered = message.deliveredTo && message.deliveredTo.some((d) => (d.user?._id || d.user || d)?.toString() !== user?._id?.toString());
 
   // Group reactions by emoji
   const reactionGroups = (message.reactions || []).reduce((acc, curr) => {
@@ -528,7 +528,13 @@ export const MessageBubble = ({ message, isGroup = false }) => {
 
               {isMe && (
                 <span>
-                  {isRead ? (
+                  {message.status === 'failed' ? (
+                    <span className="text-rose-300 font-semibold text-[9px]" title="Failed to send">
+                      Failed
+                    </span>
+                  ) : message.status === 'sending' || message.isOptimistic ? (
+                    <Clock className="w-3.5 h-3.5 opacity-80 animate-pulse" title="Sending..." />
+                  ) : isRead ? (
                     <CheckCheck className="w-3.5 h-3.5 text-sky-300" title="Read" />
                   ) : isDelivered ? (
                     <CheckCheck className="w-3.5 h-3.5 opacity-80" title="Delivered" />

@@ -113,24 +113,27 @@ export const MessageInput = () => {
     const trimmedText = text.trim();
     if (!trimmedText && !fileAttachment) return;
 
+    const pendingAttachment = fileAttachment;
+
+    // Instantly reset input fields so user experiences zero latency
+    setText('');
+    setFileAttachment(null);
+    setShowEmojis(false);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    setIsTyping(false);
+    if (activeConversation) {
+      sendTypingStop(activeConversation._id);
+    }
+
     try {
       await sendMessage({
         content: trimmedText,
-        fileUrl: fileAttachment?.url,
-        fileName: fileAttachment?.name,
-        fileSize: fileAttachment?.size,
-        fileMimeType: fileAttachment?.mimeType,
-        messageType: fileAttachment?.messageType || 'text'
+        fileUrl: pendingAttachment?.url,
+        fileName: pendingAttachment?.name,
+        fileSize: pendingAttachment?.size,
+        fileMimeType: pendingAttachment?.mimeType,
+        messageType: pendingAttachment?.messageType || 'text'
       });
-
-      setText('');
-      setFileAttachment(null);
-      setShowEmojis(false);
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      setIsTyping(false);
-      if (activeConversation) {
-        sendTypingStop(activeConversation._id);
-      }
     } catch (err) {
       console.error('Error sending message:', err);
     }

@@ -9,11 +9,12 @@ const AuditLog = require('../models/AuditLog');
 // @route GET /api/admin/stats
 const getDashboardStats = async (req, res) => {
   try {
-    const [totalUsers, activeToday, bannedUsers, totalGroups, totalMessages, pendingReports] = await Promise.all([
+    const [totalUsers, activeToday, bannedUsers, totalGroups, totalDirectChats, totalMessages, pendingReports] = await Promise.all([
       User.countDocuments(),
       User.countDocuments({ lastSeen: { $gte: new Date(Date.now() - 24 * 3600 * 1000) } }),
       User.countDocuments({ isBanned: true }),
       Conversation.countDocuments({ type: 'group' }),
+      Conversation.countDocuments({ type: 'private' }),
       Message.countDocuments(),
       Report.countDocuments({ status: 'pending' })
     ]);
@@ -25,6 +26,7 @@ const getDashboardStats = async (req, res) => {
         activeToday,
         bannedUsers,
         totalGroups,
+        totalDirectChats,
         totalMessages,
         pendingReports
       }
@@ -263,13 +265,257 @@ const getAuditLogs = async (req, res) => {
   }
 };
 
+// @desc Delete a user permanently
+// @route DELETE /api/admin/users/:id
+const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminUser = req.user;
+
+    const targetUser = await User.findById(id);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    if (targetUser.role === 'admin' && targetUser._id.toString() === adminUser._id.toString()) {
+      return res.status(400).json({ success: false, message: 'You cannot delete your own admin account.' });
+    }
+
+    // Revoke sessions
+    await Session.deleteMany({ user: targetUser._id });
+
+    // Clean up references in conversations
+    await Conversation.updateMany(
+      { participants: targetUser._id },
+      {
+        $pull: {
+          participants: targetUser._id,
+          'groupDetails.admins': targetUser._id,
+          pinnedBy: targetUser._id,
+          archivedBy: targetUser._id,
+          mutedBy: targetUser._id
+        }
+      }
+    );
+
+    // Delete user
+    await User.findByIdAndDelete(id);
+
+    // Audit log
+    await AuditLog.create({
+      actor: adminUser._id,
+      action: 'USER_DELETE',
+      targetType: 'User',
+      targetId: targetUser._id,
+      details: { username: targetUser.username, email: targetUser.email, role: targetUser.role },
+      ipAddress: req.ip
+    });
+
+    return res.json({
+      success: true,
+      message: `User @${targetUser.username} has been permanently deleted.`
+    });
+  } catch (error) {
+    console.error('[Admin Delete User Error]', error);
+    return res.status(500).json({ success: false, message: 'Error deleting user.' });
+  }
+};
+
+// @desc Get all conversations across the system for admin oversight
+// @route GET /api/admin/chats
+const getAllChats = async (req, res) => {
+  try {
+    const { query, type, page = 1, limit = 50 } = req.query;
+    const filter = {};
+
+    if (type && ['private', 'group'].includes(type)) {
+      filter.type = type;
+    }
+
+    if (query) {
+      const matchedUsers = await User.find({
+        $or: [
+          { username: { $regex: query, $options: 'i' } },
+          { nickname: { $regex: query, $options: 'i' } },
+          { email: { $regex: query, $options: 'i' } }
+        ]
+      }).select('_id');
+      const matchedUserIds = matchedUsers.map((u) => u._id);
+
+      filter.$or = [
+        { 'groupDetails.name': { $regex: query, $options: 'i' } },
+        { participants: { $in: matchedUserIds } }
+      ];
+    }
+
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const [conversations, total] = await Promise.all([
+      Conversation.find(filter)
+        .populate('participants', 'username nickname email avatar isBanned role status')
+        .populate('groupDetails.owner', 'username nickname avatar')
+        .populate('groupDetails.admins', 'username nickname avatar')
+        .populate({
+          path: 'lastMessage',
+          select: 'content messageType fileUrl sender createdAt isEncrypted',
+          populate: { path: 'sender', select: 'username nickname' }
+        })
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit, 10))
+        .lean(),
+      Conversation.countDocuments(filter)
+    ]);
+
+    const conversationsWithCounts = await Promise.all(
+      conversations.map(async (conv) => {
+        const messageCount = await Message.countDocuments({ conversation: conv._id });
+        return {
+          ...conv,
+          messageCount
+        };
+      })
+    );
+
+    return res.json({
+      success: true,
+      conversations: conversationsWithCounts,
+      total,
+      page: parseInt(page, 10),
+      pages: Math.ceil(total / parseInt(limit, 10))
+    });
+  } catch (error) {
+    console.error('[Admin Get Chats Error]', error);
+    return res.status(500).json({ success: false, message: 'Error retrieving chats.' });
+  }
+};
+
+// @desc Get all messages for a specific conversation for admin inspection
+// @route GET /api/admin/chats/:id/messages
+const getChatMessages = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 200 } = req.query;
+
+    const conversation = await Conversation.findById(id)
+      .populate('participants', 'username nickname email avatar isBanned role status')
+      .populate('groupDetails.owner', 'username nickname avatar')
+      .populate('groupDetails.admins', 'username nickname avatar')
+      .lean();
+
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Conversation not found.' });
+    }
+
+    const messages = await Message.find({ conversation: id })
+      .populate('sender', 'username nickname email avatar role')
+      .populate({
+        path: 'replyTo',
+        select: 'content fileUrl sender messageType',
+        populate: { path: 'sender', select: 'username nickname' }
+      })
+      .sort({ createdAt: 1 })
+      .limit(parseInt(limit, 10))
+      .lean();
+
+    return res.json({
+      success: true,
+      conversation,
+      messages
+    });
+  } catch (error) {
+    console.error('[Admin Get Messages Error]', error);
+    return res.status(500).json({ success: false, message: 'Error fetching chat messages.' });
+  }
+};
+
+// @desc Delete an entire conversation and its messages
+// @route DELETE /api/admin/chats/:id
+const deleteChat = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminUser = req.user;
+
+    const conversation = await Conversation.findById(id);
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Conversation not found.' });
+    }
+
+    const messageCount = await Message.countDocuments({ conversation: id });
+    await Message.deleteMany({ conversation: id });
+    await Conversation.findByIdAndDelete(id);
+
+    await AuditLog.create({
+      actor: adminUser._id,
+      action: 'CHAT_DELETE',
+      targetType: 'Conversation',
+      targetId: id,
+      details: {
+        type: conversation.type,
+        name: conversation.type === 'group' ? conversation.groupDetails?.name : 'Private Chat',
+        deletedMessages: messageCount
+      },
+      ipAddress: req.ip
+    });
+
+    return res.json({
+      success: true,
+      message: 'Conversation and all associated messages have been deleted.'
+    });
+  } catch (error) {
+    console.error('[Admin Delete Chat Error]', error);
+    return res.status(500).json({ success: false, message: 'Error deleting conversation.' });
+  }
+};
+
+// @desc Delete an inappropriate message from any chat
+// @route DELETE /api/admin/messages/:id
+const deleteAdminMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminUser = req.user;
+
+    const message = await Message.findById(id);
+    if (!message) {
+      return res.status(404).json({ success: false, message: 'Message not found.' });
+    }
+
+    await Message.findByIdAndDelete(id);
+
+    await AuditLog.create({
+      actor: adminUser._id,
+      action: 'MESSAGE_DELETE',
+      targetType: 'Message',
+      targetId: id,
+      details: {
+        conversation: message.conversation,
+        sender: message.sender,
+        contentPreview: message.content ? message.content.substring(0, 50) : '[attachment]'
+      },
+      ipAddress: req.ip
+    });
+
+    return res.json({
+      success: true,
+      message: 'Message has been removed.'
+    });
+  } catch (error) {
+    console.error('[Admin Delete Message Error]', error);
+    return res.status(500).json({ success: false, message: 'Error deleting message.' });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getUsers,
+  deleteUser,
   banUser,
   unbanUser,
   updateUserRole,
   getReports,
   resolveReport,
-  getAuditLogs
+  getAuditLogs,
+  getAllChats,
+  getChatMessages,
+  deleteChat,
+  deleteAdminMessage
 };

@@ -155,6 +155,21 @@ export const ChatProvider = ({ children }) => {
       if (isCurrentChat) {
         setMessages((prev) => {
           if (prev.some((m) => m._id?.toString() === incomingMessage._id?.toString())) return prev;
+
+          // If message is from me, replace any matching optimistic message
+          if (isFromMe) {
+            const optIndex = prev.findIndex(
+              (m) =>
+                m.isOptimistic &&
+                (m.content === processedMessage.content || (m.fileUrl && m.fileUrl === processedMessage.fileUrl))
+            );
+            if (optIndex !== -1) {
+              const updated = [...prev];
+              updated[optIndex] = processedMessage;
+              return updated;
+            }
+          }
+
           return [...prev, processedMessage];
         });
         markMessageRead(incomingMessage._id, currentConvId);
@@ -247,72 +262,141 @@ export const ChatProvider = ({ children }) => {
     };
   }, [socket, activeConversation, e2eeInfo, fetchConversations, markMessageRead]);
 
-  // Send message
+  // Send message with instantaneous optimistic UI update
   const sendMessage = async ({ content, fileUrl, fileName, fileSize, fileMimeType, messageType = 'text' }) => {
     if (!activeConversation) return;
 
-    let payloadContent = content;
-    let isEncrypted = false;
-    let encryptionMetadata = {};
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const currentReply = replyMessage;
 
-    // E2EE encryption with conversation key
-    if (content) {
-      const convKey = await getConversationCryptoKey(activeConversation._id);
-      if (convKey) {
-        const encrypted = await encryptMessage(content, convKey);
-        payloadContent = encrypted.ciphertext;
-        isEncrypted = true;
-        encryptionMetadata = {
-          iv: encrypted.iv,
-          algorithm: encrypted.algorithm
-        };
-      }
-    }
-
-    const payload = {
-      content: payloadContent,
-      isEncrypted,
-      encryptionMetadata,
+    // Construct instantaneous optimistic message representation
+    const optimisticMessage = {
+      _id: tempId,
+      tempId,
+      conversation: activeConversation._id,
+      sender: {
+        _id: user?._id,
+        username: user?.username,
+        nickname: user?.nickname,
+        avatar: user?.avatar
+      },
+      content: content || '',
       messageType,
-      fileUrl,
-      fileName,
-      fileSize,
-      fileMimeType,
-      replyTo: replyMessage ? replyMessage._id : null
+      fileUrl: fileUrl || '',
+      fileName: fileName || '',
+      fileSize: fileSize || null,
+      fileMimeType: fileMimeType || '',
+      replyTo: currentReply
+        ? {
+            _id: currentReply._id,
+            content: currentReply.content,
+            sender: currentReply.sender
+          }
+        : null,
+      reactions: [],
+      readBy: [{ user: user?._id }],
+      deliveredTo: [{ user: user?._id }],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: 'sending',
+      isOptimistic: true
     };
 
-    const res = await fetch(`/api/messages/${activeConversation._id}`, {
-      method: 'POST',
-      headers: authHeaders(),
-      credentials: 'include',
-      body: JSON.stringify(payload)
-    });
+    // 1. Immediately inject the message into local state for instant rendering
+    setMessages((prev) => [...prev, optimisticMessage]);
 
-    const data = await res.json();
-    if (!data.success) {
-      throw new Error(data.message || 'Failed to send message');
-    }
-
-    playMessageSentSound();
-    setReplyMessage(null);
-
-    // Optimistically push decrypted message to local list
-    const sentMsg = { ...data.message, content };
-    setMessages((prev) => {
-      if (prev.some((m) => m._id === sentMsg._id)) return prev;
-      return [...prev, sentMsg];
-    });
-
-    // Update conversation list item
+    // 2. Immediately reflect as last message in conversations list
     setConversations((prev) =>
       prev.map((c) =>
         c._id === activeConversation._id
-          ? { ...c, lastMessage: sentMsg, updatedAt: new Date().toISOString() }
+          ? { ...c, lastMessage: optimisticMessage, updatedAt: new Date().toISOString() }
           : c
       )
     );
 
-    return data.message;
+    // 3. Clear pending reply and trigger sent chime immediately
+    setReplyMessage(null);
+    playMessageSentSound();
+
+    try {
+      let payloadContent = content;
+      let isEncrypted = false;
+      let encryptionMetadata = {};
+
+      // E2EE encryption with conversation key
+      if (content) {
+        const convKey = await getConversationCryptoKey(activeConversation._id);
+        if (convKey) {
+          const encrypted = await encryptMessage(content, convKey);
+          payloadContent = encrypted.ciphertext;
+          isEncrypted = true;
+          encryptionMetadata = {
+            iv: encrypted.iv,
+            algorithm: encrypted.algorithm
+          };
+        }
+      }
+
+      const payload = {
+        content: payloadContent,
+        isEncrypted,
+        encryptionMetadata,
+        messageType,
+        fileUrl,
+        fileName,
+        fileSize,
+        fileMimeType,
+        replyTo: currentReply ? currentReply._id : null
+      };
+
+      const res = await fetch(`/api/messages/${activeConversation._id}`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to send message');
+      }
+
+      // Confirmed server message
+      const confirmedMsg = { ...data.message, content, isOptimistic: false, status: 'sent' };
+
+      // Replace optimistic message with confirmed server message
+      setMessages((prev) => {
+        const alreadyHasServerId = prev.some((m) => m._id === confirmedMsg._id);
+        if (alreadyHasServerId) {
+          return prev.filter((m) => m._id !== tempId && m.tempId !== tempId);
+        }
+        return prev.map((m) =>
+          m._id === tempId || m.tempId === tempId ? confirmedMsg : m
+        );
+      });
+
+      // Update conversation list item with confirmed message
+      setConversations((prev) =>
+        prev.map((c) =>
+          c._id === activeConversation._id
+            ? { ...c, lastMessage: confirmedMsg, updatedAt: confirmedMsg.createdAt || new Date().toISOString() }
+            : c
+        )
+      );
+
+      return confirmedMsg;
+    } catch (err) {
+      console.error('Failed to send message:', err);
+      // Mark optimistic message as failed
+      setMessages((prev) =>
+        prev.map((m) =>
+          m._id === tempId || m.tempId === tempId
+            ? { ...m, status: 'failed', isOptimistic: false }
+            : m
+        )
+      );
+      throw err;
+    }
   };
 
   // Edit message

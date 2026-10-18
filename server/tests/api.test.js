@@ -417,6 +417,60 @@ test('Full-Stack Chat API Suite', async (t) => {
     );
 
     assert.strictEqual(resolveRes.status, 200);
+
+    // Admin lists all system chats
+    const adminChatsRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: '/api/admin/chats',
+      method: 'GET',
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert.strictEqual(adminChatsRes.status, 200);
+    assert.ok(Array.isArray(adminChatsRes.body.conversations));
+
+    // Admin views messages in conversation
+    if (adminChatsRes.body.conversations.length > 0) {
+      const convIdToInspect = adminChatsRes.body.conversations[0]._id;
+      const adminMessagesRes = await makeRequest({
+        hostname: 'localhost',
+        port: 5001,
+        path: `/api/admin/chats/${convIdToInspect}/messages`,
+        method: 'GET',
+        headers: { Authorization: `Bearer ${adminToken}` }
+      });
+      assert.strictEqual(adminMessagesRes.status, 200);
+      assert.ok(Array.isArray(adminMessagesRes.body.messages));
+    }
+
+    // Admin deletes a disposable test user
+    const tempDelUser = await makeRequest(
+      {
+        hostname: 'localhost',
+        port: 5001,
+        path: '/api/auth/register',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      },
+      {
+        username: `del_${Date.now()}`,
+        email: `del_${Date.now()}@pulsechat.io`,
+        password: 'password123',
+        nickname: 'Delete Me'
+      }
+    );
+    assert.strictEqual(tempDelUser.status, 201);
+    const delUserId = tempDelUser.body.user._id;
+
+    const delUserRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: `/api/admin/users/${delUserId}`,
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert.strictEqual(delUserRes.status, 200);
+    assert.strictEqual(delUserRes.body.success, true);
   });
 
   await t.test('8. Chat History Export & GDPR Data Export', async () => {
