@@ -311,6 +311,69 @@ const uploadFile = (req, res) => {
   });
 };
 
+// @desc Get VAPID public key
+// @route GET /api/users/push-key
+const getPushPublicKey = (req, res) => {
+  const { getVapidPublicKey } = require('../utils/webPush');
+  return res.json({ success: true, publicKey: getVapidPublicKey() });
+};
+
+// @desc Save user's Web Push subscription
+// @route POST /api/users/push-subscribe
+const subscribePush = async (req, res) => {
+  try {
+    const { subscription } = req.body;
+    if (!subscription || !subscription.endpoint || !subscription.keys) {
+      return res.status(400).json({ success: false, message: 'Invalid subscription data.' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    if (!user.pushSubscriptions) {
+      user.pushSubscriptions = [];
+    }
+
+    const exists = user.pushSubscriptions.some((s) => s.endpoint === subscription.endpoint);
+    if (!exists) {
+      user.pushSubscriptions.push({
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: subscription.keys.p256dh,
+          auth: subscription.keys.auth
+        }
+      });
+      await user.save();
+    }
+
+    return res.json({ success: true, message: 'Push subscription registered successfully.' });
+  } catch (error) {
+    console.error('Push subscribe error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to save push subscription.' });
+  }
+};
+
+// @desc Unregister user's Web Push subscription
+// @route POST /api/users/push-unsubscribe
+const unsubscribePush = async (req, res) => {
+  try {
+    const { endpoint } = req.body;
+    if (!endpoint) {
+      return res.status(400).json({ success: false, message: 'Endpoint is required.' });
+    }
+
+    await User.findByIdAndUpdate(req.user._id, {
+      $pull: { pushSubscriptions: { endpoint } }
+    });
+
+    return res.json({ success: true, message: 'Push subscription removed successfully.' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to remove push subscription.' });
+  }
+};
+
 module.exports = {
   searchUsers,
   getUserProfile,
@@ -322,5 +385,8 @@ module.exports = {
   getBlockedUsers,
   getActiveSessions,
   revokeSession,
-  uploadFile
+  uploadFile,
+  getPushPublicKey,
+  subscribePush,
+  unsubscribePush
 };

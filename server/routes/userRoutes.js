@@ -11,10 +11,17 @@ const {
   getBlockedUsers,
   getActiveSessions,
   revokeSession,
-  uploadFile
+  uploadFile,
+  getPushPublicKey,
+  subscribePush,
+  unsubscribePush
 } = require('../controllers/userController');
 const { protect } = require('../middlewares/auth');
 const upload = require('../middlewares/upload');
+
+router.get('/push-key', protect, getPushPublicKey);
+router.post('/push-subscribe', protect, subscribePush);
+router.post('/push-unsubscribe', protect, unsubscribePush);
 
 router.get('/search', protect, searchUsers);
 router.get('/blocked', protect, getBlockedUsers);

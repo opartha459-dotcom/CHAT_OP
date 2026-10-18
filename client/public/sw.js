@@ -63,3 +63,73 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
+
+// Push Notification Event (Handles incoming calls and messages when app/browser is closed)
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { body: event.data ? event.data.text() : 'Incoming activity' };
+  }
+
+  if (data.type === 'incoming_call') {
+    const isVideo = data.callType === 'video';
+    const title = `📞 Incoming ${isVideo ? 'Video' : 'Voice'} Call`;
+    const options = {
+      body: `${data.callerName || 'Someone'} is calling you on PulseChat...`,
+      icon: data.callerAvatar || '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: `call-${data.callId}`,
+      renotify: true,
+      requireInteraction: true,
+      vibrate: [400, 200, 400, 200, 400, 200, 600],
+      data: {
+        url: `/?callId=${data.callId}&action=answer`,
+        callId: data.callId,
+        type: 'incoming_call'
+      },
+      actions: [
+        { action: 'answer', title: '📞 Answer' },
+        { action: 'decline', title: '❌ Decline' }
+      ]
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
+  } else {
+    const title = data.title || 'PulseChat';
+    const options = {
+      body: data.body || 'You have a new message',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      data: { url: data.url || '/' }
+    };
+    event.waitUntil(self.registration.showNotification(title, options));
+  }
+});
+
+// Notification Click Event (Opens / focuses PulseChat app directly into the call)
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const notificationData = event.notification.data || {};
+  const targetUrl = notificationData.url || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // Focus existing window if open
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          if ('navigate' in client && targetUrl !== '/') {
+            client.navigate(targetUrl);
+          }
+          return client.focus();
+        }
+      }
+      // If no window open, launch app window with target URL
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
+

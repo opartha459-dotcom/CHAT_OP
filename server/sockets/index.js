@@ -2,6 +2,7 @@ const { verifyToken } = require('../utils/token');
 const User = require('../models/User');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
+const { sendCallPushNotification } = require('../utils/webPush');
 
 const onlineUsers = new Map(); // userId -> Set of socketIds
 const activeCalls = new Map(); // callId -> { conversationId, callType, isGroup, participants }
@@ -240,6 +241,9 @@ const setupSockets = (io) => {
           isGroup: !!isGroup,
           startedAt: new Date(),
           callerId: socket.user._id,
+          callerUsername: socket.user.username,
+          callerNickname: socket.user.nickname || socket.user.username,
+          callerAvatar: socket.user.avatar,
           targetUserId: resolvedTargetUserId,
           answered: false,
           logged: false,
@@ -277,13 +281,67 @@ const setupSockets = (io) => {
 
       if (isGroup) {
         if (conversationId) socket.to(conversationId.toString()).emit('call:incoming', payload);
+        // Wake up offline group participants via Web Push
+        try {
+          const conv = await Conversation.findById(conversationId).select('participants');
+          if (conv && conv.participants) {
+            conv.participants.forEach((pId) => {
+              const pIdStr = pId.toString();
+              if (pIdStr !== socket.user._id.toString()) {
+                sendCallPushNotification(pIdStr, {
+                  callId,
+                  conversationId,
+                  callType,
+                  callerName: `${participantInfo.user.nickname || participantInfo.user.username} (Group Call)`,
+                  callerAvatar: participantInfo.user.avatar,
+                  callerId: socket.user._id,
+                  isGroup: true
+                });
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('[Call Push] Error notifying group participants:', e.message);
+        }
       } else {
         if (resolvedTargetUserId) {
           io.to(`user:${resolvedTargetUserId}`).emit('call:incoming', payload);
+          // Wake up target user's phone via Web Push even if browser/app is closed
+          sendCallPushNotification(resolvedTargetUserId, {
+            callId,
+            conversationId,
+            callType,
+            callerName: participantInfo.user.nickname || participantInfo.user.username,
+            callerAvatar: participantInfo.user.avatar,
+            callerId: socket.user._id,
+            isGroup: false
+          });
         }
         if (conversationId) {
           socket.to(conversationId.toString()).emit('call:incoming', payload);
         }
+      }
+    });
+
+    // Query active call details (useful when waking up via Push Notification)
+    socket.on('call:query', ({ callId }, callback) => {
+      if (typeof callback !== 'function') return;
+      const call = activeCalls.get(callId);
+      if (call && !call.logged) {
+        callback({
+          callId,
+          conversationId: call.conversationId,
+          isGroup: call.isGroup,
+          callType: call.callType,
+          caller: {
+            _id: call.callerId,
+            username: call.callerUsername || 'User',
+            nickname: call.callerNickname || 'User',
+            avatar: call.callerAvatar || ''
+          }
+        });
+      } else {
+        callback(null);
       }
     });
 
@@ -398,6 +456,17 @@ const setupSockets = (io) => {
           avatar: socket.user.avatar
         },
         isInvitation: true
+      });
+
+      // Send push notification for invited user
+      sendCallPushNotification(targetUserId, {
+        callId,
+        conversationId,
+        callType: callType || 'video',
+        callerName: socket.user.nickname || socket.user.username,
+        callerAvatar: socket.user.avatar,
+        callerId: socket.user._id,
+        isGroup: true
       });
     });
 

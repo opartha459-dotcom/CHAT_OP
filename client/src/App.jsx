@@ -14,7 +14,13 @@ import { DashboardSkeleton, AuthCardSkeleton } from './components/common/Skeleto
 import { PulseLogo } from './components/common/PulseLogo';
 import { IncomingCallModal } from './components/call/IncomingCallModal';
 import { ActiveCallModal } from './components/call/ActiveCallModal';
+import { usePushNotifications } from './hooks/usePushNotifications';
 import { Loader2 } from 'lucide-react';
+
+const PushNotificationManager = () => {
+  usePushNotifications();
+  return null;
+};
 
 // Protected Route wrapper with Dashboard Skeleton loader
 const ProtectedRoute = ({ children }) => {
@@ -105,6 +111,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <PushNotificationManager />
         <SocketProvider>
           <ChatProvider>
             <CallProvider>

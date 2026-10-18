@@ -448,14 +448,36 @@ export const CallProvider = ({ children }) => {
     } else {
       // Start screen sharing
       try {
-        const screen = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            cursor: 'always',
-            displaySurface: 'monitor'
-          },
-          audio: true
-        });
+        if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+          alert('Screen sharing is not supported by your current browser. Please open PulseChat in Chrome or Safari.');
+          return;
+        }
+
+        const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent || '');
+        let screen = null;
+
+        if (isMobile) {
+          // Mobile phones require simple video-only constraints without unsupported cursor/displaySurface/audio
+          try {
+            screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+          } catch (mErr) {
+            screen = await navigator.mediaDevices.getDisplayMedia();
+          }
+        } else {
+          try {
+            screen = await navigator.mediaDevices.getDisplayMedia({
+              video: { cursor: 'always' },
+              audio: false
+            });
+          } catch (dErr) {
+            screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
+          }
+        }
+
         const screenTrack = screen.getVideoTracks()[0];
+        if (!screenTrack) {
+          throw new Error('No video track available from screen capture.');
+        }
 
         screenTrack.onended = () => {
           // Trigger when user clicks browser native "Stop sharing" button
@@ -507,7 +529,16 @@ export const CallProvider = ({ children }) => {
           });
         }
       } catch (err) {
-        console.warn('Screen sharing was cancelled or denied', err);
+        if (err.name === 'NotAllowedError' || err.name === 'AbortError') {
+          console.log('[ScreenShare] Cancelled by user');
+        } else {
+          console.warn('[ScreenShare] Screen sharing error:', err);
+          alert(
+            err.message?.includes('not supported')
+              ? 'Screen sharing is not supported on this mobile browser. Please use Chrome on Android or Safari on iOS.'
+              : 'Could not start screen sharing: ' + (err.message || 'Permission denied')
+          );
+        }
       }
     }
   }, [isScreenSharing, isVideoOff, socket, currentCall]);
@@ -572,6 +603,48 @@ export const CallProvider = ({ children }) => {
       callType: currentCall.callType
     });
   }, [socket, currentCall]);
+
+  // Handle incoming call triggered via Push Notification when app was closed (?callId=...&action=answer)
+  useEffect(() => {
+    if (!socket || !user) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const pushCallId = urlParams.get('callId');
+    const pushAction = urlParams.get('action');
+
+    if (pushCallId && callState === 'idle') {
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      socket.emit('call:query', { callId: pushCallId }, async (callInfo) => {
+        if (callInfo) {
+          setCurrentCall(callInfo);
+          if (pushAction === 'answer') {
+            try {
+              stopRingtone();
+              playCallConnectedSound();
+              await acquireMedia(callInfo.callType || 'video');
+              setCallState('connected');
+              setIsCallModalOpen(true);
+              if (!callTimerRef.current) {
+                callTimerRef.current = setInterval(() => {
+                  setCallDuration((prev) => prev + 1);
+                }, 1000);
+              }
+              socket.emit('call:join', { callId: pushCallId });
+            } catch (err) {
+              setCallState('incoming');
+              setIsCallModalOpen(true);
+              startIncomingRingtone();
+            }
+          } else {
+            setCallState('incoming');
+            setIsCallModalOpen(true);
+            startIncomingRingtone();
+          }
+        }
+      });
+    }
+  }, [socket, user, callState, acquireMedia]);
 
   // Socket WebRTC Event Listeners
   useEffect(() => {
