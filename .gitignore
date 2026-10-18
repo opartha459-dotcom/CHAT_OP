@@ -6,6 +6,8 @@ node_modules/
 # Production builds
 dist/
 build/
+server/dist/
+server/client/dist/
 
 # Local Environment Variables
 .env
