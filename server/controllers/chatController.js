@@ -128,7 +128,18 @@ const getOrCreatePrivateChat = async (req, res) => {
       }
     }
 
-    return res.json({ success: true, conversation });
+    const convObj = conversation.toObject ? conversation.toObject() : conversation;
+    const otherUser = convObj.participants?.find(
+      (p) => (p._id || p).toString() !== currentUserId.toString()
+    ) || convObj.participants?.[0];
+
+    return res.json({
+      success: true,
+      conversation: {
+        ...convObj,
+        otherUser
+      }
+    });
   } catch (error) {
     console.error('[Get Or Create Chat Error]', error);
     return res.status(500).json({ success: false, message: 'Error creating private chat.' });

@@ -31,6 +31,7 @@ export default defineConfig(({ mode }) => {
         },
         '/socket.io': {
           target: backendTarget,
+          changeOrigin: true,
           ws: true,
           configure: (proxy) => {
             proxy.on('error', (err) => {

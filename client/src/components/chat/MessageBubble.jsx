@@ -252,7 +252,7 @@ export const MessageBubble = ({ message, isGroup = false }) => {
         targetUser = !isMe
           ? message.sender
           : conv.otherUser ||
-            conv.participants?.find((p) => (p._id || p) !== user?._id);
+            conv.participants?.find((p) => (p._id || p)?.toString() !== user?._id?.toString());
       }
       startCall({
         conversationId: conv._id,

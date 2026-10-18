@@ -219,6 +219,12 @@ export const CallProvider = ({ children }) => {
 
   // Request user camera & mic
   const acquireMedia = useCallback(async (callType) => {
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+      throw new Error(
+        'Camera and microphone access is restricted by your browser. WebRTC audio/video calls require a secure connection (HTTPS or localhost). If testing across devices on local Wi-Fi, please access via HTTPS or localhost.'
+      );
+    }
+
     try {
       const constraints = {
         audio: true,
@@ -241,18 +247,23 @@ export const CallProvider = ({ children }) => {
         return audioStream;
       } catch (audioErr) {
         console.error('[WebRTC] Microphone access denied', audioErr);
-        throw new Error('Please allow microphone or camera access in your browser to make calls.');
+        throw new Error('Please grant microphone or camera permission in your browser to make calls.');
       }
     }
   }, []);
 
   // Initiate an outgoing call (1-on-1 or Group)
   const startCall = useCallback(async ({ conversationId, isGroup = false, callType = 'video', targetUser = null, participants = [] }) => {
-    if (!socket || !user) return;
+    if (!socket || !user) {
+      alert('Real-time connection is not active. Please check your internet connection.');
+      return;
+    }
 
     try {
       const stream = await acquireMedia(callType);
       const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+      const targetId = (targetUser?._id || targetUser)?.toString();
 
       const callInfo = {
         callId,
@@ -280,7 +291,7 @@ export const CallProvider = ({ children }) => {
         conversationId,
         isGroup,
         callType,
-        targetUserId: targetUser?._id,
+        targetUserId: targetId,
         participants
       });
     } catch (err) {

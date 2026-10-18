@@ -151,11 +151,20 @@ const sendMessage = async (req, res) => {
     // Emit via socket if io is attached to app
     const io = req.app.get('io');
     if (io) {
-      io.to(conversationId).emit('message:received', populatedMessage);
-      // Also emit conversation update event to notify inbox lists
+      const convIdStr = conversationId.toString();
+
+      // 1. Emit to the conversation room
+      io.to(convIdStr).emit('message:received', populatedMessage);
+      io.to(convIdStr).emit('message:new', populatedMessage);
+
+      // 2. ALSO emit directly to each participant's personal user room!
+      // This GUARANTEES instant delivery even if a user hasn't joined conversationId room yet
       conversation.participants.forEach((pId) => {
-        io.to(`user:${pId.toString()}`).emit('conversation:updated', {
-          conversationId,
+        const userRoom = `user:${pId.toString()}`;
+        io.to(userRoom).emit('message:received', populatedMessage);
+        io.to(userRoom).emit('message:new', populatedMessage);
+        io.to(userRoom).emit('conversation:updated', {
+          conversationId: convIdStr,
           lastMessage: populatedMessage,
           unreadCounts: Object.fromEntries(conversation.unreadCounts)
         });

@@ -44,12 +44,27 @@ const setupSockets = (io) => {
       });
 
       const populated = await Message.findById(newMsg._id).populate('sender', 'username nickname avatar');
-      io.to(conversationId.toString()).emit('message:new', populated);
+      const convIdStr = conversationId.toString();
 
-      await Conversation.findByIdAndUpdate(conversationId, {
+      io.to(convIdStr).emit('message:received', populated);
+      io.to(convIdStr).emit('message:new', populated);
+
+      const conv = await Conversation.findByIdAndUpdate(conversationId, {
         lastMessage: newMsg._id,
         lastMessageAt: new Date()
       });
+
+      if (conv && conv.participants) {
+        conv.participants.forEach((pId) => {
+          const userRoom = `user:${pId.toString()}`;
+          io.to(userRoom).emit('message:received', populated);
+          io.to(userRoom).emit('message:new', populated);
+          io.to(userRoom).emit('conversation:updated', {
+            conversationId: convIdStr,
+            lastMessage: populated
+          });
+        });
+      }
     } catch (err) {
       console.error('[Call Log] Failed to save call message:', err);
     }
@@ -188,10 +203,23 @@ const setupSockets = (io) => {
 
     // WebRTC Calling Signaling Handlers
     socket.on('call:initiate', async ({ callId, conversationId, isGroup, callType, targetUserId, participants }) => {
+      let resolvedTargetUserId = targetUserId ? targetUserId.toString() : null;
+      if (!isGroup && !resolvedTargetUserId && conversationId) {
+        try {
+          const conv = await Conversation.findById(conversationId);
+          if (conv && conv.participants) {
+            const other = conv.participants.find((p) => p.toString() !== socket.user._id.toString());
+            if (other) resolvedTargetUserId = other.toString();
+          }
+        } catch (e) {
+          console.error('[Call] Error resolving target user from conversation:', e);
+        }
+      }
+
       // 1. Clash Prevention: If target user in 1-on-1 call is already in a call, reject with busy status
-      if (!isGroup && targetUserId && userCallMap.has(targetUserId.toString())) {
+      if (!isGroup && resolvedTargetUserId && userCallMap.has(resolvedTargetUserId)) {
         socket.emit('call:busy', {
-          targetUserId,
+          targetUserId: resolvedTargetUserId,
           message: 'User is currently on another call'
         });
 
@@ -212,7 +240,7 @@ const setupSockets = (io) => {
           isGroup: !!isGroup,
           startedAt: new Date(),
           callerId: socket.user._id,
-          targetUserId: targetUserId ? targetUserId.toString() : null,
+          targetUserId: resolvedTargetUserId,
           answered: false,
           logged: false,
           participants: new Map()
@@ -248,9 +276,14 @@ const setupSockets = (io) => {
       };
 
       if (isGroup) {
-        socket.to(conversationId).emit('call:incoming', payload);
-      } else if (targetUserId) {
-        io.to(`user:${targetUserId}`).emit('call:incoming', payload);
+        if (conversationId) socket.to(conversationId.toString()).emit('call:incoming', payload);
+      } else {
+        if (resolvedTargetUserId) {
+          io.to(`user:${resolvedTargetUserId}`).emit('call:incoming', payload);
+        }
+        if (conversationId) {
+          socket.to(conversationId.toString()).emit('call:incoming', payload);
+        }
       }
     });
 

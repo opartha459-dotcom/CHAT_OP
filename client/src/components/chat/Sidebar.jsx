@@ -356,17 +356,18 @@ export const Sidebar = () => {
                 const isGroup = call.conversation?.type === 'group' || call.conversation?.isGroup;
                 const otherUser = isGroup
                   ? null
-                  : call.conversation?.participants?.find((p) => (p._id || p) !== user?._id) || call.sender;
+                  : call.conversation?.participants?.find((p) => (p._id || p)?.toString() !== user?._id?.toString()) || call.sender;
                 const title = isGroup
                   ? call.conversation?.groupDetails?.name || 'Group Call'
                   : otherUser?.nickname || otherUser?.username || 'User';
                 const avatarUrl = isGroup ? call.conversation?.groupDetails?.avatar : otherUser?.avatar;
-                const isOnline = !isGroup && (onlineUsers.has(otherUser?._id) || otherUser?.status === 'online');
+                const otherUserIdStr = (otherUser?._id || otherUser)?.toString();
+                const isOnline = !isGroup && (onlineUsers.has(otherUserIdStr) || otherUser?.status === 'online');
 
                 const callMeta = call.callMetadata || {};
                 const isVideo = callMeta.callType === 'video';
                 const status = callMeta.status || 'completed';
-                const isMe = call.sender?._id === user?._id;
+                const isMe = (call.sender?._id || call.sender)?.toString() === user?._id?.toString();
                 const duration = callMeta.duration || 0;
                 const mins = Math.floor(duration / 60);
                 const secs = duration % 60;

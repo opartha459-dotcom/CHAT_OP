@@ -10,6 +10,7 @@ import {
   Zap
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
+import { useSocket } from '../../context/SocketContext';
 import { ChatHeader } from './ChatHeader';
 import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
@@ -19,6 +20,7 @@ import { UserInfoDrawer } from '../modals/UserInfoDrawer';
 
 export const ChatArea = ({ onBackToSidebar }) => {
   const { activeConversation, messages, loadingMessages } = useChat();
+  const { isConnected } = useSocket();
 
   const [inChatSearchOpen, setInChatSearchOpen] = useState(false);
   const [inChatSearchQuery, setInChatSearchQuery] = useState('');
@@ -101,6 +103,14 @@ export const ChatArea = ({ onBackToSidebar }) => {
         onOpenInfo={() => setInfoDrawerOpen(true)}
         onBack={onBackToSidebar}
       />
+
+      {/* Disconnection Warning Banner */}
+      {!isConnected && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 py-1.5 flex items-center justify-center space-x-2 text-[11px] text-amber-600 dark:text-amber-400 select-none animate-in fade-in">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+          <span>Connecting to real-time server...</span>
+        </div>
+      )}
 
       {/* In-chat search dropdown */}
       {inChatSearchOpen && (

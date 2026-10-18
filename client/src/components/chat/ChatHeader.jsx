@@ -118,37 +118,48 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
 
         {/* Action Controls */}
         <div className="flex items-center space-x-1">
-          <button
-            onClick={() =>
-              startCall({
-                conversationId: activeConversation._id,
-                isGroup,
-                callType: 'audio',
-                targetUser: !isGroup ? activeConversation.otherUser : null,
-                participants: isGroup ? activeConversation.participants : []
-              })
-            }
-            title={`Start ${isGroup ? 'Group ' : ''}Voice Call`}
-            className="p-2 text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
-          >
-            <Phone className="w-4 h-4" />
-          </button>
+          {(() => {
+            const resolvedTargetUser = !isGroup
+              ? (activeConversation.otherUser ||
+                 activeConversation.participants?.find((p) => (p._id || p)?.toString() !== user?._id?.toString()))
+              : null;
 
-          <button
-            onClick={() =>
-              startCall({
-                conversationId: activeConversation._id,
-                isGroup,
-                callType: 'video',
-                targetUser: !isGroup ? activeConversation.otherUser : null,
-                participants: isGroup ? activeConversation.participants : []
-              })
-            }
-            title={`Start ${isGroup ? 'Group ' : ''}Video Call`}
-            className="p-2 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
-          >
-            <Video className="w-4 h-4" />
-          </button>
+            return (
+              <>
+                <button
+                  onClick={() =>
+                    startCall({
+                      conversationId: activeConversation._id,
+                      isGroup,
+                      callType: 'audio',
+                      targetUser: resolvedTargetUser,
+                      participants: isGroup ? activeConversation.participants : []
+                    })
+                  }
+                  title={`Start ${isGroup ? 'Group ' : ''}Voice Call`}
+                  className="p-2 text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
+                >
+                  <Phone className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={() =>
+                    startCall({
+                      conversationId: activeConversation._id,
+                      isGroup,
+                      callType: 'video',
+                      targetUser: resolvedTargetUser,
+                      participants: isGroup ? activeConversation.participants : []
+                    })
+                  }
+                  title={`Start ${isGroup ? 'Group ' : ''}Video Call`}
+                  className="p-2 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
+                >
+                  <Video className="w-4 h-4" />
+                </button>
+              </>
+            );
+          })()}
 
           <button
             onClick={onToggleSearch}

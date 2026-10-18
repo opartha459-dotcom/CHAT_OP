@@ -7,6 +7,7 @@ const SocketContext = createContext();
 export const SocketProvider = ({ children }) => {
   const { user, token } = useAuth();
   const [socket, setSocket] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
   const [typingMap, setTypingMap] = useState({}); // conversationId -> array of typing usernames
   const socketRef = useRef(null);
@@ -18,6 +19,7 @@ export const SocketProvider = ({ children }) => {
         socketRef.current.disconnect();
         socketRef.current = null;
         setSocket(null);
+        setIsConnected(false);
       }
       return;
     }
@@ -27,10 +29,15 @@ export const SocketProvider = ({ children }) => {
         ? import.meta.env.VITE_SERVER_URL
         : '/';
 
+    const authToken = token || localStorage.getItem('pulsechat_token');
+
     const socketInstance = io(socketEndpoint, {
-      auth: { token },
+      auth: { token: authToken },
       withCredentials: true,
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000
     });
 
     socketRef.current = socketInstance;
@@ -38,6 +45,17 @@ export const SocketProvider = ({ children }) => {
 
     socketInstance.on('connect', () => {
       console.log('[Socket] Connected with ID:', socketInstance.id);
+      setIsConnected(true);
+    });
+
+    socketInstance.on('disconnect', (reason) => {
+      console.log('[Socket] Disconnected:', reason);
+      setIsConnected(false);
+    });
+
+    socketInstance.on('connect_error', (err) => {
+      console.warn('[Socket] Connection failed or reconnecting:', err.message);
+      setIsConnected(false);
     });
 
     socketInstance.on('user:status', ({ userId, status }) => {
@@ -171,6 +189,7 @@ export const SocketProvider = ({ children }) => {
     <SocketContext.Provider
       value={{
         socket,
+        isConnected,
         onlineUsers,
         typingMap,
         joinConversation,

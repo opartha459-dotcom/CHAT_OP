@@ -130,9 +130,13 @@ export const ChatProvider = ({ children }) => {
     if (!socket) return;
 
     const handleMessageReceived = async (incomingMessage) => {
+      if (!incomingMessage || !incomingMessage._id) return;
+
+      const incomingConvId = (incomingMessage.conversation?._id || incomingMessage.conversation)?.toString();
+
       let finalContent = incomingMessage.content;
-      if (incomingMessage.isEncrypted && incomingMessage.encryptionMetadata?.iv) {
-        const convKey = await getConversationCryptoKey(incomingMessage.conversation);
+      if (incomingMessage.isEncrypted && incomingMessage.encryptionMetadata?.iv && incomingConvId) {
+        const convKey = await getConversationCryptoKey(incomingConvId);
         if (convKey) {
           finalContent = await decryptMessage(
             incomingMessage.content,
@@ -143,19 +147,19 @@ export const ChatProvider = ({ children }) => {
       }
       const processedMessage = { ...incomingMessage, content: finalContent };
 
-      const activeId = activeConversationRef.current?._id;
-      const isCurrentChat = activeId && incomingMessage.conversation === activeId;
-      const isFromMe = incomingMessage.sender?._id === user?._id;
+      const currentConvId = activeConversationRef.current?._id?.toString();
+      const isCurrentChat = !!(currentConvId && incomingConvId && currentConvId === incomingConvId);
+      const isFromMe = (incomingMessage.sender?._id || incomingMessage.sender)?.toString() === user?._id?.toString();
 
       // Update message list if active
       if (isCurrentChat) {
         setMessages((prev) => {
-          if (prev.some((m) => m._id === incomingMessage._id)) return prev;
+          if (prev.some((m) => m._id?.toString() === incomingMessage._id?.toString())) return prev;
           return [...prev, processedMessage];
         });
-        markMessageRead(incomingMessage._id, activeId);
+        markMessageRead(incomingMessage._id, currentConvId);
         // Persist read state on backend immediately so background updates stay 0
-        fetch(`/api/chats/${incomingMessage.conversation}/read`, {
+        fetch(`/api/chats/${currentConvId}/read`, {
           method: 'POST',
           headers: authHeaders(),
           credentials: 'include'
@@ -164,7 +168,7 @@ export const ChatProvider = ({ children }) => {
         // Chat is not currently open — chime if message is from another user and not muted
         if (!isFromMe) {
           setConversations((currentConvs) => {
-            const targetConv = currentConvs.find((c) => c._id === incomingMessage.conversation);
+            const targetConv = currentConvs.find((c) => c._id?.toString() === incomingConvId);
             if (!targetConv?.isMuted) {
               playMessageReceivedSound();
             }
@@ -175,8 +179,10 @@ export const ChatProvider = ({ children }) => {
 
       // Update conversations list
       setConversations((prev) => {
-        return prev.map((conv) => {
-          if (conv._id === incomingMessage.conversation) {
+        let exists = false;
+        const next = prev.map((conv) => {
+          if (conv._id?.toString() === incomingConvId) {
+            exists = true;
             return {
               ...conv,
               lastMessage: processedMessage,
@@ -186,6 +192,11 @@ export const ChatProvider = ({ children }) => {
           }
           return conv;
         });
+
+        if (!exists) {
+          fetchConversations();
+        }
+        return next;
       });
     };
 
@@ -220,6 +231,7 @@ export const ChatProvider = ({ children }) => {
     };
 
     socket.on('message:received', handleMessageReceived);
+    socket.on('message:new', handleMessageReceived);
     socket.on('message:edited', handleMessageEdited);
     socket.on('message:deleted', handleMessageDeleted);
     socket.on('message:reacted', handleMessageReacted);
@@ -227,6 +239,7 @@ export const ChatProvider = ({ children }) => {
 
     return () => {
       socket.off('message:received', handleMessageReceived);
+      socket.off('message:new', handleMessageReceived);
       socket.off('message:edited', handleMessageEdited);
       socket.off('message:deleted', handleMessageDeleted);
       socket.off('message:reacted', handleMessageReacted);
