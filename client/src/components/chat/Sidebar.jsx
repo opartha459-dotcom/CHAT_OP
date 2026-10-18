@@ -39,6 +39,7 @@ import { JoinGroupModal } from '../modals/JoinGroupModal';
 import { InstallAppModal } from '../modals/InstallAppModal';
 import { SettingsModal } from '../modals/SettingsModal';
 import { AdminModal } from '../modals/AdminModal';
+import { usePWAInstall } from '../../hooks/usePWAInstall';
 
 export const Sidebar = () => {
   const { user } = useAuth();
@@ -56,6 +57,7 @@ export const Sidebar = () => {
   const { startCall } = useCall();
   const { socket, onlineUsers } = useSocket();
   const { theme, setTheme } = useTheme();
+  const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
 
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
@@ -65,6 +67,17 @@ export const Sidebar = () => {
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef(null);
+
+  const handleInstallClick = async () => {
+    if (isInstallable) {
+      const installed = await promptInstall();
+      if (!installed) {
+        setIsInstallAppOpen(true);
+      }
+    } else {
+      setIsInstallAppOpen(true);
+    }
+  };
 
   // Close more menu when clicking outside or pressing Escape
   useEffect(() => {
@@ -601,13 +614,15 @@ export const Sidebar = () => {
           </div>
 
           <div className="flex items-center space-x-1">
-            <button
-              onClick={() => setIsInstallAppOpen(true)}
-              title="Install PulseChat on Phone / Desktop"
-              className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition"
-            >
-              <Smartphone className="w-4 h-4" />
-            </button>
+            {!isInstalled && (
+              <button
+                onClick={handleInstallClick}
+                title="Install PulseChat on Phone / Desktop"
+                className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition cursor-pointer"
+              >
+                <Smartphone className="w-4 h-4" />
+              </button>
+            )}
             <button
               onClick={() => setIsSettingsOpen(true)}
               className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 rounded-lg transition"

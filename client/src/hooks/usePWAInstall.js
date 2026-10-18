@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
 export const usePWAInstall = () => {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [deferredPrompt, setDeferredPrompt] = useState(() => window.__deferredPwaPrompt || null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
 
@@ -21,23 +21,38 @@ export const usePWAInstall = () => {
     const isAppleMobile = /iphone|ipad|ipod/.test(userAgent);
     setIsIOS(isAppleMobile);
 
+    // If pre-captured prompt exists, sync it
+    if (window.__deferredPwaPrompt) {
+      setDeferredPrompt(window.__deferredPwaPrompt);
+    }
+
     // Listen for beforeinstallprompt event (Android / Chrome / Edge)
     const handleBeforeInstall = (e) => {
       e.preventDefault();
+      window.__deferredPwaPrompt = e;
       setDeferredPrompt(e);
+    };
+
+    const handleCustomPrompt = () => {
+      if (window.__deferredPwaPrompt) {
+        setDeferredPrompt(window.__deferredPwaPrompt);
+      }
     };
 
     // Listen for appinstalled event
     const handleAppInstalled = () => {
       setIsInstalled(true);
       setDeferredPrompt(null);
+      window.__deferredPwaPrompt = null;
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('pwa-prompt-available', handleCustomPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('pwa-prompt-available', handleCustomPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);

@@ -43,6 +43,10 @@ export const CallProvider = ({ children }) => {
   // Floating reactions: array of { id, emoji, senderName }
   const [reactions, setReactions] = useState([]);
 
+  // Raise hand state: isHandRaised for local user, raisedHands map (socketId -> data)
+  const [isHandRaised, setIsHandRaised] = useState(false);
+  const [raisedHands, setRaisedHands] = useState({});
+
   // Call duration
   const [callDuration, setCallDuration] = useState(0);
 
@@ -118,6 +122,8 @@ export const CallProvider = ({ children }) => {
     setIsAudioMuted(false);
     setIsVideoOff(false);
     setIsScreenSharing(false);
+    setIsHandRaised(false);
+    setRaisedHands({});
     setCallDuration(0);
     setIsCallModalOpen(false);
     setIsAddPeopleOpen(false);
@@ -527,6 +533,34 @@ export const CallProvider = ({ children }) => {
     });
   }, [socket, currentCall]);
 
+  // Toggle Raise Hand in Call
+  const toggleRaiseHand = useCallback(() => {
+    if (!socket || !currentCall) return;
+    const nextState = !isHandRaised;
+    setIsHandRaised(nextState);
+
+    // Update local dictionary immediately
+    setRaisedHands((prev) => {
+      const next = { ...prev };
+      if (nextState) {
+        next[socket.id || 'local'] = {
+          isRaised: true,
+          userName: 'You',
+          userId: user?._id?.toString(),
+          raisedAt: Date.now()
+        };
+      } else {
+        delete next[socket.id || 'local'];
+      }
+      return next;
+    });
+
+    socket.emit('call:hand-toggle', {
+      callId: currentCall.callId,
+      isHandRaised: nextState
+    });
+  }, [socket, currentCall, isHandRaised, user]);
+
   // Invite another user to ongoing call
   const inviteUserToCall = useCallback((targetUserId) => {
     if (!socket || !currentCall) return;
@@ -743,6 +777,19 @@ export const CallProvider = ({ children }) => {
       }, 3500);
     });
 
+    // Raised hand toggled listener
+    socket.on('call:hand-toggled', ({ socketId, userId, userName, isHandRaised: raised, raisedAt }) => {
+      setRaisedHands((prev) => {
+        const next = { ...prev };
+        if (raised) {
+          next[socketId] = { isRaised: true, userName, userId, raisedAt };
+        } else {
+          delete next[socketId];
+        }
+        return next;
+      });
+    });
+
     return () => {
       socket.off('call:incoming');
       socket.off('call:cancelled');
@@ -754,6 +801,7 @@ export const CallProvider = ({ children }) => {
       socket.off('call:peer-media-toggled');
       socket.off('call:user-left');
       socket.off('call:reaction-received');
+      socket.off('call:hand-toggled');
     };
   }, [socket, callState, createPeerConnection, removePeer, endCall, cleanupCall]);
 
@@ -782,7 +830,10 @@ export const CallProvider = ({ children }) => {
         toggleVideo,
         toggleScreenShare,
         sendReaction,
-        inviteUserToCall
+        inviteUserToCall,
+        isHandRaised,
+        raisedHands,
+        toggleRaiseHand
       }}
     >
       {children}

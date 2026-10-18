@@ -375,6 +375,16 @@ const setupSockets = (io) => {
       });
     });
 
+    socket.on('call:hand-toggle', ({ callId, isHandRaised }) => {
+      io.to(`call:${callId}`).emit('call:hand-toggled', {
+        socketId: socket.id,
+        userId: socket.user._id.toString(),
+        userName: socket.user.nickname || socket.user.username,
+        isHandRaised,
+        raisedAt: Date.now()
+      });
+    });
+
     socket.on('call:invite-user', ({ callId, conversationId, targetUserId, callType }) => {
       io.to(`user:${targetUserId}`).emit('call:incoming', {
         callId,
