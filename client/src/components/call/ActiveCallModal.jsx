@@ -205,7 +205,7 @@ export const ActiveCallModal = () => {
   const [spotlightId, setSpotlightId] = useState(null); // 'local' or peerSocketId
   const containerRef = useRef(null);
 
-  const remotePeers = Object.entries(remoteStreams);
+  const remotePeers = Object.entries(remoteStreams || {});
   const isOutgoing = callState === 'outgoing';
   const totalParticipants = 1 + remotePeers.length;
 
@@ -216,7 +216,7 @@ export const ActiveCallModal = () => {
       return;
     }
 
-    const sharingPeer = remotePeers.find(([_, data]) => data.isScreenSharing);
+    const sharingPeer = remotePeers.find(([_, data]) => data?.isScreenSharing);
     if (sharingPeer) {
       setSpotlightId(sharingPeer[0]);
     } else if (spotlightId === 'local' && !isScreenSharing) {

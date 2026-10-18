@@ -27,9 +27,17 @@ export class ErrorBoundary extends React.Component {
             <AlertTriangle className="w-8 h-8" />
           </div>
           <h2 className="text-xl font-bold text-white tracking-tight mb-2">Something went wrong</h2>
-          <p className="text-xs text-slate-400 max-w-sm mb-6 leading-relaxed">
+          <p className="text-xs text-slate-400 max-w-sm mb-4 leading-relaxed">
             PulseChat encountered an unexpected display issue. Your messages and call history remain safe.
           </p>
+          {this.state.error && (
+            <div className="max-w-md w-full bg-slate-900/90 border border-rose-900/50 rounded-2xl p-3.5 mb-6 text-left overflow-auto max-h-48 text-[11px] font-mono text-rose-300">
+              <p className="font-bold text-rose-400 mb-1">{this.state.error.toString()}</p>
+              {this.state.error.stack && (
+                <pre className="text-[10px] text-slate-400 whitespace-pre-wrap">{this.state.error.stack}</pre>
+              )}
+            </div>
+          )}
           <div className="flex items-center space-x-3">
             <button
               onClick={this.handleReload}

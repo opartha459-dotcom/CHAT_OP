@@ -19,22 +19,33 @@ function urlBase64ToUint8Array(base64String) {
 export const usePushNotifications = () => {
   const { user } = useAuth();
   const [permissionState, setPermissionState] = useState(() => {
-    return typeof Notification !== 'undefined' ? Notification.permission : 'denied';
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && typeof Notification !== 'undefined') {
+        return Notification.permission || 'denied';
+      }
+    } catch (e) {
+      // Ignored for iframe / restricted browser contexts
+    }
+    return 'denied';
   });
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
 
   useEffect(() => {
-    const supported =
-      typeof window !== 'undefined' &&
-      'serviceWorker' in navigator &&
-      'PushManager' in window &&
-      'Notification' in window &&
-      window.isSecureContext;
-    setIsSupported(!!supported);
+    try {
+      const supported =
+        typeof window !== 'undefined' &&
+        'serviceWorker' in navigator &&
+        'PushManager' in window &&
+        'Notification' in window &&
+        window.isSecureContext;
+      setIsSupported(!!supported);
 
-    if (typeof Notification !== 'undefined') {
-      setPermissionState(Notification.permission);
+      if (typeof window !== 'undefined' && 'Notification' in window && typeof Notification !== 'undefined') {
+        setPermissionState(Notification.permission || 'denied');
+      }
+    } catch (e) {
+      setIsSupported(false);
     }
   }, []);
 
@@ -85,9 +96,18 @@ export const usePushNotifications = () => {
 
   // If permission is ALREADY granted, auto-register without prompting
   useEffect(() => {
-    if (user && isSupported && Notification.permission === 'granted') {
-      registerSubscription();
-    }
+    try {
+      if (
+        user &&
+        isSupported &&
+        typeof window !== 'undefined' &&
+        'Notification' in window &&
+        typeof Notification !== 'undefined' &&
+        Notification.permission === 'granted'
+      ) {
+        registerSubscription();
+      }
+    } catch (e) {}
   }, [user, isSupported, registerSubscription]);
 
   // Request notification permission directly from a user gesture (button click)
