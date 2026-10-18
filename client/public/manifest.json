@@ -1,16 +1,24 @@
 {
   "id": "/?source=pwa",
-  "name": "PulseChat — Real-Time Encrypted Messenger",
+  "name": "PulseChat",
   "short_name": "PulseChat",
   "description": "High-performance, real-time encrypted messaging application with multi-device sync, groups, and end-to-end security.",
   "start_url": "/chat",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
   "background_color": "#020617",
   "theme_color": "#4f46e5",
   "orientation": "portrait",
-  "categories": ["social", "communication", "utilities"],
+  "categories": [
+    "social",
+    "communication",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -37,7 +45,12 @@
       "short_name": "Chats",
       "description": "Open your messages inbox",
       "url": "/chat",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }
