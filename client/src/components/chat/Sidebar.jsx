@@ -23,7 +23,8 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   MoreVertical,
-  X
+  X,
+  BellRing
 } from 'lucide-react';
 import { PulseLogo } from '../common/PulseLogo';
 import { useAuth } from '../../context/AuthContext';
@@ -40,6 +41,7 @@ import { InstallAppModal } from '../modals/InstallAppModal';
 import { SettingsModal } from '../modals/SettingsModal';
 import { AdminModal } from '../modals/AdminModal';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
 
 export const Sidebar = () => {
   const { user } = useAuth();
@@ -66,7 +68,10 @@ export const Sidebar = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isPushBannerDismissed, setIsPushBannerDismissed] = useState(false);
   const menuRef = useRef(null);
+
+  const { permissionState, requestCallNotifications } = usePushNotifications();
 
   const handleInstallClick = async () => {
     if (isInstallable) {
@@ -352,6 +357,37 @@ export const Sidebar = () => {
             );
           })}
         </div>
+
+        {/* Telegram/WhatsApp Style Incoming Call Ringing Banner */}
+        {permissionState !== 'granted' && !isPushBannerDismissed && (
+          <div className="mx-3 my-2 p-3 bg-gradient-to-br from-indigo-950/70 via-indigo-900/40 to-slate-900/90 border border-indigo-500/30 rounded-2xl flex items-start space-x-3 shadow-md animate-in fade-in duration-200 flex-shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
+              <BellRing className="w-4 h-4 animate-bounce" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-slate-800 dark:text-white">Enable Call Ringing</h4>
+                <button
+                  onClick={() => setIsPushBannerDismissed(true)}
+                  className="text-slate-400 hover:text-slate-200 p-0.5 cursor-pointer"
+                  title="Dismiss"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 leading-snug">
+                Ring your phone for incoming calls even when screen is locked or app is closed.
+              </p>
+              <button
+                onClick={requestCallNotifications}
+                className="mt-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[11px] font-semibold transition cursor-pointer flex items-center space-x-1.5 shadow-sm active:scale-95"
+              >
+                <BellRing className="w-3 h-3" />
+                <span>Turn On Call Ringing</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Content Area: Call History vs Conversation List */}
         <div className="flex-1 overflow-y-auto divide-y divide-slate-100/60 dark:divide-slate-800/40">

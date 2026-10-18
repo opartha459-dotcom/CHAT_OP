@@ -83,7 +83,8 @@ self.addEventListener('push', (event) => {
       tag: `call-${data.callId}`,
       renotify: true,
       requireInteraction: true,
-      vibrate: [400, 200, 400, 200, 400, 200, 600],
+      // Repeating ring vibration pattern like Telegram & WhatsApp
+      vibrate: [1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500],
       data: {
         url: `/?callId=${data.callId}&action=answer`,
         callId: data.callId,
@@ -111,6 +112,12 @@ self.addEventListener('push', (event) => {
 // Notification Click Event (Opens / focuses PulseChat app directly into the call)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+
+  if (event.action === 'decline') {
+    // User declined call from notification
+    return;
+  }
+
   const notificationData = event.notification.data || {};
   const targetUrl = notificationData.url || '/';
 
