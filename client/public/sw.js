@@ -64,6 +64,20 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+function buildCallUrl(d, action = 'incoming') {
+  if (!d || !d.callId) return '/chat';
+  const params = new URLSearchParams();
+  params.set('callId', d.callId);
+  params.set('action', action);
+  if (d.callerName) params.set('callerName', d.callerName);
+  if (d.callerAvatar) params.set('callerAvatar', d.callerAvatar);
+  if (d.callerId) params.set('callerId', d.callerId);
+  if (d.callType) params.set('callType', d.callType);
+  if (d.conversationId) params.set('conversationId', d.conversationId);
+  if (d.isGroup) params.set('isGroup', '1');
+  return `/chat?${params.toString()}`;
+}
+
 // Push Notification Event (Handles incoming calls and messages when app/browser is closed)
 self.addEventListener('push', (event) => {
   let data = {};
@@ -76,6 +90,7 @@ self.addEventListener('push', (event) => {
   if (data.type === 'incoming_call') {
     const isVideo = data.callType === 'video';
     const title = `📞 Incoming ${isVideo ? 'Video' : 'Voice'} Call`;
+    const callUrl = buildCallUrl(data, 'incoming');
     const options = {
       body: `${data.callerName || 'Someone'} is calling you on PulseChat...`,
       icon: data.callerAvatar || '/icons/icon-192.png',
@@ -86,7 +101,7 @@ self.addEventListener('push', (event) => {
       // Repeating ring vibration pattern like Telegram & WhatsApp
       vibrate: [1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500],
       data: {
-        url: `/chat?callId=${data.callId}&action=incoming`,
+        url: callUrl,
         callId: data.callId,
         type: 'incoming_call',
         callData: data
@@ -139,7 +154,7 @@ self.addEventListener('notificationclick', (event) => {
   const notificationData = event.notification.data || {};
   const isAnswer = event.action === 'answer';
   const targetUrl = notificationData.callId
-    ? `/chat?callId=${notificationData.callId}&action=${isAnswer ? 'answer' : 'incoming'}`
+    ? buildCallUrl(notificationData.callData || { callId: notificationData.callId }, isAnswer ? 'answer' : 'incoming')
     : notificationData.url || '/chat';
 
   event.waitUntil(

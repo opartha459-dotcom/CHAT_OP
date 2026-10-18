@@ -62,6 +62,7 @@ export const CallProvider = ({ children }) => {
   const currentCallRef = useRef(null);
   const callStateRef = useRef(callState);
   const callTimerRef = useRef(null);
+  const pendingJoinCallIdRef = useRef(null);
 
   // Sync ref
   useEffect(() => {
@@ -71,6 +72,21 @@ export const CallProvider = ({ children }) => {
   useEffect(() => {
     callStateRef.current = callState;
   }, [callState]);
+
+  // If a join is queued while socket was establishing during cold launch
+  useEffect(() => {
+    if (socket && pendingJoinCallIdRef.current) {
+      const pid = pendingJoinCallIdRef.current;
+      pendingJoinCallIdRef.current = null;
+      if (socket.connected) {
+        socket.emit('call:join', { callId: pid });
+      } else {
+        socket.once('connect', () => {
+          socket.emit('call:join', { callId: pid });
+        });
+      }
+    }
+  }, [socket]);
 
   // Clean up single peer connection
   const removePeer = useCallback((socketId) => {
@@ -308,8 +324,10 @@ export const CallProvider = ({ children }) => {
 
   // Accept incoming call (supports direct parameter override for cold launch / notification tap)
   const acceptCall = useCallback(async (incomingCallOverride) => {
-    const callToAccept = incomingCallOverride || currentCall;
-    if (!callToAccept) return;
+    // If incomingCallOverride is a DOM / React SyntheticEvent (has preventDefault or target), ignore it!
+    const isEvent = incomingCallOverride && (typeof incomingCallOverride.preventDefault === 'function' || incomingCallOverride._reactName || incomingCallOverride.nativeEvent);
+    const callToAccept = (!isEvent && incomingCallOverride && incomingCallOverride.callId) ? incomingCallOverride : currentCall;
+    if (!callToAccept || !callToAccept.callId) return;
 
     try {
       stopRingtone();
@@ -335,6 +353,8 @@ export const CallProvider = ({ children }) => {
           socket.once('connect', () => {
             socket.emit('call:join', { callId: callToAccept.callId });
           });
+        } else {
+          pendingJoinCallIdRef.current = callToAccept.callId;
         }
       };
 
@@ -666,25 +686,50 @@ export const CallProvider = ({ children }) => {
     const pushAction = urlParams.get('action');
 
     if (pushCallId) {
+      const callerName = urlParams.get('callerName') || 'Someone';
+      const callerAvatar = urlParams.get('callerAvatar') || '';
+      const callerId = urlParams.get('callerId') || '';
+      const callType = urlParams.get('callType') || 'video';
+      const conversationId = urlParams.get('conversationId') || '';
+      const isGroup = urlParams.get('isGroup') === '1' || urlParams.get('isGroup') === 'true';
+
+      const initialCallInfo = {
+        callId: pushCallId,
+        conversationId,
+        isGroup,
+        callType,
+        caller: {
+          _id: callerId,
+          username: callerName,
+          nickname: callerName,
+          avatar: callerAvatar
+        }
+      };
+
+      // Immediately display incoming call interface or accept if tapped answer
+      setCurrentCall(initialCallInfo);
+
+      if (pushAction === 'answer') {
+        acceptCall(initialCallInfo);
+      } else {
+        setCallState('incoming');
+        setIsCallModalOpen(true);
+        startIncomingRingtone();
+      }
+
       window.history.replaceState({}, document.title, window.location.pathname);
 
+      // In background, fetch full call details from REST endpoint to enrich if needed
       const loadCallFromRest = async () => {
         try {
           const res = await fetch(`/api/users/call/${encodeURIComponent(pushCallId)}`);
           if (res.ok) {
             const data = await res.json();
             if (data.success && data.call) {
-              const callInfo = data.call;
-              setCurrentCall(callInfo);
-
-              if (pushAction === 'answer') {
-                acceptCall(callInfo);
-              } else {
-                // Automatically open incoming call interface and ring
-                setCallState('incoming');
-                setIsCallModalOpen(true);
-                startIncomingRingtone();
-              }
+              setCurrentCall((prev) => ({
+                ...(prev || {}),
+                ...data.call
+              }));
             }
           }
         } catch (err) {
@@ -703,7 +748,7 @@ export const CallProvider = ({ children }) => {
     // Incoming Call listener
     socket.on('call:incoming', (data) => {
       // If already in a call, reject with busy status to prevent call clash
-      if (callState !== 'idle') {
+      if (callStateRef.current !== 'idle') {
         socket.emit('call:reject', {
           callId: data.callId,
           callerId: data.caller?._id,

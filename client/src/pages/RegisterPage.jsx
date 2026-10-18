@@ -17,9 +17,17 @@ export const RegisterPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const from = location.state?.from
-    ? `${location.state.from.pathname}${location.state.from.search || ''}`
-    : '/chat';
+  let from = '/chat';
+  if (location.state?.from) {
+    if (typeof location.state.from === 'string') {
+      from = location.state.from;
+    } else if (location.state.from?.pathname) {
+      from = `${location.state.from.pathname}${location.state.from.search || ''}`;
+    }
+  }
+  if (from === '/' || from.startsWith('/login') || from.startsWith('/register') || from.includes('undefined')) {
+    from = '/chat';
+  }
 
   const [username, setUsername] = useState('');
   const [nickname, setNickname] = useState('');

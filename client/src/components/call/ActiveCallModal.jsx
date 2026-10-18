@@ -230,7 +230,11 @@ export const ActiveCallModal = () => {
 
   const targetName = currentCall?.isGroup
     ? 'Group Call'
-    : currentCall?.targetUser?.nickname || currentCall?.targetUser?.username || 'User';
+    : currentCall?.targetUser?.nickname ||
+      currentCall?.targetUser?.username ||
+      currentCall?.caller?.nickname ||
+      currentCall?.caller?.username ||
+      'User';
 
   const formatDuration = (secs) => {
     const mins = Math.floor(secs / 60);

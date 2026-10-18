@@ -14,6 +14,7 @@ import { DashboardSkeleton, AuthCardSkeleton } from './components/common/Skeleto
 import { PulseLogo } from './components/common/PulseLogo';
 import { IncomingCallModal } from './components/call/IncomingCallModal';
 import { ActiveCallModal } from './components/call/ActiveCallModal';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { usePushNotifications } from './hooks/usePushNotifications';
 import { Loader2 } from 'lucide-react';
 
@@ -49,10 +50,19 @@ const PublicRoute = ({ children }) => {
 
   if (isAuthenticated) {
     const search = location.search || '';
-    const from = location.state?.from
-      ? `${location.state.from.pathname}${location.state.from.search || ''}`
-      : `/chat${search}`;
-    return <Navigate to={from} replace />;
+    let target = `/chat${search}`;
+    if (location.state?.from) {
+      if (typeof location.state.from === 'string') {
+        target = location.state.from;
+      } else if (location.state.from?.pathname) {
+        target = `${location.state.from.pathname}${location.state.from.search || ''}`;
+      }
+    }
+    // Never redirect to landing, login, register, or undefined paths
+    if (target === '/' || target.startsWith('/login') || target.startsWith('/register') || target.includes('undefined')) {
+      target = `/chat${search}`;
+    }
+    return <Navigate to={target} replace />;
   }
 
   return children;
@@ -110,66 +120,68 @@ const JoinGroupHandler = () => {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <PushNotificationManager />
-        <SocketProvider>
-          <ChatProvider>
-            <CallProvider>
-              <BrowserRouter>
-                <Routes>
-                  <Route
-                    path="/"
-                    element={
-                      <PublicRoute>
-                        <LandingPage />
-                      </PublicRoute>
-                    }
-                  />
-                  <Route
-                    path="/login"
-                    element={
-                      <PublicRoute>
-                        <LoginPage />
-                      </PublicRoute>
-                    }
-                  />
-                  <Route
-                    path="/register"
-                    element={
-                      <PublicRoute>
-                        <RegisterPage />
-                      </PublicRoute>
-                    }
-                  />
-                  <Route
-                    path="/chat"
-                    element={
-                      <ProtectedRoute>
-                        <ChatDashboard />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/join/:code"
-                    element={
-                      <ProtectedRoute>
-                        <JoinGroupHandler />
-                      </ProtectedRoute>
-                    }
-                  />
-                  {/* Fallback to Home / Chat with replace */}
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <PushNotificationManager />
+          <SocketProvider>
+            <ChatProvider>
+              <CallProvider>
+                <BrowserRouter>
+                  <Routes>
+                    <Route
+                      path="/"
+                      element={
+                        <PublicRoute>
+                          <LandingPage />
+                        </PublicRoute>
+                      }
+                    />
+                    <Route
+                      path="/login"
+                      element={
+                        <PublicRoute>
+                          <LoginPage />
+                        </PublicRoute>
+                      }
+                    />
+                    <Route
+                      path="/register"
+                      element={
+                        <PublicRoute>
+                          <RegisterPage />
+                        </PublicRoute>
+                      }
+                    />
+                    <Route
+                      path="/chat"
+                      element={
+                        <ProtectedRoute>
+                          <ChatDashboard />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/join/:code"
+                      element={
+                        <ProtectedRoute>
+                          <JoinGroupHandler />
+                        </ProtectedRoute>
+                      }
+                    />
+                    {/* Fallback to Home / Chat with replace */}
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
 
-                {/* WebRTC Audio/Video Call Modals */}
-                <IncomingCallModal />
-                <ActiveCallModal />
-              </BrowserRouter>
-            </CallProvider>
-          </ChatProvider>
-        </SocketProvider>
-      </AuthProvider>
-    </ThemeProvider>
+                  {/* WebRTC Audio/Video Call Modals */}
+                  <IncomingCallModal />
+                  <ActiveCallModal />
+                </BrowserRouter>
+              </CallProvider>
+            </ChatProvider>
+          </SocketProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

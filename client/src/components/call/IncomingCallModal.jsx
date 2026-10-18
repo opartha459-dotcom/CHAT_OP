@@ -44,7 +44,7 @@ export const IncomingCallModal = () => {
         <div className="flex items-center justify-center space-x-6 mt-8 w-full">
           {/* Decline */}
           <button
-            onClick={rejectCall}
+            onClick={() => rejectCall()}
             className="flex flex-col items-center space-y-1.5 group cursor-pointer"
             title="Decline Call"
           >
@@ -56,7 +56,7 @@ export const IncomingCallModal = () => {
 
           {/* Accept */}
           <button
-            onClick={acceptCall}
+            onClick={() => acceptCall()}
             className="flex flex-col items-center space-y-1.5 group cursor-pointer"
             title="Accept Call"
           >
