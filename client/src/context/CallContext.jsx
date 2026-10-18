@@ -322,6 +322,20 @@ export const CallProvider = ({ children }) => {
     }
   }, [socket, user, acquireMedia, cleanupCall]);
 
+  // Reject incoming call
+  const rejectCall = useCallback(() => {
+    if (!socket || !currentCall) return;
+    stopRingtone();
+
+    socket.emit('call:reject', {
+      callId: currentCall.callId,
+      callerId: currentCall.caller?._id,
+      conversationId: currentCall.conversationId
+    });
+
+    cleanupCall();
+  }, [socket, currentCall, cleanupCall]);
+
   // Accept incoming call (supports direct parameter override for cold launch / notification tap)
   const acceptCall = useCallback(async (incomingCallOverride) => {
     // If incomingCallOverride is a DOM / React SyntheticEvent (has preventDefault or target), ignore it!
@@ -364,20 +378,6 @@ export const CallProvider = ({ children }) => {
       rejectCall();
     }
   }, [socket, currentCall, acquireMedia, rejectCall]);
-
-  // Reject incoming call
-  const rejectCall = useCallback(() => {
-    if (!socket || !currentCall) return;
-    stopRingtone();
-
-    socket.emit('call:reject', {
-      callId: currentCall.callId,
-      callerId: currentCall.caller?._id,
-      conversationId: currentCall.conversationId
-    });
-
-    cleanupCall();
-  }, [socket, currentCall, cleanupCall]);
 
   // End an ongoing call
   const endCall = useCallback(() => {
