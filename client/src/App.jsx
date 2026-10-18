@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
@@ -9,75 +9,91 @@ import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ChatDashboard } from './pages/ChatDashboard';
+import { DashboardSkeleton, AuthCardSkeleton } from './components/common/Skeleton';
+import { PulseLogo } from './components/common/PulseLogo';
+import { Loader2 } from 'lucide-react';
 
-// Protected Route wrapper
+// Protected Route wrapper with Dashboard Skeleton loader
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs font-mono">
-        Authenticating session...
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   return children;
 };
 
-// Public Route (redirects to /chat if logged in)
+// Public Route (redirects to original target or /chat if logged in)
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs font-mono">
-        Loading...
-      </div>
-    );
+    return <AuthCardSkeleton />;
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/chat" replace />;
+    const from = location.state?.from
+      ? `${location.state.from.pathname}${location.state.from.search || ''}`
+      : '/chat';
+    return <Navigate to={from} replace />;
   }
 
   return children;
 };
 
-// Handle joining group invite link
+// Handle joining group invite link with smooth status feedback
 const JoinGroupHandler = () => {
   const { code } = useParams();
   const navigate = useNavigate();
   const { authHeaders, fetchConversations } = useChat();
+  const [statusText, setStatusText] = useState('Verifying invitation link...');
 
   useEffect(() => {
+    let active = true;
     const join = async () => {
       try {
-        const res = await fetch(`/api/groups/join/${code}`, {
+        setStatusText('Joining encrypted group...');
+        const res = await fetch(`/api/groups/join/${encodeURIComponent(code)}`, {
           method: 'POST',
           headers: authHeaders(),
           credentials: 'include'
         });
-        const data = await res.json();
-        if (data.success) {
-          await fetchConversations();
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data.success && active) {
+            await fetchConversations();
+          }
         }
       } catch (err) {
         console.error('Failed to join via invite link', err);
       } finally {
-        navigate('/chat');
+        if (active) {
+          navigate('/chat', { replace: true });
+        }
       }
     };
+
     join();
+    return () => {
+      active = false;
+    };
   }, [code, authHeaders, fetchConversations, navigate]);
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs font-mono">
-      Joining group invite...
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-4 px-4 text-center">
+      <PulseLogo size="md" animated={true} />
+      <div className="flex items-center space-x-2 text-slate-300 text-xs font-mono">
+        <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+        <span>{statusText}</span>
+      </div>
     </div>
   );
 };
@@ -130,6 +146,7 @@ export default function App() {
                     </ProtectedRoute>
                   }
                 />
+                {/* Fallback to Home / Chat with replace */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </BrowserRouter>

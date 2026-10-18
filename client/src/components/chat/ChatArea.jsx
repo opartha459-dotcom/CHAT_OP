@@ -13,6 +13,7 @@ import { useChat } from '../../context/ChatContext';
 import { ChatHeader } from './ChatHeader';
 import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
+import { ChatMessagesSkeleton } from '../common/Skeleton';
 import { GroupInfoDrawer } from '../modals/GroupInfoDrawer';
 import { UserInfoDrawer } from '../modals/UserInfoDrawer';
 
@@ -137,9 +138,7 @@ export const ChatArea = ({ onBackToSidebar }) => {
         className="flex-1 overflow-y-auto px-4 py-3 space-y-1 relative"
       >
         {loadingMessages ? (
-          <div className="flex items-center justify-center py-20 text-xs text-slate-400">
-            Loading secure conversation...
-          </div>
+          <ChatMessagesSkeleton />
         ) : filteredMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center text-slate-400">
             <Lock className="w-8 h-8 text-slate-300 dark:text-slate-700 mb-2" />

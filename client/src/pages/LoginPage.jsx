@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { User, KeyRound, AlertCircle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { PulseLogo } from '../components/common/PulseLogo';
@@ -7,6 +7,11 @@ import { PulseLogo } from '../components/common/PulseLogo';
 export const LoginPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const from = location.state?.from
+    ? `${location.state.from.pathname}${location.state.from.search || ''}`
+    : '/chat';
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -20,7 +25,7 @@ export const LoginPage = () => {
 
     try {
       await login(identifier, password);
-      navigate('/chat');
+      navigate(from, { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed. Please check your credentials.');
     } finally {

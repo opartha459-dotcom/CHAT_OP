@@ -2,7 +2,6 @@
 const CACHE_NAME = 'pulsechat-v1';
 const STATIC_ASSETS = [
   '/',
-  '/chat',
   '/manifest.json',
   '/icons/icon.svg',
   '/icons/icon-192.png',
@@ -58,7 +57,7 @@ self.addEventListener('fetch', (event) => {
         return caches.match(event.request).then((cachedResponse) => {
           if (cachedResponse) return cachedResponse;
           if (event.request.headers.get('accept')?.includes('text/html')) {
-            return caches.match('/chat') || caches.match('/');
+            return caches.match('/');
           }
         });
       })

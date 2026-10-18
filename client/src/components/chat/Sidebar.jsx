@@ -21,6 +21,7 @@ import { useChat } from '../../context/ChatContext';
 import { useSocket } from '../../context/SocketContext';
 import { useTheme } from '../../context/ThemeContext';
 import { Avatar } from '../common/Avatar';
+import { SidebarSkeleton } from '../common/Skeleton';
 import { NewChatModal } from '../modals/NewChatModal';
 import { CreateGroupModal } from '../modals/CreateGroupModal';
 import { JoinGroupModal } from '../modals/JoinGroupModal';
@@ -30,7 +31,16 @@ import { AdminModal } from '../modals/AdminModal';
 
 export const Sidebar = () => {
   const { user } = useAuth();
-  const { conversations, activeConversation, selectConversation, tab, setTab, searchQuery, setSearchQuery } = useChat();
+  const {
+    conversations,
+    activeConversation,
+    selectConversation,
+    tab,
+    setTab,
+    searchQuery,
+    setSearchQuery,
+    loadingConversations
+  } = useChat();
   const { onlineUsers } = useSocket();
   const { theme, setTheme } = useTheme();
 
@@ -185,7 +195,9 @@ export const Sidebar = () => {
             </div>
           )}
 
-          {filteredConversations.length === 0 ? (
+          {loadingConversations ? (
+            <SidebarSkeleton count={6} />
+          ) : filteredConversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center text-slate-400 px-6">
               <MessageSquarePlus className="w-8 h-8 stroke-1 mb-2 text-slate-300 dark:text-slate-700" />
               <p className="text-xs font-medium text-slate-600 dark:text-slate-300">No conversations yet</p>

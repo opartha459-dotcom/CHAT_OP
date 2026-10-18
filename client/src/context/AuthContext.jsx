@@ -11,6 +11,7 @@ export const AuthProvider = ({ children }) => {
 
   // Initialize auth state
   useEffect(() => {
+    let isMounted = true;
     const fetchMe = async () => {
       try {
         const storedToken = localStorage.getItem('pulsechat_token');
@@ -24,25 +25,43 @@ export const AuthProvider = ({ children }) => {
           headers
         });
 
+        const contentType = res.headers.get('content-type') || '';
+        if (!res.ok || !contentType.includes('application/json')) {
+          if (isMounted) {
+            setUser(null);
+            if (res.status === 401) {
+              localStorage.removeItem('pulsechat_token');
+            }
+          }
+          return;
+        }
+
         const data = await res.json();
-        if (data.success && data.user) {
+        if (isMounted && data.success && data.user) {
           setUser(data.user);
-          // Initialize E2EE Keys
-          const keys = await getOrCreateUserKeys(data.user._id);
-          setE2eeInfo(keys);
-        } else {
+          try {
+            // Initialize E2EE Keys
+            const keys = await getOrCreateUserKeys(data.user._id);
+            if (isMounted) setE2eeInfo(keys);
+          } catch (keyErr) {
+            console.warn('E2EE initialization non-fatal warning:', keyErr);
+          }
+        } else if (isMounted) {
           setUser(null);
           localStorage.removeItem('pulsechat_token');
         }
       } catch (err) {
         console.error('Failed to restore session:', err);
-        setUser(null);
+        if (isMounted) setUser(null);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     fetchMe();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const login = async (identifier, password) => {

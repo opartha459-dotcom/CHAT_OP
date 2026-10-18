@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Lock, User, Mail, KeyRound, AlertCircle, ArrowRight, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { PulseLogo } from '../components/common/PulseLogo';
@@ -15,6 +15,11 @@ const PRESET_AVATARS = [
 export const RegisterPage = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const from = location.state?.from
+    ? `${location.state.from.pathname}${location.state.from.search || ''}`
+    : '/chat';
 
   const [username, setUsername] = useState('');
   const [nickname, setNickname] = useState('');
@@ -43,7 +48,7 @@ export const RegisterPage = () => {
         password,
         avatar: selectedAvatar
       });
-      navigate('/chat');
+      navigate(from, { replace: true });
     } catch (err) {
       setError(err.message || 'Registration failed.');
     } finally {
