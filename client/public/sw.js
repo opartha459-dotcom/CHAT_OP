@@ -123,7 +123,7 @@ self.addEventListener('push', (event) => {
               callData: data
             });
             if ('focus' in client) {
-              client.focus().catch(() => {});
+              client.focus().catch(() => { });
             }
           }
         }
@@ -141,7 +141,7 @@ self.addEventListener('push', (event) => {
     event.waitUntil(self.registration.showNotification(title, options));
   }
 });
-
+```
 // Notification Click Event (Opens / focuses PulseChat app directly into the call)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
@@ -183,4 +183,45 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+```
 
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const notificationData = event.notification.data || {};
+
+  if (event.action === 'decline') {
+    return;
+  }
+
+  const callData = notificationData.callData || {
+    callId: notificationData.callId
+  };
+
+  const isCall = Boolean(callData.callId);
+  const action = isCall
+    ? (event.action === 'answer' ? 'answer' : 'incoming')
+    : 'incoming';
+
+  const targetUrl = isCall
+    ? buildCallUrl(callData, action)
+    : (notificationData.url || '/chat');
+
+  event.waitUntil((async () => {
+    const windowClients = await clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    });
+
+    const appClient = windowClients.find(client =>
+      new URL(client.url).origin === self.location.origin
+    );
+
+    if (appClient) {
+      const activeClient = await appClient.navigate(targetUrl);
+      await (activeClient || appClient).focus();
+    } else {
+      await clients.openWindow(targetUrl);
+    }
+  })());
+});
