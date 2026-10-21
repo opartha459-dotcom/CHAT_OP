@@ -22,7 +22,9 @@ import {
   Video,
   Download,
   ExternalLink,
-  Layers
+  Layers,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -48,6 +50,12 @@ export const AdminModal = ({ isOpen, onClose }) => {
   const [selectedChat, setSelectedChat] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+
+
+  // ---
+  const [auditView, setAuditView] = useState('grid');
+  const [auditQuery, setAuditQuery] = useState('');
+  const [auditActionFilter, setAuditActionFilter] = useState('all');
 
   const authHeaders = () => ({
     'Content-Type': 'application/json',
@@ -99,7 +107,7 @@ export const AdminModal = ({ isOpen, onClose }) => {
                       reportedMessage: { ...repMsg, content: decrypted }
                     };
                   }
-                } catch (e) {}
+                } catch (e) { }
               }
               return r;
             })
@@ -284,7 +292,7 @@ export const AdminModal = ({ isOpen, onClose }) => {
                   convKey
                 );
                 replyTo = { ...replyTo, content: repPlain };
-              } catch (e) {}
+              } catch (e) { }
             }
 
             return {
@@ -399,11 +407,10 @@ export const AdminModal = ({ isOpen, onClose }) => {
                   setActiveTab(tab.id);
                   if (tab.id !== 'chats') setSelectedChat(null);
                 }}
-                className={`flex items-center space-x-2 py-3 px-3.5 text-xs font-medium border-b-2 transition whitespace-nowrap cursor-pointer ${
-                  isActive
+                className={`flex items-center space-x-2 py-3 px-3.5 text-xs font-medium border-b-2 transition whitespace-nowrap cursor-pointer ${isActive
                     ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                     : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                }`}
+                  }`}
               >
                 <Icon className="w-4 h-4" />
                 <span>{tab.label}</span>
@@ -606,11 +613,10 @@ export const AdminModal = ({ isOpen, onClose }) => {
                         <button
                           key={t}
                           onClick={() => setChatTypeFilter(t)}
-                          className={`px-3 py-1 rounded-lg text-xs font-medium capitalize transition cursor-pointer ${
-                            chatTypeFilter === t
+                          className={`px-3 py-1 rounded-lg text-xs font-medium capitalize transition cursor-pointer ${chatTypeFilter === t
                               ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                               : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                          }`}
+                            }`}
                         >
                           {t === 'all' ? 'All Chats' : t === 'private' ? 'Direct DMs' : 'Groups'}
                         </button>
@@ -649,11 +655,10 @@ export const AdminModal = ({ isOpen, onClose }) => {
                                       {title}
                                     </h4>
                                     <span
-                                      className={`px-1.5 py-0.5 text-[9px] font-bold rounded uppercase ${
-                                        isGrp
+                                      className={`px-1.5 py-0.5 text-[9px] font-bold rounded uppercase ${isGrp
                                           ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
                                           : 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
-                                      }`}
+                                        }`}
                                     >
                                       {conv.type}
                                     </span>
@@ -960,7 +965,7 @@ export const AdminModal = ({ isOpen, onClose }) => {
             </div>
           )}
 
-          {/* AUDIT LOG TAB */}
+          {/* AUDIT LOG TAB 
           {activeTab === 'audit' && (
             <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden font-mono text-[11px]">
               {auditLogs.length === 0 ? (
@@ -982,7 +987,275 @@ export const AdminModal = ({ isOpen, onClose }) => {
                 ))
               )}
             </div>
+          )}*****/}
+
+          {/* AUDIT LOG TAB */}
+          {activeTab === 'audit' && (
+            <div className="space-y-5">
+
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                    Audit Trail
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    Review administrative actions and platform activity.
+                  </p>
+                </div>
+
+                <span className="text-xs font-semibold px-3 py-1.5 rounded-xl
+        bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60
+        dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900">
+                  {auditLogs.length} Records
+                </span>
+              </div>
+
+              {/* Search, Filter and View Controls */}
+              <div className="flex flex-col lg:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2
+          w-4 h-4 text-slate-400" />
+
+                  <input
+                    type="text"
+                    value={auditQuery}
+                    onChange={(e) => setAuditQuery(e.target.value)}
+                    placeholder="Search actions, administrators, or details..."
+                    className="w-full pl-10 pr-4 py-3 rounded-xl text-sm
+            bg-white dark:bg-slate-900
+            border border-slate-200 dark:border-slate-700
+            text-slate-800 dark:text-white
+            placeholder:text-slate-400
+            outline-none focus:ring-2 focus:ring-indigo-500/30
+            focus:border-indigo-500 transition"
+                  />
+                </div>
+
+                <select
+                  value={auditActionFilter}
+                  onChange={(e) => setAuditActionFilter(e.target.value)}
+                  className="px-4 py-3 rounded-xl text-sm
+          bg-white dark:bg-slate-900
+          border border-slate-200 dark:border-slate-700
+          text-slate-700 dark:text-slate-200
+          outline-none focus:ring-2 focus:ring-indigo-500/30"
+                >
+                  <option value="all">All Actions</option>
+                  {[...new Set(auditLogs.map((log) => log.action).filter(Boolean))]
+                    .sort()
+                    .map((action) => (
+                      <option key={action} value={action}>
+                        {action}
+                      </option>
+                    ))}
+                </select>
+
+                <div className="flex items-center gap-1 p-1 rounded-xl
+        bg-slate-100 dark:bg-slate-800 border border-slate-200
+        dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setAuditView('grid')}
+                    aria-pressed={auditView === 'grid'}
+                    className={`flex items-center justify-center gap-2 px-4 py-2
+            rounded-lg text-sm font-medium transition
+            ${auditView === 'grid'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                      }`}
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                    Grid
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAuditView('list')}
+                    aria-pressed={auditView === 'list'}
+                    className={`flex items-center justify-center gap-2 px-4 py-2
+            rounded-lg text-sm font-medium transition
+            ${auditView === 'list'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                      }`}
+                  >
+                    <List className="w-4 h-4" />
+                    List
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter Logs */}
+              {(() => {
+                const filteredLogs = auditLogs.filter((log) => {
+                  const actor = log.actor?.username || 'System';
+                  const action = log.action || '';
+                  const details =
+                    typeof log.details === 'string'
+                      ? log.details
+                      : JSON.stringify(log.details ?? {});
+
+                  const query = auditQuery.trim().toLowerCase();
+
+                  const matchesQuery =
+                    !query ||
+                    `${action} ${actor} ${details} ${log._id}`
+                      .toLowerCase()
+                      .includes(query);
+
+                  const matchesAction =
+                    auditActionFilter === 'all' ||
+                    action === auditActionFilter;
+
+                  return matchesQuery && matchesAction;
+                });
+
+                if (filteredLogs.length === 0) {
+                  return (
+                    <div className="py-16 px-4 text-center rounded-2xl
+            border border-dashed border-slate-300 dark:border-slate-700
+            bg-slate-50/70 dark:bg-slate-900/50">
+                      <div className="w-14 h-14 mx-auto mb-4 rounded-2xl
+              bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                        <FileText className="w-7 h-7 text-slate-400" />
+                      </div>
+
+                      <h4 className="font-semibold text-slate-800 dark:text-white">
+                        No audit records found
+                      </h4>
+
+                      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                        Try another search term or select a different action.
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuditQuery('');
+                          setAuditActionFilter('all');
+                        }}
+                        className="mt-4 px-4 py-2 rounded-lg text-sm font-medium
+                text-indigo-600 dark:text-indigo-400
+                hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    className={
+                      auditView === 'grid'
+                        ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4'
+                        : 'flex flex-col gap-3'
+                    }
+                  >
+                    {filteredLogs.map((log) => {
+                      const actor = log.actor?.username || 'System';
+                      const details =
+                        typeof log.details === 'string'
+                          ? log.details
+                          : JSON.stringify(log.details ?? {}, null, 2);
+
+                      return (
+                        <article
+                          key={log._id}
+                          className={`group min-w-0 rounded-2xl border
+                  border-slate-200 dark:border-slate-800
+                  bg-white dark:bg-slate-900
+                  hover:border-indigo-300 dark:hover:border-indigo-700
+                  hover:shadow-md hover:shadow-indigo-950/5
+                  transition-all duration-200
+                  ${auditView === 'list'
+                              ? 'p-4 flex flex-col sm:flex-row sm:items-start gap-4'
+                              : 'p-4 flex flex-col'
+                            }`}
+                        >
+                          {/* Action Icon */}
+                          <div className="flex items-start gap-3 min-w-0 flex-1">
+                            <div className="w-10 h-10 shrink-0 rounded-xl
+                    flex items-center justify-center
+                    bg-indigo-50 dark:bg-indigo-950/50
+                    text-indigo-600 dark:text-indigo-400">
+                              <Shield className="w-5 h-5" />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-bold text-slate-800
+                        dark:text-slate-100 break-words">
+                                  {log.action || 'Unknown action'}
+                                </span>
+
+                                <span className="text-[10px] uppercase tracking-wide
+                        font-semibold px-2 py-1 rounded-md
+                        bg-slate-100 dark:bg-slate-800
+                        text-slate-500 dark:text-slate-400">
+                                  Audit
+                                </span>
+                              </div>
+
+                              <p className="text-sm mt-1 text-slate-500 dark:text-slate-400">
+                                Performed by{' '}
+                                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                                  @{actor}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Timestamp */}
+                          <div className={`${auditView === 'grid'
+                            ? 'mt-4 pt-3 border-t border-slate-100 dark:border-slate-800'
+                            : 'sm:min-w-44 sm:text-right'
+                            }`}>
+                            <div className="flex items-center gap-2 text-xs
+                    text-slate-500 dark:text-slate-400
+                    sm:justify-end">
+                              <icon-placeholder />
+                              <span>
+                                {log.createdAt
+                                  ? new Date(log.createdAt).toLocaleString()
+                                  : 'Date unavailable'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Details */}
+                          <div className={`${auditView === 'grid'
+                            ? 'mt-3'
+                            : 'sm:w-full sm:max-w-sm'
+                            }`}>
+                            <p className="text-[11px] font-semibold uppercase
+                    tracking-wider text-slate-400 mb-2">
+                              Event Details
+                            </p>
+
+                            <pre className="text-xs leading-relaxed whitespace-pre-wrap
+                    break-words overflow-x-auto max-h-40 overflow-y-auto
+                    p-3 rounded-xl bg-slate-50 dark:bg-slate-950/70
+                    border border-slate-100 dark:border-slate-800
+                    text-slate-600 dark:text-slate-300 font-mono">
+                              {details}
+                            </pre>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
           )}
+
+
+
+
+
+
         </div>
       </div>
     </div>
