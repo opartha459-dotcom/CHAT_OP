@@ -24,7 +24,10 @@ import {
   ExternalLink,
   Layers,
   LayoutGrid,
-  List
+  List,
+  Mail,
+  CalendarDays,
+  ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -56,6 +59,7 @@ export const AdminModal = ({ isOpen, onClose }) => {
   const [auditView, setAuditView] = useState('grid');
   const [auditQuery, setAuditQuery] = useState('');
   const [auditActionFilter, setAuditActionFilter] = useState('all');
+  const [userView, setUserView] = useState('grid');
 
   const authHeaders = () => ({
     'Content-Type': 'application/json',
@@ -500,406 +504,261 @@ export const AdminModal = ({ isOpen, onClose }) => {
             </div>
           )}
 
+
           {/* USERS TAB */}
           {activeTab === 'users' && (
-            <div className="space-y-3">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search by username, nickname, or email..."
-                  value={userQuery}
-                  onChange={(e) => setUserQuery(e.target.value)}
-                  className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                />
+            <div className="space-y-5">
+
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                    User Accounts
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    Manage members, permissions, and account security.
+                  </p>
+                </div>
+
+                <span className="text-xs font-semibold px-3 py-2 rounded-xl
+        bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600
+        dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900">
+                  {users.length} Users
+                </span>
               </div>
 
-              <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-                {users.length === 0 ? (
-                  <div className="p-8 text-center text-xs text-slate-400">No users found matching query.</div>
-                ) : (
-                  users.map((u) => (
-                    <div
-                      key={u._id}
-                      className="p-3.5 bg-white dark:bg-slate-900 flex flex-wrap items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-xs transition"
-                    >
-                      <div className="flex items-center space-x-3 min-w-0">
-                        <Avatar src={u.avatar} name={u.nickname || u.username} size="sm" />
-                        <div className="min-w-0">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-semibold text-slate-800 dark:text-white truncate">
-                              {u.nickname || u.username}
-                            </span>
-                            <span className="text-slate-400 truncate">@{u.username}</span>
-                            {u.role === 'admin' && (
-                              <span className="px-1.5 py-0.5 text-[9px] bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-bold rounded">
-                                ADMIN
+              {/* Search and View Toggle */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2
+          w-4 h-4 text-slate-400" />
+
+                  <input
+                    type="text"
+                    placeholder="Search username, nickname, or email..."
+                    value={userQuery}
+                    onChange={(e) => setUserQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 text-sm rounded-xl
+            bg-white dark:bg-slate-900
+            border border-slate-200 dark:border-slate-700
+            text-slate-800 dark:text-white
+            outline-none focus:ring-2 focus:ring-indigo-500/30
+            focus:border-indigo-500 transition"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1 p-1 rounded-xl
+        bg-slate-100 dark:bg-slate-800 border border-slate-200
+        dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setUserView('grid')}
+                    aria-pressed={userView === 'grid'}
+                    className={`flex items-center justify-center gap-2 px-4 py-2.5
+            rounded-lg text-sm font-medium transition ${userView === 'grid'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                    Grid
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUserView('list')}
+                    aria-pressed={userView === 'list'}
+                    className={`flex items-center justify-center gap-2 px-4 py-2.5
+            rounded-lg text-sm font-medium transition ${userView === 'list'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                  >
+                    <List className="w-4 h-4" />
+                    List
+                  </button>
+                </div>
+              </div>
+
+              {/* User Results */}
+              {(() => {
+                const filteredUsers = users.filter((u) => {
+                  const query = userQuery.trim().toLowerCase();
+
+                  return !query || [
+                    u.username,
+                    u.nickname,
+                    u.email
+                  ].some((value) =>
+                    String(value || '').toLowerCase().includes(query)
+                  );
+                });
+
+                if (filteredUsers.length === 0) {
+                  return (
+                    <div className="py-16 text-center rounded-2xl border
+            border-dashed border-slate-300 dark:border-slate-700">
+                      <Users className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                      <p className="font-semibold text-slate-800 dark:text-white">
+                        No users found
+                      </p>
+                      <p className="text-sm text-slate-500 mt-1">
+                        Try another username or email.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className={userView === 'grid'
+                    ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4'
+                    : 'flex flex-col gap-3'
+                  }>
+                    {filteredUsers.map((u) => (
+                      <article
+                        key={u._id}
+                        className={`min-w-0 rounded-2xl border
+                border-slate-200 dark:border-slate-800
+                bg-white dark:bg-slate-900
+                hover:border-indigo-300 dark:hover:border-indigo-700
+                transition-all duration-200 ${userView === 'grid' ? 'p-4' : 'p-4'
+                          }`}
+                      >
+                        {/* Profile */}
+                        <div className="flex items-start gap-3">
+                          <Avatar
+                            src={u.avatar}
+                            name={u.nickname || u.username}
+                            size="md"
+                          />
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <h4 className="font-semibold text-sm text-slate-900 dark:text-white break-words">
+                                {u.nickname || u.username}
+                              </h4>
+
+                              {u.role === 'admin' && (
+                                <span className="px-2 py-0.5 rounded-md text-[9px]
+                        font-bold bg-indigo-100 text-indigo-700
+                        dark:bg-indigo-950 dark:text-indigo-300">
+                                  ADMIN
+                                </span>
+                              )}
+
+                              {u.isBanned && (
+                                <span className="px-2 py-0.5 rounded-md text-[9px]
+                        font-bold bg-rose-100 text-rose-700
+                        dark:bg-rose-950 dark:text-rose-300">
+                                  BANNED
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-xs text-slate-500 mt-1 break-all">
+                              @{u.username}
+                            </p>
+
+                            <div className="flex items-start gap-2 mt-2 text-xs
+                    text-slate-500 dark:text-slate-400">
+                              <Mail className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                              <span className="break-all">{u.email}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2 mt-2 text-xs
+                    text-slate-500 dark:text-slate-400">
+                              <CalendarDays className="w-3.5 h-3.5 shrink-0" />
+                              <span>
+                                Joined {u.createdAt
+                                  ? new Date(u.createdAt).toLocaleDateString()
+                                  : 'Unknown'}
                               </span>
-                            )}
-                            {u.isBanned && (
-                              <span className="px-1.5 py-0.5 text-[9px] bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 font-bold rounded">
-                                BANNED
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-slate-400 truncate">
-                            {u.email} · Registered {new Date(u.createdAt).toLocaleDateString()}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="flex items-center space-x-2 flex-shrink-0">
-                        <button
-                          onClick={() => handleToggleRole(u)}
-                          className="px-2.5 py-1 text-[11px] font-medium border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                        >
-                          {u.role === 'admin' ? 'Demote to User' : 'Make Admin'}
-                        </button>
+                        {/* Account Status */}
+                        <div className="flex items-center justify-between gap-2 mt-4
+                pt-3 border-t border-slate-100 dark:border-slate-800">
+                          <span className={`inline-flex items-center gap-1.5 text-xs
+                  font-medium ${u.isBanned
+                              ? 'text-rose-600 dark:text-rose-400'
+                              : 'text-emerald-600 dark:text-emerald-400'
+                            }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${u.isBanned ? 'bg-rose-500' : 'bg-emerald-500'
+                              }`} />
+                            {u.isBanned ? 'Banned' : 'Account active'}
+                          </span>
 
-                        {u.isBanned ? (
-                          <button
-                            onClick={() => handleUnban(u._id, u.username)}
-                            className="px-2.5 py-1 text-[11px] font-medium text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition"
-                          >
-                            Unban
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleBan(u._id, u.username)}
-                            className="px-2.5 py-1 text-[11px] font-medium text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition"
-                          >
-                            Ban User
-                          </button>
-                        )}
-
-                        {/* Admin Delete User Button */}
-                        <button
-                          onClick={() => handleDeleteUser(u)}
-                          disabled={u._id === user?._id}
-                          className="px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 dark:border-rose-900/60 rounded-lg transition flex items-center space-x-1 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                          title="Permanently Delete User"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Delete User</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* CHATS & SURVEILLANCE TAB */}
-          {activeTab === 'chats' && (
-            <div className="space-y-4">
-              {!selectedChat ? (
-                // Chat List Overview
-                <>
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                    <div className="relative flex-1">
-                      <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder="Search chats by group name or participant username..."
-                        value={chatQuery}
-                        onChange={(e) => setChatQuery(e.target.value)}
-                        className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                      />
-                    </div>
-
-                    <div className="flex items-center space-x-1.5 self-start sm:self-auto bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                      {['all', 'private', 'group'].map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => setChatTypeFilter(t)}
-                          className={`px-3 py-1 rounded-lg text-xs font-medium capitalize transition cursor-pointer ${chatTypeFilter === t
-                            ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                            }`}
-                        >
-                          {t === 'all' ? 'All Chats' : t === 'private' ? 'Direct DMs' : 'Groups'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {chats.length === 0 ? (
-                      <div className="col-span-2 py-12 text-center text-slate-400 text-xs">
-                        <MessageSquare className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
-                        No conversations found matching filters.
-                      </div>
-                    ) : (
-                      chats.map((conv) => {
-                        const isGrp = conv.type === 'group';
-                        const title = isGrp
-                          ? conv.groupDetails?.name || 'Unnamed Group'
-                          : conv.participants?.map((p) => p.nickname || p.username).join(' & ');
-
-                        return (
-                          <div
-                            key={conv._id}
-                            className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col justify-between hover:border-indigo-400 dark:hover:border-indigo-600 transition shadow-xs space-y-3"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex items-center space-x-3 min-w-0">
-                                <Avatar
-                                  src={isGrp ? conv.groupDetails?.avatar : conv.participants?.[0]?.avatar}
-                                  name={title}
-                                  size="md"
-                                />
-                                <div className="min-w-0">
-                                  <div className="flex items-center space-x-1.5">
-                                    <h4 className="font-semibold text-xs text-slate-800 dark:text-white truncate">
-                                      {title}
-                                    </h4>
-                                    <span
-                                      className={`px-1.5 py-0.5 text-[9px] font-bold rounded uppercase ${isGrp
-                                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
-                                        : 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
-                                        }`}
-                                    >
-                                      {conv.type}
-                                    </span>
-                                  </div>
-                                  <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                                    {conv.participants?.length} participants · {conv.messageCount || 0} messages
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Participants mini list */}
-                            <div className="flex flex-wrap gap-1 text-[10px]">
-                              {conv.participants?.map((p) => (
-                                <span
-                                  key={p._id}
-                                  className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md"
-                                >
-                                  @{p.username}
-                                </span>
-                              ))}
-                            </div>
-
-                            {/* Actions bar */}
-                            <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
-                              <span className="text-[10px] text-slate-400">
-                                Active {new Date(conv.updatedAt).toLocaleDateString()}
-                              </span>
-
-                              <div className="flex items-center space-x-2">
-                                <button
-                                  onClick={() => handleSelectChat(conv)}
-                                  className="px-3 py-1 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 font-semibold rounded-lg text-xs flex items-center space-x-1.5 transition cursor-pointer"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                  <span>View Messages</span>
-                                </button>
-
-                                <button
-                                  onClick={() => {
-                                    selectConversation(conv);
-                                    onClose();
-                                  }}
-                                  className="px-2.5 py-1 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-xs flex items-center space-x-1 transition cursor-pointer"
-                                  title="Open conversation directly in main chat window"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                  <span>Open</span>
-                                </button>
-
-                                <button
-                                  onClick={() => handleDeleteConversation(conv._id)}
-                                  className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition"
-                                  title="Delete entire conversation"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </>
-              ) : (
-                // Selected Chat Inspector View
-                <div className="flex flex-col h-[580px] bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden animate-in fade-in">
-                  {/* Chat Inspector Header */}
-                  <div className="p-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <button
-                        onClick={() => setSelectedChat(null)}
-                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 rounded-lg transition"
-                        title="Back to chats list"
-                      >
-                        <ArrowLeft className="w-4 h-4" />
-                      </button>
-
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <h3 className="font-semibold text-xs text-slate-900 dark:text-white">
-                            {selectedChat.type === 'group'
-                              ? selectedChat.groupDetails?.name
-                              : selectedChat.participants?.map((p) => p.nickname || p.username).join(' & ')}
-                          </h3>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded uppercase font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                            {selectedChat.type}
+                          <span className="text-[10px] text-slate-400">
+                            {u.role === 'admin' ? 'Administrator' : 'Member'}
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-400">
-                          {selectedChat.participants?.map((p) => `@${p.username}`).join(', ')}
-                        </p>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => {
-                          selectConversation(selectedChat);
-                          onClose();
-                        }}
-                        className="px-2.5 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg border border-indigo-200 dark:border-indigo-900/60 flex items-center space-x-1 transition cursor-pointer"
-                        title="Open this conversation in the main chat view"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        <span>Open in Chat</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleDeleteConversation(selectedChat._id)}
-                        className="px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg border border-rose-200 dark:border-rose-900/60 flex items-center space-x-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Delete Chat</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Messages Stream */}
-                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                    {loadingMessages ? (
-                      <div className="flex items-center justify-center h-full text-xs text-slate-400">
-                        Loading messages for this conversation...
-                      </div>
-                    ) : chatMessages.length === 0 ? (
-                      <div className="flex items-center justify-center h-full text-xs text-slate-400">
-                        No messages in this chat conversation.
-                      </div>
-                    ) : (
-                      chatMessages.map((msg) => {
-                        return (
-                          <div
-                            key={msg._id}
-                            className="p-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl space-y-1.5 text-xs shadow-xs group"
+                        {/* Management Actions */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRole(u)}
+                            disabled={u._id === user?._id}
+                            className="px-3 py-2 rounded-lg text-xs font-medium
+                    border border-slate-200 dark:border-slate-700
+                    text-slate-700 dark:text-slate-200
+                    hover:bg-slate-50 dark:hover:bg-slate-800
+                    disabled:opacity-40 disabled:cursor-not-allowed transition"
                           >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-2">
-                                <Avatar
-                                  src={msg.sender?.avatar}
-                                  name={msg.sender?.nickname || msg.sender?.username}
-                                  size="xs"
-                                />
-                                <span className="font-semibold text-slate-800 dark:text-white">
-                                  {msg.sender?.nickname || msg.sender?.username}
-                                </span>
-                                <span className="text-slate-400 text-[11px]">@{msg.sender?.username}</span>
-                                {msg.sender?.role === 'admin' && (
-                                  <span className="text-[9px] px-1 bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 rounded font-bold">
-                                    ADMIN
-                                  </span>
-                                )}
-                              </div>
+                            {u.role === 'admin' ? 'Demote to User' : 'Make Admin'}
+                          </button>
 
-                              <div className="flex items-center space-x-2">
-                                <span className="text-[10px] text-slate-400">
-                                  {new Date(msg.createdAt).toLocaleString()}
-                                </span>
-                                <button
-                                  onClick={() => handleDeleteChatMessage(msg._id)}
-                                  className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 rounded transition"
-                                  title="Delete message from chat"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
+                          {u.isBanned ? (
+                            <button
+                              type="button"
+                              onClick={() => handleUnban(u._id, u.username)}
+                              className="px-3 py-2 rounded-lg text-xs font-medium
+                      bg-emerald-50 dark:bg-emerald-950/40
+                      text-emerald-700 dark:text-emerald-300
+                      hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition"
+                            >
+                              Unban User
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleBan(u._id, u.username)}
+                              disabled={u._id === user?._id}
+                              className="px-3 py-2 rounded-lg text-xs font-medium
+                      bg-amber-50 dark:bg-amber-950/40
+                      text-amber-700 dark:text-amber-300
+                      hover:bg-amber-100 dark:hover:bg-amber-900/60
+                      disabled:opacity-40 disabled:cursor-not-allowed transition"
+                            >
+                              Ban User
+                            </button>
+                          )}
 
-                            {/* Message Content */}
-                            <div className="text-slate-700 dark:text-slate-200 pl-7 text-xs leading-relaxed">
-                              {msg.replyTo && (
-                                <div className="mb-1.5 p-1.5 rounded-md bg-slate-100 dark:bg-slate-800/80 border-l-2 border-indigo-500 text-[11px] text-slate-500 dark:text-slate-400">
-                                  <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-                                    @{msg.replyTo.sender?.nickname || msg.replyTo.sender?.username || 'User'}:
-                                  </span>{' '}
-                                  <span className="line-clamp-1">{msg.replyTo.content}</span>
-                                </div>
-                              )}
-
-                              {msg.messageType === 'call' ? (
-                                <div className="inline-flex items-center space-x-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300">
-                                  {msg.callMetadata?.callType === 'video' ? (
-                                    <Video className="w-4 h-4 text-indigo-500" />
-                                  ) : (
-                                    <Phone className="w-4 h-4 text-emerald-500" />
-                                  )}
-                                  <span>
-                                    {msg.callMetadata?.status === 'completed'
-                                      ? `Call ended (${Math.floor(msg.callMetadata?.duration / 60)}m ${msg.callMetadata?.duration % 60}s)`
-                                      : `Missed call`}
-                                  </span>
-                                </div>
-                              ) : (
-                                <div className="space-y-1">
-                                  {msg.wasEncrypted && (
-                                    <div className="flex items-center space-x-1 mb-0.5">
-                                      <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] rounded font-medium">
-                                        <Lock className="w-2.5 h-2.5" />
-                                        <span>Decrypted E2EE</span>
-                                      </span>
-                                    </div>
-                                  )}
-                                  <p className="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100 text-xs leading-relaxed">
-                                    {msg.content}
-                                  </p>
-                                </div>
-                              )}
-
-                              {/* Media/file attachments */}
-                              {msg.fileUrl && (
-                                <div className="mt-2">
-                                  {msg.messageType === 'image' ? (
-                                    <img
-                                      src={msg.fileUrl}
-                                      alt="attachment"
-                                      className="max-h-48 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
-                                    />
-                                  ) : (
-                                    <a
-                                      href={msg.fileUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center space-x-2 p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-indigo-600 dark:text-indigo-400"
-                                    >
-                                      <File className="w-4 h-4" />
-                                      <span>{msg.fileName || 'Attached file'}</span>
-                                      <ExternalLink className="w-3 h-3 ml-1 opacity-70" />
-                                    </a>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteUser(u)}
+                            disabled={u._id === user?._id}
+                            className="sm:col-span-2 flex items-center justify-center gap-2
+                    px-3 py-2 rounded-lg text-xs font-semibold
+                    border border-rose-200 dark:border-rose-900/60
+                    text-rose-600 dark:text-rose-400
+                    hover:bg-rose-600 hover:text-white
+                    disabled:opacity-40 disabled:cursor-not-allowed transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Permanently Delete Account
+                          </button>
+                        </div>
+                      </article>
+                    ))}
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
+
 
           {/* REPORTS TAB */}
           {activeTab === 'reports' && (
