@@ -32,3 +32,6 @@ server/uploads/*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Plans
+.nextplan.md
