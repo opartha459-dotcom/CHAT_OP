@@ -408,8 +408,8 @@ export const AdminModal = ({ isOpen, onClose }) => {
                   if (tab.id !== 'chats') setSelectedChat(null);
                 }}
                 className={`flex items-center space-x-2 py-3 px-3.5 text-xs font-medium border-b-2 transition whitespace-nowrap cursor-pointer ${isActive
-                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                   }`}
               >
                 <Icon className="w-4 h-4" />
@@ -614,8 +614,8 @@ export const AdminModal = ({ isOpen, onClose }) => {
                           key={t}
                           onClick={() => setChatTypeFilter(t)}
                           className={`px-3 py-1 rounded-lg text-xs font-medium capitalize transition cursor-pointer ${chatTypeFilter === t
-                              ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                            ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                             }`}
                         >
                           {t === 'all' ? 'All Chats' : t === 'private' ? 'Direct DMs' : 'Groups'}
@@ -656,8 +656,8 @@ export const AdminModal = ({ isOpen, onClose }) => {
                                     </h4>
                                     <span
                                       className={`px-1.5 py-0.5 text-[9px] font-bold rounded uppercase ${isGrp
-                                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
-                                          : 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
+                                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+                                        : 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
                                         }`}
                                     >
                                       {conv.type}
@@ -1155,10 +1155,33 @@ export const AdminModal = ({ isOpen, onClose }) => {
                   >
                     {filteredLogs.map((log) => {
                       const actor = log.actor?.username || 'System';
-                      const details =
-                        typeof log.details === 'string'
+                      const details = (() => {
+                        if (typeof log.details === 'string') {
+                          try {
+                            return JSON.parse(log.details);
+                          } catch {
+                            return { description: log.details };
+                          }
+                        }
+
+                        return log.details && typeof log.details === 'object'
                           ? log.details
-                          : JSON.stringify(log.details ?? {}, null, 2);
+                          : {};
+                      })();
+
+                      const formatLabel = (key) =>
+                        key
+                          .replace(/([a-z])([A-Z])/g, '$1 $2')
+                          .replace(/[_-]/g, ' ')
+                          .replace(/\b\w/g, (char) => char.toUpperCase());
+
+                      const formatValue = (value) => {
+                        if (value === null || value === undefined) return '—';
+                        if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+                        if (Array.isArray(value)) return value.join(', ') || 'None';
+                        if (typeof value === 'object') return JSON.stringify(value);
+                        return String(value);
+                      };
 
                       return (
                         <article
@@ -1234,13 +1257,32 @@ export const AdminModal = ({ isOpen, onClose }) => {
                               Event Details
                             </p>
 
-                            <pre className="text-xs leading-relaxed whitespace-pre-wrap
-                    break-words overflow-x-auto max-h-40 overflow-y-auto
-                    p-3 rounded-xl bg-slate-50 dark:bg-slate-950/70
-                    border border-slate-100 dark:border-slate-800
-                    text-slate-600 dark:text-slate-300 font-mono">
-                              {details}
-                            </pre>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {Object.entries(details).length === 0 ? (
+                                <p className="text-xs text-slate-400">
+                                  No additional details available.
+                                </p>
+                              ) : (
+                                Object.entries(details).map(([key, value]) => (
+                                  <div
+                                    key={key}
+                                    className="min-w-0 rounded-xl border border-slate-200
+          dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60
+          p-3"
+                                  >
+                                    <p className="text-[10px] uppercase tracking-wider font-semibold
+          text-slate-400 mb-1">
+                                      {formatLabel(key)}
+                                    </p>
+
+                                    <p className="text-sm font-medium text-slate-800
+          dark:text-slate-100 break-words">
+                                      {formatValue(value)}
+                                    </p>
+                                  </div>
+                                ))
+                              )}
+                            </div>
                           </div>
                         </article>
                       );
