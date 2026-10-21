@@ -59,7 +59,8 @@ export const AdminModal = ({ isOpen, onClose }) => {
   const [auditView, setAuditView] = useState('grid');
   const [auditQuery, setAuditQuery] = useState('');
   const [auditActionFilter, setAuditActionFilter] = useState('all');
-  // const [userView, setUserView] = useState('grid');
+  const [userView, setUserView] = useState('grid');
+  const [userStatusFilter, setUserStatusFilter] = useState('all');
 
   const authHeaders = () => ({
     'Content-Type': 'application/json',
@@ -505,94 +506,305 @@ export const AdminModal = ({ isOpen, onClose }) => {
           )}
 
           {/* USERS TAB */}
+
+          {/* USERS TAB */}
           {activeTab === 'users' && (
-            <div className="space-y-3">
+            <div className="space-y-4">
+
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                    User Accounts
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Manage accounts, permissions, and account status.
+                  </p>
+                </div>
+
+                <span className="w-fit px-3 py-1.5 rounded-xl text-xs font-semibold
+        bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60
+        dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900">
+                  {users.length} Loaded Accounts
+                </span>
+              </div>
+
+              {/* Search */}
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2
+        -translate-y-1/2 text-slate-400" />
+
                 <input
                   type="text"
-                  placeholder="Search by username, nickname, or email..."
+                  placeholder="Search username, nickname, or email..."
                   value={userQuery}
                   onChange={(e) => setUserQuery(e.target.value)}
-                  className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  className="w-full pl-10 pr-4 py-3 text-sm
+          bg-white dark:bg-slate-900
+          border border-slate-200 dark:border-slate-700
+          rounded-xl text-slate-800 dark:text-white
+          placeholder:text-slate-400
+          focus:outline-none focus:ring-2 focus:ring-indigo-500/30
+          focus:border-indigo-500 transition"
                 />
               </div>
 
-              <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-                {users.length === 0 ? (
-                  <div className="p-8 text-center text-xs text-slate-400">No users found matching query.</div>
-                ) : (
-                  users.map((u) => (
-                    <div
-                      key={u._id}
-                      className="p-3.5 bg-white dark:bg-slate-900 flex flex-wrap items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-xs transition"
+              {/* Filters + View Switcher */}
+              <div className="flex flex-col xl:flex-row xl:items-center
+      xl:justify-between gap-3">
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {[
+                    { id: 'all', label: 'All Accounts' },
+                    { id: 'admin', label: 'Admins' },
+                    { id: 'user', label: 'Users' },
+                    { id: 'banned', label: 'Banned' },
+                    { id: 'active', label: 'Active' }
+                  ].map((filter) => (
+                    <button
+                      key={filter.id}
+                      type="button"
+                      onClick={() => setUserStatusFilter(filter.id)}
+                      className={`px-3 py-2 rounded-lg text-xs font-semibold
+              border transition ${userStatusFilter === filter.id
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                        }`}
                     >
-                      <div className="flex items-center space-x-3 min-w-0">
-                        <Avatar src={u.avatar} name={u.nickname || u.username} size="sm" />
-                        <div className="min-w-0">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-semibold text-slate-800 dark:text-white truncate">
-                              {u.nickname || u.username}
-                            </span>
-                            <span className="text-slate-400 truncate">@{u.username}</span>
-                            {u.role === 'admin' && (
-                              <span className="px-1.5 py-0.5 text-[9px] bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-bold rounded">
-                                ADMIN
-                              </span>
-                            )}
-                            {u.isBanned && (
-                              <span className="px-1.5 py-0.5 text-[9px] bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 font-bold rounded">
-                                BANNED
-                              </span>
-                            )}
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-1 p-1 rounded-xl
+        bg-slate-100 dark:bg-slate-800
+        border border-slate-200 dark:border-slate-700 w-fit">
+
+                  <button
+                    type="button"
+                    onClick={() => setUserView('grid')}
+                    aria-pressed={userView === 'grid'}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg
+            text-xs font-semibold transition ${userView === 'grid'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                    Grid
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUserView('list')}
+                    aria-pressed={userView === 'list'}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg
+            text-xs font-semibold transition ${userView === 'list'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                  >
+                    <List className="w-4 h-4" />
+                    List
+                  </button>
+                </div>
+              </div>
+
+              {/* User Results */}
+              {(() => {
+                const filteredUsers = users.filter((u) => {
+                  if (userStatusFilter === 'admin' && u.role !== 'admin') return false;
+                  if (userStatusFilter === 'user' && u.role !== 'user') return false;
+                  if (userStatusFilter === 'banned' && !u.isBanned) return false;
+                  if (userStatusFilter === 'active' && u.isBanned) return false;
+                  return true;
+                });
+
+                const isGrid = userView === 'grid';
+
+                if (filteredUsers.length === 0) {
+                  return (
+                    <div className="py-14 text-center rounded-2xl
+            border border-dashed border-slate-300 dark:border-slate-700
+            bg-slate-50/70 dark:bg-slate-900/50">
+
+                      <Users className="w-10 h-10 mx-auto mb-3 text-slate-400" />
+
+                      <h4 className="text-sm font-semibold text-slate-800 dark:text-white">
+                        No accounts found
+                      </h4>
+
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Try another search term or account filter.
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserQuery('');
+                          setUserStatusFilter('all');
+                        }}
+                        className="mt-3 px-3 py-2 text-xs font-semibold
+                text-indigo-600 dark:text-indigo-400
+                hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg"
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      Showing {filteredUsers.length} account(s)
+                    </div>
+
+                    <div className={isGrid
+                      ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4'
+                      : 'flex flex-col gap-3'
+                    }>
+                      {filteredUsers.map((u) => (
+                        <div
+                          key={u._id}
+                          className={`min-w-0 bg-white dark:bg-slate-900
+                  border border-slate-200 dark:border-slate-800
+                  rounded-2xl hover:border-indigo-400
+                  dark:hover:border-indigo-700
+                  hover:shadow-md hover:shadow-indigo-950/5
+                  transition-all duration-200
+                  ${isGrid ? 'p-4 space-y-4' : 'p-4 flex flex-col lg:flex-row lg:items-center gap-4'}`}
+                        >
+
+                          {/* Account Information */}
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <Avatar
+                              src={u.avatar}
+                              name={u.nickname || u.username}
+                              size="md"
+                            />
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-semibold text-sm text-slate-800
+                        dark:text-white break-words">
+                                  {u.nickname || u.username}
+                                </span>
+
+                                {u.role === 'admin' && (
+                                  <span className="px-2 py-0.5 text-[9px] font-bold
+                          rounded-md bg-indigo-100 text-indigo-700
+                          dark:bg-indigo-950 dark:text-indigo-300">
+                                    ADMIN
+                                  </span>
+                                )}
+
+                                {u.isBanned && (
+                                  <span className="px-2 py-0.5 text-[9px] font-bold
+                          rounded-md bg-rose-100 text-rose-700
+                          dark:bg-rose-950 dark:text-rose-300">
+                                    BANNED
+                                  </span>
+                                )}
+
+                                {!u.isBanned && (
+                                  <span className="px-2 py-0.5 text-[9px] font-bold
+                          rounded-md bg-emerald-100 text-emerald-700
+                          dark:bg-emerald-950 dark:text-emerald-300">
+                                    ACTIVE
+                                  </span>
+                                )}
+                              </div>
+
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">
+                                @{u.username}
+                              </p>
+
+                              <p className="text-xs text-slate-400 mt-1 break-all">
+                                {u.email}
+                              </p>
+
+                              <p className="text-[11px] text-slate-400 mt-1">
+                                Registered {u.createdAt
+                                  ? new Date(u.createdAt).toLocaleDateString()
+                                  : 'Unknown'}
+                              </p>
+                            </div>
                           </div>
-                          <div className="text-[11px] text-slate-400 truncate">
-                            {u.email} · Registered {new Date(u.createdAt).toLocaleDateString()}
+
+                          {/* Account Actions */}
+                          <div className={`flex flex-wrap items-center gap-2 ${isGrid
+                            ? 'pt-3 border-t border-slate-100 dark:border-slate-800'
+                            : 'lg:justify-end lg:max-w-[460px]'
+                            }`}>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleRole(u)}
+                              disabled={u._id === user?._id}
+                              className="px-3 py-2 text-xs font-medium rounded-lg
+                      border border-slate-200 dark:border-slate-700
+                      text-slate-600 dark:text-slate-300
+                      hover:bg-slate-100 dark:hover:bg-slate-800
+                      disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {u.role === 'admin' ? 'Demote' : 'Make Admin'}
+                            </button>
+
+                            {u.isBanned ? (
+                              <button
+                                type="button"
+                                onClick={() => handleUnban(u._id, u.username)}
+                                className="px-3 py-2 text-xs font-medium rounded-lg
+                        text-emerald-700 dark:text-emerald-300
+                        bg-emerald-50 dark:bg-emerald-950/40
+                        hover:bg-emerald-100 dark:hover:bg-emerald-950"
+                              >
+                                Unban
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleBan(u._id, u.username)}
+                                disabled={u._id === user?._id}
+                                className="px-3 py-2 text-xs font-medium rounded-lg
+                        text-amber-700 dark:text-amber-300
+                        bg-amber-50 dark:bg-amber-950/40
+                        hover:bg-amber-100 dark:hover:bg-amber-950
+                        disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                Ban User
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUser(u)}
+                              disabled={u._id === user?._id}
+                              title="Permanently delete user"
+                              className="px-3 py-2 text-xs font-semibold rounded-lg
+                      text-rose-600 border border-rose-200
+                      dark:border-rose-900/60
+                      hover:bg-rose-600 hover:text-white
+                      disabled:opacity-40 disabled:cursor-not-allowed
+                      transition"
+                            >
+                              <span className="inline-flex items-center gap-1.5">
+                                <Trash2 className="w-3.5 h-3.5" />
+                                Delete
+                              </span>
+                            </button>
+
                           </div>
                         </div>
-                      </div>
-
-                      <div className="flex items-center space-x-2 flex-shrink-0">
-                        <button
-                          onClick={() => handleToggleRole(u)}
-                          className="px-2.5 py-1 text-[11px] font-medium border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                        >
-                          {u.role === 'admin' ? 'Demote to User' : 'Make Admin'}
-                        </button>
-
-                        {u.isBanned ? (
-                          <button
-                            onClick={() => handleUnban(u._id, u.username)}
-                            className="px-2.5 py-1 text-[11px] font-medium text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition"
-                          >
-                            Unban
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleBan(u._id, u.username)}
-                            className="px-2.5 py-1 text-[11px] font-medium text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition"
-                          >
-                            Ban User
-                          </button>
-                        )}
-
-                        {/* Admin Delete User Button */}
-                        <button
-                          onClick={() => handleDeleteUser(u)}
-                          disabled={u._id === user?._id}
-                          className="px-2.5 py-1 text-[11px] font-semibold text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 dark:border-rose-900/60 rounded-lg transition flex items-center space-x-1 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-                          title="Permanently Delete User"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Delete User</span>
-                        </button>
-                      </div>
+                      ))}
                     </div>
-                  ))
-                )}
-              </div>
+                  </>
+                );
+              })()}
             </div>
           )}
+
 
           {/* CHATS & SURVEILLANCE TAB */}
           {activeTab === 'chats' && (
