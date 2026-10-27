@@ -6,11 +6,16 @@ import {
   X,
   File,
   Image as ImageIcon,
-  AlertCircle
+  AlertCircle,
+  BarChart2,
+  Mic
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { useSocket } from '../../context/SocketContext';
+import { CreatePollModal } from './CreatePollModal';
+import { VoiceRecorder } from './VoiceRecorder';
+import { useFeatureFlags } from '../../context/FeatureFlagsContext';
 
 const EMOJI_LIST = [
   '😀', '😂', '😍', '🥳', '😎', '👍', '🔥', '🎉',
@@ -22,16 +27,31 @@ export const MessageInput = () => {
   const { user, token } = useAuth();
   const { activeConversation, replyMessage, setReplyMessage, sendMessage } = useChat();
   const { sendTypingStart, sendTypingStop } = useSocket();
+  const { featureFlags } = useFeatureFlags();
 
   const [text, setText] = useState('');
   const [fileAttachment, setFileAttachment] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [showEmojis, setShowEmojis] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [pollModalOpen, setPollModalOpen] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
 
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+
+  const handleVoiceSent = async ({ url, name, size, mimeType }) => {
+    setIsRecordingVoice(false);
+    await sendMessage({
+      content: '🎙️ Voice note',
+      fileUrl: url,
+      fileName: name,
+      fileSize: size,
+      fileMimeType: mimeType,
+      messageType: 'audio'
+    });
+  };
 
   // Group permission check: if onlyAdminsCanMessage is true, verify user is owner or admin
   const isGroup = activeConversation?.type === 'group';
@@ -197,74 +217,114 @@ export const MessageInput = () => {
         </div>
       )}
 
-      {/* Main Input Row */}
-      <div className="flex items-end space-x-2">
-        {/* Attachment button */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          className="hidden"
+      {/* Main Input Row or Voice Recorder */}
+      {isRecordingVoice ? (
+        <VoiceRecorder
+          onSendVoice={handleVoiceSent}
+          onCancel={() => setIsRecordingVoice(false)}
         />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="p-2.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
-          title="Attach file or photo"
-        >
-          <Paperclip className="w-5 h-5" />
-        </button>
+      ) : (
+        <div className="flex items-end space-x-2">
+          {/* Attachment button */}
+          {featureFlags.fileSharingEnabled !== false && (
+            <>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="p-2.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
+                title="Attach file or photo"
+              >
+                <Paperclip className="w-5 h-5" />
+              </button>
+            </>
+          )}
 
-        {/* Emoji picker toggle */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowEmojis(!showEmojis)}
-            className="p-2.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
-            title="Emoji picker"
-          >
-            <Smile className="w-5 h-5" />
-          </button>
+          {/* Emoji picker toggle */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowEmojis(!showEmojis)}
+              className="p-2.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+              title="Emoji picker"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
 
-          {showEmojis && (
-            <div className="absolute bottom-full mb-2 left-0 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-30 grid grid-cols-6 gap-2 w-64 animate-in fade-in zoom-in-95">
-              {EMOJI_LIST.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => setText((prev) => prev + emoji)}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-lg text-center hover:scale-125 transition"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+            {showEmojis && (
+              <div className="absolute bottom-full mb-2 left-0 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-30 grid grid-cols-6 gap-2 w-64 animate-in fade-in zoom-in-95">
+                {EMOJI_LIST.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => setText((prev) => prev + emoji)}
+                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-lg text-center hover:scale-125 transition"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Poll creator button */}
+          {featureFlags.pollsEnabled !== false && (
+            <button
+              type="button"
+              onClick={() => setPollModalOpen(true)}
+              className="p-2.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
+              title="Create a Poll"
+            >
+              <BarChart2 className="w-5 h-5" />
+            </button>
+          )}
+
+          {/* Text Area */}
+          <textarea
+            ref={textareaRef}
+            rows={1}
+            placeholder="Type an encrypted message..."
+            value={text}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            className="flex-1 max-h-32 min-h-[42px] px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none leading-relaxed"
+          />
+
+          {/* Send OR Voice Record button */}
+          {!text.trim() && !fileAttachment && featureFlags.voiceMessagesEnabled !== false ? (
+            <button
+              type="button"
+              onClick={() => setIsRecordingVoice(true)}
+              className="p-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-md transition hover:scale-105 active:scale-95 cursor-pointer"
+              title="Record voice note"
+            >
+              <Mic className="w-5 h-5" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={uploading || (!text.trim() && !fileAttachment)}
+              className="p-2.5 bg-accent bg-accent-hover disabled:opacity-40 text-white rounded-2xl shadow-md transition hover:scale-105 active:scale-95 cursor-pointer"
+              title="Send"
+            >
+              <Send className="w-5 h-5" />
+            </button>
           )}
         </div>
+      )}
 
-        {/* Text Area */}
-        <textarea
-          ref={textareaRef}
-          rows={1}
-          placeholder="Type an encrypted message..."
-          value={text}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          className="flex-1 max-h-32 min-h-[42px] px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none leading-relaxed"
-        />
-
-        {/* Send button */}
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={uploading || (!text.trim() && !fileAttachment)}
-          className="p-2.5 bg-accent bg-accent-hover disabled:opacity-40 text-white rounded-2xl shadow-md transition hover:scale-105 active:scale-95"
-          title="Send"
-        >
-          <Send className="w-5 h-5" />
-        </button>
-      </div>
+      <CreatePollModal
+        isOpen={pollModalOpen}
+        onClose={() => setPollModalOpen(false)}
+        conversationId={activeConversation?._id}
+      />
     </div>
   );
 };

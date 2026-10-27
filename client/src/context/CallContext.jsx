@@ -63,6 +63,7 @@ export const CallProvider = ({ children }) => {
   const callStateRef = useRef(callState);
   const callTimerRef = useRef(null);
   const pendingJoinCallIdRef = useRef(null);
+  const acceptingCallIdRef = useRef(null);
 
   // Sync ref
   useEffect(() => {
@@ -135,6 +136,8 @@ export const CallProvider = ({ children }) => {
     setRemoteStreams({});
     setCallState('idle');
     setCurrentCall(null);
+    acceptingCallIdRef.current = null;
+    pendingJoinCallIdRef.current = null;
     setIsAudioMuted(false);
     setIsVideoOff(false);
     setIsScreenSharing(false);
@@ -324,14 +327,25 @@ export const CallProvider = ({ children }) => {
 
   // Reject incoming call
   const rejectCall = useCallback(() => {
-    if (!socket || !currentCall) return;
+    if (!currentCall) return;
+    const callId = currentCall.callId;
     stopRingtone();
 
-    socket.emit('call:reject', {
-      callId: currentCall.callId,
-      callerId: currentCall.caller?._id,
-      conversationId: currentCall.conversationId
-    });
+    if (socket && socket.connected) {
+      socket.emit('call:reject', {
+        callId,
+        callerId: currentCall.caller?._id,
+        conversationId: currentCall.conversationId
+      });
+    }
+
+    try {
+      fetch(`/api/users/call/${encodeURIComponent(callId)}/decline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'declined' })
+      }).catch(() => {});
+    } catch (e) {}
 
     cleanupCall();
   }, [socket, currentCall, cleanupCall]);
@@ -343,9 +357,26 @@ export const CallProvider = ({ children }) => {
     const callToAccept = (!isEvent && incomingCallOverride && incomingCallOverride.callId) ? incomingCallOverride : currentCall;
     if (!callToAccept || !callToAccept.callId) return;
 
+    // Prevent duplicate concurrent execution
+    if (acceptingCallIdRef.current === callToAccept.callId) {
+      return;
+    }
+    acceptingCallIdRef.current = callToAccept.callId;
+
     try {
       stopRingtone();
       playCallConnectedSound();
+
+      // Immediately inform caller via REST and Socket so caller's ringback halts right away
+      try {
+        fetch(`/api/users/call/${encodeURIComponent(callToAccept.callId)}/answer`, {
+          method: 'POST'
+        }).catch(() => {});
+      } catch (e) {}
+
+      if (socket && socket.connected) {
+        socket.emit('call:accept', { callId: callToAccept.callId });
+      }
 
       await acquireMedia(callToAccept.callType || 'video');
       setCurrentCall(callToAccept);
@@ -374,6 +405,7 @@ export const CallProvider = ({ children }) => {
 
       joinCall();
     } catch (err) {
+      acceptingCallIdRef.current = null;
       alert(err.message || 'Could not access camera/microphone.');
       rejectCall();
     }
@@ -646,6 +678,14 @@ export const CallProvider = ({ children }) => {
       const msg = event.data;
       if (!msg) return;
 
+      if (msg.type === 'INCOMING_CALL_DECLINED') {
+        if (currentCallRef.current?.callId === msg.callId || callStateRef.current === 'incoming') {
+          stopRingtone();
+          cleanupCall();
+        }
+        return;
+      }
+
       if ((msg.type === 'INCOMING_CALL_POPUP' || msg.type === 'INCOMING_CALL_ACTION') && (msg.callData || msg.callId)) {
         const d = msg.callData || {};
         const callInfo = {
@@ -788,6 +828,21 @@ export const CallProvider = ({ children }) => {
       }
     });
 
+    // Call Accepted listener (caller receives acceptance notification)
+    socket.on('call:accepted', ({ callId }) => {
+      if (currentCallRef.current?.callId === callId || callStateRef.current === 'outgoing') {
+        stopRingtone();
+        playCallConnectedSound();
+        setCallState('connected');
+
+        if (!callTimerRef.current) {
+          callTimerRef.current = setInterval(() => {
+            setCallDuration((prev) => prev + 1);
+          }, 1000);
+        }
+      }
+    });
+
     // Existing participants when joined
     socket.on('call:existing-participants', ({ participants }) => {
       playCallConnectedSound();
@@ -808,7 +863,7 @@ export const CallProvider = ({ children }) => {
 
     // A new user joined the call
     socket.on('call:user-joined', ({ participant }) => {
-      if (callState === 'outgoing') {
+      if (callStateRef.current === 'outgoing') {
         stopRingtone();
         playCallConnectedSound();
         setCallState('connected');
@@ -963,6 +1018,7 @@ export const CallProvider = ({ children }) => {
       socket.off('call:cancelled');
       socket.off('call:busy');
       socket.off('call:rejected');
+      socket.off('call:accepted');
       socket.off('call:existing-participants');
       socket.off('call:user-joined');
       socket.off('call:signal');
@@ -971,7 +1027,7 @@ export const CallProvider = ({ children }) => {
       socket.off('call:reaction-received');
       socket.off('call:hand-toggled');
     };
-  }, [socket, callState, createPeerConnection, removePeer, endCall, cleanupCall]);
+  }, [socket, createPeerConnection, removePeer, endCall, cleanupCall]);
 
   return (
     <CallContext.Provider

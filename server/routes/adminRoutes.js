@@ -7,13 +7,21 @@ const {
   banUser,
   unbanUser,
   updateUserRole,
+  updateUserAdmin,
   getReports,
   resolveReport,
   getAuditLogs,
+  deleteAuditLogs,
   getAllChats,
   getChatMessages,
   deleteChat,
-  deleteAdminMessage
+  deleteAdminMessage,
+  getDatabaseStatus,
+  getSystemSettings,
+  updateSystemSettings,
+  getRecoveryRequests,
+  resolveRecoveryRequest,
+  runManualRetention
 } = require('../controllers/adminController');
 const { protect } = require('../middlewares/auth');
 const { requireAdmin } = require('../middlewares/adminAuth');
@@ -23,6 +31,7 @@ router.use(requireAdmin);
 
 router.get('/stats', getDashboardStats);
 router.get('/users', getUsers);
+router.put('/users/:id', updateUserAdmin);
 router.delete('/users/:id', deleteUser);
 router.post('/users/:id/ban', banUser);
 router.post('/users/:id/unban', unbanUser);
@@ -30,6 +39,15 @@ router.post('/users/:id/role', updateUserRole);
 router.get('/reports', getReports);
 router.post('/reports/:id/resolve', resolveReport);
 router.get('/audit-logs', getAuditLogs);
+router.delete('/audit-logs', deleteAuditLogs);
+
+// System & Database Management
+router.get('/database/status', getDatabaseStatus);
+router.post('/retention/run', runManualRetention);
+router.get('/settings', getSystemSettings);
+router.put('/settings', updateSystemSettings);
+router.get('/recoveries', getRecoveryRequests);
+router.post('/recoveries/:id/resolve', resolveRecoveryRequest);
 
 // Platform Chat Monitoring & Moderation
 router.get('/chats', getAllChats);

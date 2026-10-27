@@ -14,8 +14,10 @@ import {
   Users,
   ChevronLeft,
   Phone,
-  Video
+  Video,
+  Settings
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { useSocket } from '../../context/SocketContext';
 import { useCall } from '../../context/CallContext';
@@ -23,11 +25,14 @@ import { Avatar } from '../common/Avatar';
 import { ExportModal } from '../modals/ExportModal';
 import { ReportModal } from '../modals/ReportModal';
 import { E2EEVerifyModal } from '../modals/E2EEVerifyModal';
+import { useFeatureFlags } from '../../context/FeatureFlagsContext';
 
 export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
-  const { activeConversation, togglePin, toggleArchive, toggleMute, deleteConversation, selectConversation } = useChat();
+  const { user } = useAuth();
+  const { activeConversation, togglePin, toggleArchive, toggleMute, deleteConversation, selectConversation, setMainTab } = useChat();
   const { onlineUsers, typingMap } = useSocket();
   const { startCall } = useCall();
+  const { featureFlags } = useFeatureFlags();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -124,6 +129,8 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
               ? (activeConversation.otherUser ||
                  activeConversation.participants?.find((p) => (p._id || p)?.toString() !== user?._id?.toString()))
               : null;
+
+            if (featureFlags.callsEnabled === false) return null;
 
             return (
               <>
@@ -251,6 +258,18 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
                   <span>Report Abuse</span>
                 </button>
 
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setMainTab('settings');
+                    selectConversation(null);
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 text-purple-600 dark:text-purple-400 font-medium flex items-center space-x-2"
+                >
+                  <Settings className="w-4 h-4 text-purple-500" />
+                  <span>Settings</span>
+                </button>
+
                 <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
 
                 <button
@@ -269,6 +288,55 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
           </div>
         </div>
       </div>
+
+      {/* Pinned Messages Strip (Max 2 pins) */}
+      {activeConversation.pinnedMessages && activeConversation.pinnedMessages.length > 0 && (
+        <div className="bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 px-4 py-2 flex items-center justify-between text-xs animate-in slide-in-from-top-2 duration-200 select-none">
+          <div className="flex items-center space-x-2.5 overflow-hidden flex-1 mr-3">
+            <div className="w-6 h-6 rounded-lg bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0">
+              <Pin className="w-3.5 h-3.5 fill-amber-500/30" />
+            </div>
+            <div className="flex items-center space-x-2 overflow-hidden flex-1">
+              {activeConversation.pinnedMessages.map((pin, idx) => {
+                const msg = pin.message || {};
+                const senderName = msg.sender?.nickname || msg.sender?.username || 'User';
+                const snippet = msg.messageType === 'poll'
+                  ? `📊 ${msg.poll?.question || 'Poll'}`
+                  : (msg.content || 'Shared attachment');
+
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      const el = document.getElementById(`msg-${msg._id}`);
+                      if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        el.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-500/10', 'rounded-2xl');
+                        setTimeout(() => {
+                          el.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-500/10', 'rounded-2xl');
+                        }, 2000);
+                      }
+                    }}
+                    className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 hover:border-indigo-500 transition max-w-xs truncate text-left cursor-pointer group"
+                    title="Click to jump to message"
+                  >
+                    <span className="font-semibold text-slate-700 dark:text-slate-200 text-[11px] group-hover:text-indigo-500">
+                      {senderName}:
+                    </span>
+                    <span className="text-slate-500 dark:text-slate-400 text-[11px] truncate">
+                      {snippet}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider flex-shrink-0">
+            {activeConversation.pinnedMessages.length} Pinned
+          </span>
+        </div>
+      )}
 
       <ExportModal
         isOpen={exportModalOpen}

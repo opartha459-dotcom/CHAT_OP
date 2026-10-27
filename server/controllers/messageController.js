@@ -406,6 +406,406 @@ const getCallHistory = async (req, res) => {
   }
 };
 
+// @desc Pin a message in conversation (Max 2 pins)
+// @route POST /api/messages/:id/pin
+const pinMessage = async (req, res) => {
+  try {
+    const { id: messageId } = req.params;
+    const currentUserId = req.user._id;
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ success: false, message: 'Message not found.' });
+    }
+
+    const conversation = await Conversation.findOne({
+      _id: message.conversation,
+      participants: currentUserId
+    });
+    if (!conversation) {
+      return res.status(403).json({ success: false, message: 'Access denied to this conversation.' });
+    }
+
+    // In groups, check admin restriction if onlyAdminsCanMessage is enabled
+    if (conversation.type === 'group' && conversation.groupDetails?.onlyAdminsCanMessage) {
+      const isAdmin = conversation.groupDetails.admins?.some(a => a.toString() === currentUserId.toString());
+      const isOwner = conversation.groupDetails.owner?.toString() === currentUserId.toString();
+      if (!isAdmin && !isOwner) {
+        return res.status(403).json({ success: false, message: 'Only group admins can pin messages.' });
+      }
+    }
+
+    if (!conversation.pinnedMessages) {
+      conversation.pinnedMessages = [];
+    }
+
+    const alreadyPinned = conversation.pinnedMessages.some(p => p.message.toString() === messageId.toString());
+    if (alreadyPinned) {
+      return res.status(400).json({ success: false, message: 'Message is already pinned.' });
+    }
+
+    // Max 2 pinned messages allowed per conversation: unpin oldest if needed
+    if (conversation.pinnedMessages.length >= 2) {
+      const unpinned = conversation.pinnedMessages.shift();
+      await Message.findByIdAndUpdate(unpinned.message, { isPinned: false });
+    }
+
+    conversation.pinnedMessages.push({
+      message: messageId,
+      pinnedBy: currentUserId,
+      pinnedAt: new Date()
+    });
+
+    message.isPinned = true;
+    await message.save();
+    await conversation.save();
+
+    await conversation.populate([
+      {
+        path: 'pinnedMessages.message',
+        populate: [
+          { path: 'sender', select: 'username nickname avatar' },
+          { path: 'replyTo', select: 'content sender' }
+        ]
+      },
+      { path: 'pinnedMessages.pinnedBy', select: 'username nickname avatar' }
+    ]);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(conversation._id.toString()).emit('message:pinned', {
+        conversationId: conversation._id,
+        pinnedMessages: conversation.pinnedMessages
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Message pinned successfully.',
+      pinnedMessages: conversation.pinnedMessages
+    });
+  } catch (error) {
+    console.error('[Pin Message Error]', error);
+    return res.status(500).json({ success: false, message: 'Error pinning message.' });
+  }
+};
+
+// @desc Unpin a message in conversation
+// @route DELETE /api/messages/:id/pin
+const unpinMessage = async (req, res) => {
+  try {
+    const { id: messageId } = req.params;
+    const currentUserId = req.user._id;
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ success: false, message: 'Message not found.' });
+    }
+
+    const conversation = await Conversation.findOne({
+      _id: message.conversation,
+      participants: currentUserId
+    });
+    if (!conversation) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    conversation.pinnedMessages = (conversation.pinnedMessages || []).filter(
+      p => p.message.toString() !== messageId.toString()
+    );
+
+    message.isPinned = false;
+    await message.save();
+    await conversation.save();
+
+    await conversation.populate([
+      {
+        path: 'pinnedMessages.message',
+        populate: [
+          { path: 'sender', select: 'username nickname avatar' },
+          { path: 'replyTo', select: 'content sender' }
+        ]
+      },
+      { path: 'pinnedMessages.pinnedBy', select: 'username nickname avatar' }
+    ]);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(conversation._id.toString()).emit('message:unpinned', {
+        conversationId: conversation._id,
+        pinnedMessages: conversation.pinnedMessages,
+        unpinnedMessageId: messageId
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Message unpinned successfully.',
+      pinnedMessages: conversation.pinnedMessages
+    });
+  } catch (error) {
+    console.error('[Unpin Message Error]', error);
+    return res.status(500).json({ success: false, message: 'Error unpinning message.' });
+  }
+};
+
+// @desc Get pinned messages for a conversation
+// @route GET /api/messages/pins/:conversationId
+const getPinnedMessages = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const currentUserId = req.user._id;
+
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      participants: currentUserId
+    }).populate([
+      {
+        path: 'pinnedMessages.message',
+        populate: [
+          { path: 'sender', select: 'username nickname avatar' },
+          { path: 'replyTo', select: 'content sender' }
+        ]
+      },
+      { path: 'pinnedMessages.pinnedBy', select: 'username nickname avatar' }
+    ]);
+
+    if (!conversation) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    return res.json({
+      success: true,
+      pinnedMessages: conversation.pinnedMessages || []
+    });
+  } catch (error) {
+    console.error('[Get Pinned Messages Error]', error);
+    return res.status(500).json({ success: false, message: 'Error fetching pinned messages.' });
+  }
+};
+
+// @desc Create a new in-chat poll
+// @route POST /api/messages/:conversationId/poll
+const createPoll = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { question, options, allowsMultiple = false, isAnonymous = false, expiresAt } = req.body;
+    const currentUserId = req.user._id;
+
+    if (!question || !question.trim()) {
+      return res.status(400).json({ success: false, message: 'Poll question is required.' });
+    }
+
+    const validOptions = (Array.isArray(options) ? options : [])
+      .map(o => (typeof o === 'string' ? o.trim() : o?.text?.trim()))
+      .filter(Boolean);
+
+    if (validOptions.length < 2) {
+      return res.status(400).json({ success: false, message: 'A poll must have at least 2 options.' });
+    }
+
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      participants: currentUserId
+    });
+    if (!conversation) {
+      return res.status(403).json({ success: false, message: 'Access denied to conversation.' });
+    }
+
+    // Check admin restrictions for group chats
+    if (conversation.type === 'group' && conversation.groupDetails?.onlyAdminsCanMessage) {
+      const isAdmin = conversation.groupDetails.admins?.some(a => a.toString() === currentUserId.toString());
+      const isOwner = conversation.groupDetails.owner?.toString() === currentUserId.toString();
+      if (!isAdmin && !isOwner) {
+        return res.status(403).json({ success: false, message: 'Only admins can create polls in this group.' });
+      }
+    }
+
+    const pollData = {
+      question: question.trim(),
+      options: validOptions.map(text => ({ text, votes: [] })),
+      allowsMultiple: !!allowsMultiple,
+      isAnonymous: !!isAnonymous,
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      isClosed: false
+    };
+
+    const message = await Message.create({
+      conversation: conversationId,
+      sender: currentUserId,
+      content: `📊 Poll: ${question.trim()}`,
+      messageType: 'poll',
+      poll: pollData,
+      readBy: [{ user: currentUserId, readAt: new Date() }],
+      deliveredTo: [{ user: currentUserId, deliveredAt: new Date() }]
+    });
+
+    conversation.lastMessage = message._id;
+    if (!conversation.unreadCounts) conversation.unreadCounts = new Map();
+    conversation.participants.forEach(pId => {
+      if (pId.toString() !== currentUserId.toString()) {
+        const c = conversation.unreadCounts.get(pId.toString()) || 0;
+        conversation.unreadCounts.set(pId.toString(), c + 1);
+      }
+    });
+    conversation.deletedFor = [];
+    await conversation.save();
+
+    const populated = await Message.findById(message._id)
+      .populate('sender', 'username nickname avatar status')
+      .populate('poll.options.votes', 'username nickname avatar');
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(conversationId.toString()).emit('message:received', populated);
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: populated
+    });
+  } catch (error) {
+    console.error('[Create Poll Error]', error);
+    return res.status(500).json({ success: false, message: 'Error creating poll.' });
+  }
+};
+
+// @desc Vote on a poll option
+// @route POST /api/messages/:id/poll/vote
+const votePoll = async (req, res) => {
+  try {
+    const { id: messageId } = req.params;
+    const { optionIndex } = req.body;
+    const currentUserId = req.user._id;
+
+    const message = await Message.findById(messageId);
+    if (!message || message.messageType !== 'poll' || !message.poll) {
+      return res.status(404).json({ success: false, message: 'Poll message not found.' });
+    }
+
+    const conversation = await Conversation.findOne({
+      _id: message.conversation,
+      participants: currentUserId
+    });
+    if (!conversation) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    if (message.poll.isClosed) {
+      return res.status(400).json({ success: false, message: 'This poll is closed.' });
+    }
+
+    if (message.poll.expiresAt && new Date() > new Date(message.poll.expiresAt)) {
+      message.poll.isClosed = true;
+      await message.save();
+      return res.status(400).json({ success: false, message: 'This poll has expired.' });
+    }
+
+    if (optionIndex === undefined || optionIndex < 0 || optionIndex >= message.poll.options.length) {
+      return res.status(400).json({ success: false, message: 'Invalid poll option.' });
+    }
+
+    const targetOption = message.poll.options[optionIndex];
+    const alreadyVotedTarget = targetOption.votes.some(v => v.toString() === currentUserId.toString());
+
+    if (message.poll.allowsMultiple) {
+      if (alreadyVotedTarget) {
+        targetOption.votes = targetOption.votes.filter(v => v.toString() !== currentUserId.toString());
+      } else {
+        targetOption.votes.push(currentUserId);
+      }
+    } else {
+      if (alreadyVotedTarget) {
+        targetOption.votes = targetOption.votes.filter(v => v.toString() !== currentUserId.toString());
+      } else {
+        message.poll.options.forEach(opt => {
+          opt.votes = opt.votes.filter(v => v.toString() !== currentUserId.toString());
+        });
+        targetOption.votes.push(currentUserId);
+      }
+    }
+
+    await message.save();
+
+    const populated = await Message.findById(message._id)
+      .populate('sender', 'username nickname avatar status')
+      .populate('poll.options.votes', 'username nickname avatar');
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(message.conversation.toString()).emit('poll:updated', {
+        messageId: message._id,
+        conversationId: message.conversation,
+        poll: populated.poll
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: populated
+    });
+  } catch (error) {
+    console.error('[Vote Poll Error]', error);
+    return res.status(500).json({ success: false, message: 'Error casting vote on poll.' });
+  }
+};
+
+// @desc Close a poll
+// @route POST /api/messages/:id/poll/close
+const closePoll = async (req, res) => {
+  try {
+    const { id: messageId } = req.params;
+    const currentUserId = req.user._id;
+
+    const message = await Message.findById(messageId);
+    if (!message || message.messageType !== 'poll') {
+      return res.status(404).json({ success: false, message: 'Poll message not found.' });
+    }
+
+    const conversation = await Conversation.findOne({
+      _id: message.conversation,
+      participants: currentUserId
+    });
+    if (!conversation) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const isCreator = message.sender.toString() === currentUserId.toString();
+    const isGroupAdmin = conversation.type === 'group' && (
+      conversation.groupDetails?.admins?.some(a => a.toString() === currentUserId.toString()) ||
+      conversation.groupDetails?.owner?.toString() === currentUserId.toString()
+    );
+
+    if (!isCreator && !isGroupAdmin && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Only the creator or an admin can close this poll.' });
+    }
+
+    message.poll.isClosed = true;
+    await message.save();
+
+    const populated = await Message.findById(message._id)
+      .populate('sender', 'username nickname avatar status')
+      .populate('poll.options.votes', 'username nickname avatar');
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(message.conversation.toString()).emit('poll:updated', {
+        messageId: message._id,
+        conversationId: message.conversation,
+        poll: populated.poll
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: populated
+    });
+  } catch (error) {
+    console.error('[Close Poll Error]', error);
+    return res.status(500).json({ success: false, message: 'Error closing poll.' });
+  }
+};
+
 module.exports = {
   getMessages,
   sendMessage,
@@ -413,6 +813,12 @@ module.exports = {
   deleteMessage,
   reactToMessage,
   searchMessages,
-  getCallHistory
+  getCallHistory,
+  pinMessage,
+  unpinMessage,
+  getPinnedMessages,
+  createPoll,
+  votePoll,
+  closePoll
 };
 

@@ -23,6 +23,8 @@ export const ChatProvider = ({ children }) => {
   const [replyMessage, setReplyMessage] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [tab, setTab] = useState('all'); // 'all', 'pinned', 'archived', 'groups'
+  const [mainTab, setMainTab] = useState('chats'); // 'chats' | 'updates' | 'calls' | 'communities' | 'settings'
+  const [settingsSubTab, setSettingsSubTab] = useState('appearance');
 
   const authHeaders = useCallback(() => {
     const headers = { 'Content-Type': 'application/json' };
@@ -104,6 +106,27 @@ export const ChatProvider = ({ children }) => {
           );
           setMessages(decryptedList);
 
+          // Fetch pinned messages for this conversation
+          fetch(`/api/messages/pins/${conversationId}`, {
+            headers: authHeaders(),
+            credentials: 'include'
+          })
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.success && d.pinnedMessages) {
+                setActiveConversation((prev) => (prev ? { ...prev, pinnedMessages: d.pinnedMessages } : prev));
+                setMessages((prev) =>
+                  prev.map((m) => ({
+                    ...m,
+                    isPinned: d.pinnedMessages.some(
+                      (p) => (p.message?._id || p.message)?.toString() === m._id.toString()
+                    )
+                  }))
+                );
+              }
+            })
+            .catch(() => {});
+
           // Mark conversation as read on backend
           await fetch(`/api/chats/${conversationId}/read`, {
             method: 'POST',
@@ -143,6 +166,18 @@ export const ChatProvider = ({ children }) => {
       setMessages([]);
     }
   };
+
+  // Auto-select pending conversation (e.g. from Admin Dashboard navigation)
+  useEffect(() => {
+    const pendingId = localStorage.getItem('pulsechat_pending_chat');
+    if (pendingId && conversations.length > 0) {
+      const match = conversations.find((c) => c._id?.toString() === pendingId.toString());
+      if (match) {
+        selectConversation(match);
+        localStorage.removeItem('pulsechat_pending_chat');
+      }
+    }
+  }, [conversations]);
 
   // Socket event listeners for messages and updates
   useEffect(() => {
@@ -264,12 +299,46 @@ export const ChatProvider = ({ children }) => {
       fetchConversations();
     };
 
+    const handleMessagePinned = ({ conversationId, pinnedMessages }) => {
+      if (activeConversationRef.current?._id === conversationId) {
+        setActiveConversation((prev) => (prev ? { ...prev, pinnedMessages } : prev));
+        setMessages((prev) =>
+          prev.map((m) => ({
+            ...m,
+            isPinned: pinnedMessages.some((p) => (p.message?._id || p.message)?.toString() === m._id.toString())
+          }))
+        );
+      }
+    };
+
+    const handleMessageUnpinned = ({ conversationId, pinnedMessages, unpinnedMessageId }) => {
+      if (activeConversationRef.current?._id === conversationId) {
+        setActiveConversation((prev) => (prev ? { ...prev, pinnedMessages } : prev));
+        setMessages((prev) =>
+          prev.map((m) =>
+            m._id.toString() === unpinnedMessageId.toString()
+              ? { ...m, isPinned: false }
+              : m
+          )
+        );
+      }
+    };
+
+    const handlePollUpdated = ({ messageId, poll }) => {
+      setMessages((prev) =>
+        prev.map((m) => (m._id === messageId ? { ...m, poll } : m))
+      );
+    };
+
     socket.on('message:received', handleMessageReceived);
     socket.on('message:new', handleMessageReceived);
     socket.on('message:edited', handleMessageEdited);
     socket.on('message:deleted', handleMessageDeleted);
     socket.on('message:reacted', handleMessageReacted);
     socket.on('conversation:updated', handleConversationUpdated);
+    socket.on('message:pinned', handleMessagePinned);
+    socket.on('message:unpinned', handleMessageUnpinned);
+    socket.on('poll:updated', handlePollUpdated);
 
     return () => {
       socket.off('message:received', handleMessageReceived);
@@ -278,6 +347,9 @@ export const ChatProvider = ({ children }) => {
       socket.off('message:deleted', handleMessageDeleted);
       socket.off('message:reacted', handleMessageReacted);
       socket.off('conversation:updated', handleConversationUpdated);
+      socket.off('message:pinned', handleMessagePinned);
+      socket.off('message:unpinned', handleMessageUnpinned);
+      socket.off('poll:updated', handlePollUpdated);
     };
   }, [socket, activeConversation, e2eeInfo, fetchConversations, markMessageRead]);
 
@@ -566,7 +638,11 @@ export const ChatProvider = ({ children }) => {
         toggleMute,
         deleteConversation,
         fetchConversations,
-        authHeaders
+        authHeaders,
+        mainTab,
+        setMainTab,
+        settingsSubTab,
+        setSettingsSubTab
       }}
     >
       {children}

@@ -187,6 +187,43 @@ const updateUserRole = async (req, res) => {
   }
 };
 
+// @desc Edit user profile details (Admin only)
+// @route PUT /api/admin/users/:id
+const updateUserAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nickname, bio, role, isEmailVerified, email } = req.body;
+    const adminUser = req.user;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    if (nickname !== undefined) user.nickname = nickname.trim();
+    if (bio !== undefined) user.bio = bio.trim();
+    if (email !== undefined) user.email = email.trim().toLowerCase();
+    if (role !== undefined && ['user', 'admin'].includes(role)) user.role = role;
+    if (isEmailVerified !== undefined) user.isEmailVerified = Boolean(isEmailVerified);
+
+    await user.save();
+
+    await AuditLog.create({
+      actor: adminUser._id,
+      action: 'USER_EDIT',
+      targetType: 'User',
+      targetId: user._id,
+      details: { username: user.username, role: user.role, nickname: user.nickname },
+      ipAddress: req.ip
+    });
+
+    return res.json({ success: true, message: `User @${user.username} updated.`, user: user.toJSON() });
+  } catch (error) {
+    console.error('[Admin Update User Error]', error);
+    return res.status(500).json({ success: false, message: error.message || 'Error updating user.' });
+  }
+};
+
 // @desc Get reports list
 // @route GET /api/admin/reports
 const getReports = async (req, res) => {
@@ -262,6 +299,35 @@ const getAuditLogs = async (req, res) => {
     return res.json({ success: true, logs });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Error fetching audit logs.' });
+  }
+};
+
+// @desc Delete audit logs (batch or clear all)
+// @route DELETE /api/admin/audit-logs
+const deleteAuditLogs = async (req, res) => {
+  try {
+    const { ids, all } = req.body || {};
+
+    if (all) {
+      const result = await AuditLog.deleteMany({});
+      return res.json({
+        success: true,
+        message: `All ${result.deletedCount || 0} audit logs cleared.`
+      });
+    }
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please select audit logs to delete.' });
+    }
+
+    const result = await AuditLog.deleteMany({ _id: { $in: ids } });
+    return res.json({
+      success: true,
+      message: `${result.deletedCount || 0} audit logs deleted.`
+    });
+  } catch (error) {
+    console.error('[Delete Audit Logs Error]', error);
+    return res.status(500).json({ success: false, message: 'Error deleting audit logs.' });
   }
 };
 
@@ -504,6 +570,284 @@ const deleteAdminMessage = async (req, res) => {
   }
 };
 
+// @desc Get database health and connection status
+// @route GET /api/admin/database/status
+const getDatabaseStatus = async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const SystemConfig = require('../models/SystemConfig');
+
+    const startPing = Date.now();
+    let isHealthy = false;
+    let latencyMs = 0;
+
+    try {
+      if (mongoose.connection.db) {
+        await mongoose.connection.db.admin().ping();
+        latencyMs = Date.now() - startPing;
+        isHealthy = true;
+      }
+    } catch (pingErr) {
+      latencyMs = Date.now() - startPing;
+      isHealthy = false;
+    }
+
+    const [userCount, convCount, msgCount, auditCount, reportCount] = await Promise.all([
+      User.countDocuments(),
+      Conversation.countDocuments(),
+      Message.countDocuments(),
+      AuditLog.countDocuments(),
+      Report.countDocuments()
+    ]);
+
+    let config = await SystemConfig.findOne({ key: 'system_settings' });
+    if (!config) {
+      config = await SystemConfig.create({ key: 'system_settings' });
+    }
+
+    const stateMap = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+    const connectionState = stateMap[mongoose.connection.readyState] || 'unknown';
+
+    const multiDb = require('../config/multiDb');
+    const multiDbReport = await multiDb.getDatabaseStatus().catch(() => null);
+
+    return res.json({
+      success: true,
+      database: {
+        status: isHealthy ? 'healthy' : 'degraded',
+        connectionState,
+        latencyMs,
+        host: mongoose.connection.host || '127.0.0.1',
+        name: mongoose.connection.name || 'pulsechat',
+        collections: {
+          users: userCount,
+          conversations: convCount,
+          messages: msgCount,
+          auditLogs: auditCount,
+          reports: reportCount
+        },
+        assignments: config.databaseAssignments,
+        retentionSettings: config.retentionSettings,
+        categories: multiDbReport ? multiDbReport.categories : null
+      }
+    });
+  } catch (error) {
+    console.error('[Admin DB Status Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to inspect database health.' });
+  }
+};
+
+// @desc Manually trigger retention policy execution
+// @route POST /api/admin/retention/run
+const runManualRetention = async (req, res) => {
+  try {
+    const { runRetentionPurge } = require('../jobs/retentionJob');
+    const result = await runRetentionPurge();
+    return res.json({
+      success: true,
+      message: 'Retention policy execution completed.',
+      report: result.report
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to run retention execution.' });
+  }
+};
+
+// @desc Get runtime system settings & feature flags
+// @route GET /api/admin/settings
+const getSystemSettings = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    let config = await SystemConfig.findOne({ key: 'system_settings' });
+    if (!config) {
+      config = await SystemConfig.create({ key: 'system_settings' });
+    }
+
+    return res.json({
+      success: true,
+      settings: config
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to retrieve system settings.' });
+  }
+};
+
+// @desc Update runtime system settings & feature flags
+// @route PUT /api/admin/settings
+const updateSystemSettings = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    const { featureFlags, databaseAssignments, retentionSettings } = req.body;
+
+    let config = await SystemConfig.findOne({ key: 'system_settings' });
+    if (!config) {
+      config = new SystemConfig({ key: 'system_settings' });
+    }
+
+    if (featureFlags) {
+      config.featureFlags = { ...config.featureFlags, ...featureFlags };
+    }
+    if (databaseAssignments) {
+      config.databaseAssignments = { ...config.databaseAssignments, ...databaseAssignments };
+    }
+    if (retentionSettings) {
+      config.retentionSettings = { ...config.retentionSettings, ...retentionSettings };
+    }
+
+    config.lastUpdatedBy = req.user._id;
+    await config.save();
+
+    // Broadcast feature flag updates to all connected clients in real-time
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('system:features_updated', config.featureFlags);
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'update_system_settings',
+      details: 'Updated system feature flags or database assignments',
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'System settings updated successfully.',
+      settings: config
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to update system settings.' });
+  }
+};
+
+// @desc Get public/client feature flags
+// @route GET /api/system/features
+const getPublicFeatureFlags = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    let config = await SystemConfig.findOne({ key: 'system_settings' });
+    if (!config) {
+      config = await SystemConfig.create({ key: 'system_settings' });
+    }
+    return res.json({
+      success: true,
+      featureFlags: config.featureFlags
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching feature flags',
+      featureFlags: {
+        callsEnabled: true,
+        pollsEnabled: true,
+        statusesEnabled: true,
+        voiceMessagesEnabled: true,
+        announcementsEnabled: true,
+        fileSharingEnabled: true
+      }
+    });
+  }
+};
+
+// @desc Get all account recovery requests
+// @route GET /api/admin/recoveries
+const getRecoveryRequests = async (req, res) => {
+  try {
+    const AccountRecoveryRequest = require('../models/AccountRecoveryRequest');
+    const requests = await AccountRecoveryRequest.find()
+      .populate('user', 'username email deletionStatus recoveryDeadline createdAt')
+      .populate('decidedBy', 'username')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({ success: true, requests });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to retrieve recovery requests.' });
+  }
+};
+
+// @desc Approve or Reject account recovery request
+// @route POST /api/admin/recoveries/:id/resolve
+const resolveRecoveryRequest = async (req, res) => {
+  try {
+    const AccountRecoveryRequest = require('../models/AccountRecoveryRequest');
+    const emailService = require('../services/emailService');
+    const { id } = req.params;
+    const { action, reason = '' } = req.body; // action: 'approve' | 'reject'
+
+    const recoveryReq = await AccountRecoveryRequest.findById(id).populate('user');
+    if (!recoveryReq) {
+      return res.status(404).json({ success: false, message: 'Recovery request not found.' });
+    }
+
+    if (recoveryReq.status !== 'pending') {
+      return res.status(400).json({ success: false, message: `Request is already ${recoveryReq.status}.` });
+    }
+
+    const targetUser = recoveryReq.user;
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: 'Associated user account record not found.' });
+    }
+
+    if (action === 'approve') {
+      recoveryReq.status = 'approved';
+      recoveryReq.decidedBy = req.user._id;
+      recoveryReq.decidedAt = new Date();
+      recoveryReq.adminDecisionReason = reason || 'Admin verified ownership and approved restoration.';
+      await recoveryReq.save();
+
+      // Restore account
+      targetUser.deletionStatus = 'active';
+      targetUser.deletionConfirmedAt = undefined;
+      targetUser.recoveryDeadline = undefined;
+      await targetUser.save();
+
+      // Send approval email
+      emailService.sendRecoveryDecisionEmail(targetUser.email, targetUser.username, true).catch(() => {});
+
+      await AuditLog.create({
+        admin: req.user._id,
+        action: 'approve_account_recovery',
+        target: targetUser._id,
+        targetModel: 'User',
+        details: `Approved account recovery for ${targetUser.username} (${targetUser.email})`,
+        ipAddress: req.ip
+      }).catch(() => {});
+
+      return res.json({
+        success: true,
+        message: `Account recovery approved. Account ${targetUser.username} is now active.`
+      });
+    } else {
+      recoveryReq.status = 'rejected';
+      recoveryReq.decidedBy = req.user._id;
+      recoveryReq.decidedAt = new Date();
+      recoveryReq.adminDecisionReason = reason || 'Ownership verification failed.';
+      await recoveryReq.save();
+
+      // Send rejection email
+      emailService.sendRecoveryDecisionEmail(targetUser.email, targetUser.username, false, reason).catch(() => {});
+
+      await AuditLog.create({
+        admin: req.user._id,
+        action: 'reject_account_recovery',
+        target: targetUser._id,
+        targetModel: 'User',
+        details: `Rejected account recovery for ${targetUser.username}: ${reason}`,
+        ipAddress: req.ip
+      }).catch(() => {});
+
+      return res.json({
+        success: true,
+        message: 'Account recovery request rejected.'
+      });
+    }
+  } catch (error) {
+    console.error('[Resolve Recovery Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to process recovery request.' });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getUsers,
@@ -511,11 +855,20 @@ module.exports = {
   banUser,
   unbanUser,
   updateUserRole,
+  updateUserAdmin,
   getReports,
   resolveReport,
   getAuditLogs,
+  deleteAuditLogs,
+  getPublicFeatureFlags,
   getAllChats,
   getChatMessages,
   deleteChat,
-  deleteAdminMessage
+  deleteAdminMessage,
+  getDatabaseStatus,
+  getSystemSettings,
+  updateSystemSettings,
+  getRecoveryRequests,
+  resolveRecoveryRequest,
+  runManualRetention
 };

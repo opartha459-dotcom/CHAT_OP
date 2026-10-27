@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { User, KeyRound, AlertCircle, ArrowRight } from 'lucide-react';
+import { User, KeyRound, AlertCircle, ArrowRight, Mail, Send } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { PulseLogo } from '../components/common/PulseLogo';
 
 export const LoginPage = () => {
-  const { login } = useAuth();
+  const { login, resendVerification } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -25,19 +25,60 @@ export const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
+  const [resendStatus, setResendStatus] = useState({ loading: false, msg: '', type: '' });
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const handleSubmit = async (e) => {
     e?.preventDefault();
     setError('');
+    setUnverifiedEmail('');
+    setResendStatus({ loading: false, msg: '', type: '' });
     setLoading(true);
 
     try {
       await login(identifier, password);
       navigate(from, { replace: true });
     } catch (err) {
+      if (err.requiresRecovery) {
+        navigate('/account-recovery', {
+          state: {
+            email: err.recoveryData?.email,
+            username: err.recoveryData?.username,
+            recoveryDeadline: err.recoveryData?.recoveryDeadline
+          }
+        });
+        return;
+      }
+      if (err.requiresEmailVerification) {
+        setUnverifiedEmail(err.email || identifier);
+        setError(err.message || 'Email verification is mandatory before logging in.');
+        return;
+      }
       setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!unverifiedEmail && !identifier) return;
+    setResendStatus({ loading: true, msg: '', type: '' });
+    try {
+      const data = await resendVerification(unverifiedEmail || identifier);
+      setResendStatus({ loading: false, msg: data.message || 'Verification email resent!', type: 'success' });
+      setResendCooldown(60);
+      const timer = setInterval(() => {
+        setResendCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (err) {
+      setResendStatus({ loading: false, msg: err.message || 'Failed to resend email.', type: 'error' });
     }
   };
 
@@ -65,6 +106,40 @@ export const LoginPage = () => {
           </div>
         )}
 
+        {unverifiedEmail && (
+          <div className="mb-4 p-3.5 bg-amber-950/40 border border-amber-800/60 rounded-2xl text-xs space-y-2.5 animate-in fade-in">
+            <div className="flex items-center space-x-2 text-amber-300 font-semibold">
+              <Mail className="w-4 h-4 flex-shrink-0" />
+              <span>Email Verification Required</span>
+            </div>
+            <p className="text-[11px] text-amber-200/80 leading-relaxed">
+              Your account is not verified yet. Please click the verification link sent to your inbox, or click below to receive a new link.
+            </p>
+            <div className="pt-1 flex items-center justify-between">
+              <button
+                type="button"
+                disabled={resendStatus.loading || resendCooldown > 0}
+                onClick={handleResend}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-xl font-bold text-[11px] transition flex items-center space-x-1.5 cursor-pointer shadow-xs"
+              >
+                <Send className="w-3 h-3" />
+                <span>
+                  {resendStatus.loading
+                    ? 'Sending...'
+                    : resendCooldown > 0
+                    ? `Resend in ${resendCooldown}s`
+                    : 'Resend Verification Email'}
+                </span>
+              </button>
+            </div>
+            {resendStatus.msg && (
+              <p className={`text-[11px] font-medium ${resendStatus.type === 'success' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {resendStatus.msg}
+              </p>
+            )}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
@@ -84,9 +159,14 @@ export const LoginPage = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-              Password
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                Password
+              </label>
+              <Link to="/reset-password" className="text-[11px] text-indigo-400 hover:text-indigo-300 hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <div className="relative">
               <KeyRound className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input

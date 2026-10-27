@@ -510,7 +510,208 @@ test('Full-Stack Chat API Suite', async (t) => {
     assert.strictEqual(gdprRes.body.profile.username, user1Data.username);
   });
 
-  await t.test('9. Root and Health Check Endpoints (/ and /health)', async () => {
+  await t.test('9. New Features: Pinning, Polls, Statuses & Retention', async () => {
+    // 9.1 Pin message
+    const pinRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: `/api/messages/${messageId}/pin`,
+      method: 'POST',
+      headers: { Authorization: `Bearer ${user1Token}` }
+    });
+    assert.strictEqual(pinRes.status, 200);
+    assert.ok(pinRes.body.pinnedMessages.length >= 1);
+
+    // 9.2 Get pinned messages
+    const getPinsRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: `/api/messages/pins/${conversationId}`,
+      method: 'GET',
+      headers: { Authorization: `Bearer ${user1Token}` }
+    });
+    assert.strictEqual(getPinsRes.status, 200);
+    assert.ok(getPinsRes.body.pinnedMessages.length >= 1);
+
+    // 9.3 Create Poll
+    const pollRes = await makeRequest(
+      {
+        hostname: 'localhost',
+        port: 5001,
+        path: `/api/messages/${conversationId}/poll`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${user1Token}`
+        }
+      },
+      {
+        question: 'What is your favorite framework?',
+        options: ['React', 'Vue', 'Svelte'],
+        allowsMultiple: false
+      }
+    );
+    assert.strictEqual(pollRes.status, 201);
+    assert.strictEqual(pollRes.body.message.messageType, 'poll');
+    const pollMessageId = pollRes.body.message._id;
+
+    // 9.4 Vote on Poll
+    const voteRes = await makeRequest(
+      {
+        hostname: 'localhost',
+        port: 5001,
+        path: `/api/messages/${pollMessageId}/poll/vote`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${user2Token}`
+        }
+      },
+      { optionIndex: 0 }
+    );
+    assert.strictEqual(voteRes.status, 200);
+    assert.strictEqual(voteRes.body.message.poll.options[0].votes.length, 1);
+
+    // 9.5 Publish 24-hour Status
+    const statusRes = await makeRequest(
+      {
+        hostname: 'localhost',
+        port: 5001,
+        path: '/api/status',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${user1Token}`
+        }
+      },
+      {
+        type: 'text',
+        text: 'Hello from PulseChat 24h status update!',
+        style: { background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', font: 'sans' }
+      }
+    );
+    assert.strictEqual(statusRes.status, 201);
+    const createdStatusId = statusRes.body.status._id;
+
+    // 9.6 Get Status Feed
+    const feedRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: '/api/status/feed',
+      method: 'GET',
+      headers: { Authorization: `Bearer ${user2Token}` }
+    });
+    assert.strictEqual(feedRes.status, 200);
+    assert.ok(feedRes.body.feed.length > 0);
+
+    // 9.7 Mark Status Viewed
+    const viewRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: `/api/status/${createdStatusId}/view`,
+      method: 'POST',
+      headers: { Authorization: `Bearer ${user2Token}` }
+    });
+    assert.strictEqual(viewRes.status, 200);
+
+    // 9.8 Multi-DB Category Health
+    const dbStatusRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: '/api/admin/database/status',
+      method: 'GET',
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert.strictEqual(dbStatusRes.status, 200);
+    assert.ok(dbStatusRes.body.database.categories);
+
+    // 9.9 Trigger Manual Retention Purge
+    const retentionRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: '/api/admin/retention/run',
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert.strictEqual(retentionRes.status, 200);
+    assert.ok(retentionRes.body.report);
+
+    // 9.10 Unpin message
+    const unpinRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: `/api/messages/${messageId}/pin`,
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${user1Token}` }
+    });
+    assert.strictEqual(unpinRes.status, 200);
+
+    // 9.11 Create Rich Announcement with Poll and Design Styling
+    const createAnnounceRes = await makeRequest(
+      {
+        hostname: 'localhost',
+        port: 5001,
+        path: '/api/announcements/admin',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`
+        }
+      },
+      {
+        title: 'New Feature Feedback',
+        content: 'Please vote on which feature we should build next for PulseChat.',
+        type: 'feature',
+        targetAudience: 'all',
+        hasPoll: true,
+        poll: {
+          question: 'What is your top requested feature?',
+          options: ['Voice Rooms', 'Message Bookmarks', 'Custom Themes'],
+          allowMultiple: false
+        },
+        design: {
+          theme: 'cyber-glow',
+          font: 'mono',
+          badge: '🗳️',
+          animation: 'shimmer'
+        }
+      }
+    );
+    assert.strictEqual(createAnnounceRes.status, 201);
+    assert.strictEqual(createAnnounceRes.body.announcement.hasPoll, true);
+    assert.strictEqual(createAnnounceRes.body.announcement.design.theme, 'cyber-glow');
+    const annId = createAnnounceRes.body.announcement._id;
+
+    // 9.12 Vote on Announcement Poll
+    const voteAnnPollRes = await makeRequest(
+      {
+        hostname: 'localhost',
+        port: 5001,
+        path: `/api/announcements/${annId}/poll/vote`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${user1Token}`
+        }
+      },
+      { optionIndex: 0 }
+    );
+    assert.strictEqual(voteAnnPollRes.status, 200);
+    assert.strictEqual(voteAnnPollRes.body.announcement.totalPollVotes, 1);
+
+    // 9.13 Close Announcement Poll (Admin)
+    const closePollRes = await makeRequest({
+      hostname: 'localhost',
+      port: 5001,
+      path: `/api/announcements/admin/${annId}/poll/close`,
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert.strictEqual(closePollRes.status, 200);
+    assert.strictEqual(closePollRes.body.announcement.poll.isClosed, true);
+  });
+
+  await t.test('10. Root and Health Check Endpoints (/ and /health)', async () => {
     // Test GET /
     const rootRes = await makeRequest({
       hostname: 'localhost',

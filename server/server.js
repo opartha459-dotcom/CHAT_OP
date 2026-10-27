@@ -9,7 +9,15 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 
 const connectDB = require('./config/db');
+const { initMultiDb } = require('./config/multiDb');
+const { initRetentionSchedule } = require('./jobs/retentionJob');
 const setupSockets = require('./sockets');
+
+// Connect Database & Initialize Category Routers and Retention Schedule (env refreshed)
+connectDB().then(() => {
+  initMultiDb();
+  initRetentionSchedule();
+}).catch(console.error);
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -20,6 +28,8 @@ const messageRoutes = require('./routes/messageRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const exportRoutes = require('./routes/exportRoutes');
+const announcementRoutes = require('./routes/announcementRoutes');
+const statusRoutes = require('./routes/statusRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -123,6 +133,7 @@ const healthHandler = (req, res) => {
 
 app.get('/health', healthHandler);
 app.get('/api/health', healthHandler);
+app.get('/api/system/features', require('./controllers/adminController').getPublicFeatureFlags);
 
 // Mount Routes
 app.use('/api/auth', authLimiter, authRoutes);
@@ -133,6 +144,8 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/announcements', announcementRoutes);
+app.use('/api/status', statusRoutes);
 
 // Setup Socket.IO Event Handlers
 setupSockets(io);
@@ -149,8 +162,8 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 if (!process.env.VERCEL) {
-  server.listen(PORT, () => {
-    console.log(`[Server] PulseChat API server running on port ${PORT}`);
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Server] PulseChat API server running on http://127.0.0.1:${PORT}`);
   });
 }
 

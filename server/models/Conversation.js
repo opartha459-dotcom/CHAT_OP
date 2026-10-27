@@ -71,6 +71,27 @@ const conversationSchema = new mongoose.Schema(
         ref: 'User'
       }
     ],
+    pinnedMessages: [
+      {
+        message: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Message',
+          required: true
+        },
+        pinnedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: true
+        },
+        pinnedAt: {
+          type: Date,
+          default: Date.now
+        },
+        expiresAt: {
+          type: Date
+        }
+      }
+    ],
     archivedBy: [
       {
         type: mongoose.Schema.Types.ObjectId,

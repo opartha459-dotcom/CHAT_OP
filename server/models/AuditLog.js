@@ -5,8 +5,11 @@ const auditLogSchema = new mongoose.Schema(
     actor: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
       index: true
+    },
+    admin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
     },
     action: {
       type: String,
@@ -15,8 +18,7 @@ const auditLogSchema = new mongoose.Schema(
     },
     targetType: {
       type: String,
-      enum: ['User', 'Message', 'Conversation', 'Report', 'System'],
-      required: true
+      default: 'System'
     },
     targetId: {
       type: mongoose.Schema.Types.ObjectId
@@ -34,6 +36,16 @@ const auditLogSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+auditLogSchema.pre('save', function (next) {
+  if (!this.actor && this.admin) {
+    this.actor = this.admin;
+  }
+  if (!this.admin && this.actor) {
+    this.admin = this.actor;
+  }
+  next();
+});
 
 auditLogSchema.index({ createdAt: -1 });
 

@@ -15,7 +15,9 @@ const {
   getPushPublicKey,
   subscribePush,
   unsubscribePush,
-  getCallInfo
+  getCallInfo,
+  declineCall,
+  answerCall
 } = require('../controllers/userController');
 const { protect } = require('../middlewares/auth');
 const upload = require('../middlewares/upload');
@@ -24,6 +26,8 @@ router.get('/push-key', getPushPublicKey);
 router.post('/push-subscribe', protect, subscribePush);
 router.post('/push-unsubscribe', protect, unsubscribePush);
 router.get('/call/:callId', getCallInfo);
+router.post('/call/:callId/decline', declineCall);
+router.post('/call/:callId/answer', answerCall);
 
 router.get('/search', protect, searchUsers);
 router.get('/blocked', protect, getBlockedUsers);

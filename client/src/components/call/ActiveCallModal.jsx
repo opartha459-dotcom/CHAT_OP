@@ -501,86 +501,86 @@ export const ActiveCallModal = () => {
         )}
 
         {/* Bottom Call Controls Toolbar (Google Meet Aesthetic) */}
-        <div className="p-3.5 md:p-4 bg-[#181a1d]/90 border-t border-slate-800/80 flex items-center justify-center space-x-2.5 sm:space-x-4 backdrop-blur-md z-20">
+        <div className="p-2.5 sm:p-4 bg-[#181a1d]/90 border-t border-slate-800/80 flex flex-wrap items-center justify-center gap-2 sm:gap-3.5 backdrop-blur-md z-20">
           {/* Mute/Unmute Mic */}
           <button
             onClick={toggleAudio}
-            className={`w-12 h-12 rounded-full flex items-center justify-center text-white transition-all active:scale-90 cursor-pointer shadow-lg ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white transition-all active:scale-90 cursor-pointer shadow-lg ${
               isAudioMuted
                 ? 'bg-rose-600 hover:bg-rose-700'
                 : 'bg-slate-800 hover:bg-slate-700'
             }`}
             title={isAudioMuted ? 'Turn on microphone' : 'Turn off microphone'}
           >
-            {isAudioMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            {isAudioMuted ? <MicOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Mic className="w-4 h-4 sm:w-5 sm:h-5" />}
           </button>
 
           {/* Camera On/Off */}
           <button
             onClick={toggleVideo}
-            className={`w-12 h-12 rounded-full flex items-center justify-center text-white transition-all active:scale-90 cursor-pointer shadow-lg ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white transition-all active:scale-90 cursor-pointer shadow-lg ${
               isVideoOff && !isScreenSharing
                 ? 'bg-rose-600 hover:bg-rose-700'
                 : 'bg-slate-800 hover:bg-slate-700'
             }`}
             title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
           >
-            {isVideoOff && !isScreenSharing ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+            {isVideoOff && !isScreenSharing ? <VideoOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Video className="w-4 h-4 sm:w-5 sm:h-5" />}
           </button>
 
           {/* Screen Share / Present Now (Google Meet style) */}
           <button
             onClick={toggleScreenShare}
-            className={`w-12 h-12 rounded-full flex items-center justify-center text-white transition-all active:scale-90 cursor-pointer shadow-lg ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white transition-all active:scale-90 cursor-pointer shadow-lg ${
               isScreenSharing
                 ? 'bg-indigo-600 hover:bg-indigo-700 ring-4 ring-indigo-400/50'
                 : 'bg-slate-800 hover:bg-slate-700'
             }`}
             title={isScreenSharing ? 'Stop presenting' : 'Present now / Share screen'}
           >
-            {isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <MonitorUp className="w-5 h-5" />}
+            {isScreenSharing ? <MonitorOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <MonitorUp className="w-4 h-4 sm:w-5 sm:h-5" />}
           </button>
 
           {/* Raise Hand Button (Google Meet ✋) */}
           <button
             onClick={toggleRaiseHand}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-90 cursor-pointer shadow-lg ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all active:scale-90 cursor-pointer shadow-lg ${
               isHandRaised
                 ? 'bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold ring-4 ring-amber-400/50 shadow-amber-500/30'
                 : 'bg-slate-800 hover:bg-slate-700 text-white'
             }`}
             title={isHandRaised ? 'Lower hand' : 'Raise hand'}
           >
-            <Hand className="w-5 h-5" />
+            <Hand className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
 
           {/* Reactions Button */}
           <button
             onClick={() => setReactionBarOpen(!reactionBarOpen)}
-            className={`w-12 h-12 rounded-full flex items-center justify-center text-white transition-all active:scale-90 cursor-pointer shadow-lg ${
+            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white transition-all active:scale-90 cursor-pointer shadow-lg ${
               reactionBarOpen ? 'bg-indigo-600' : 'bg-slate-800 hover:bg-slate-700'
             }`}
             title="Send reaction"
           >
-            <Smile className="w-5 h-5" />
+            <Smile className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
 
           {/* Add People Button */}
           <button
             onClick={() => setIsAddPeopleOpen(true)}
-            className="w-12 h-12 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center transition-all active:scale-90 cursor-pointer shadow-lg"
+            className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center transition-all active:scale-90 cursor-pointer shadow-lg"
             title="Add people"
           >
-            <UserPlus className="w-5 h-5" />
+            <UserPlus className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
 
           {/* Leave / End Call Button */}
           <button
             onClick={endCall}
-            className="h-12 px-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-all active:scale-90 cursor-pointer shadow-xl shadow-rose-600/30 flex items-center space-x-2"
+            className="h-10 sm:h-12 px-4 sm:px-5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-all active:scale-90 cursor-pointer shadow-xl shadow-rose-600/30 flex items-center space-x-1.5 sm:space-x-2"
             title="Leave call"
           >
-            <PhoneOff className="w-5 h-5" />
+            <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
             <span className="text-xs hidden sm:inline">Leave call</span>
           </button>
         </div>

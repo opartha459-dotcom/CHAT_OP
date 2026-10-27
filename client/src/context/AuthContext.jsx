@@ -64,6 +64,22 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
+  const setSession = async (userData, authToken) => {
+    setUser(userData);
+    if (authToken) {
+      setToken(authToken);
+      localStorage.setItem('pulsechat_token', authToken);
+    }
+    if (userData?._id) {
+      try {
+        const keys = await getOrCreateUserKeys(userData._id);
+        setE2eeInfo(keys);
+      } catch (e) {
+        console.warn('E2EE init warning:', e);
+      }
+    }
+  };
+
   const login = async (identifier, password) => {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
@@ -74,18 +90,27 @@ export const AuthProvider = ({ children }) => {
 
     const data = await res.json();
     if (!data.success) {
+      if (data.requiresRecovery) {
+        const err = new Error(data.message || 'Account is currently pending deletion.');
+        err.requiresRecovery = true;
+        err.recoveryData = {
+          email: data.email,
+          username: data.username,
+          recoveryDeadline: data.recoveryDeadline
+        };
+        throw err;
+      }
+      if (data.requiresEmailVerification) {
+        const err = new Error(data.message || 'Email verification is mandatory before logging in.');
+        err.requiresEmailVerification = true;
+        err.email = data.email;
+        err.username = data.username;
+        throw err;
+      }
       throw new Error(data.message || 'Login failed');
     }
 
-    setUser(data.user);
-    if (data.token) {
-      setToken(data.token);
-      localStorage.setItem('pulsechat_token', data.token);
-    }
-
-    const keys = await getOrCreateUserKeys(data.user._id);
-    setE2eeInfo(keys);
-
+    await setSession(data.user, data.token);
     return data.user;
   };
 
@@ -99,19 +124,43 @@ export const AuthProvider = ({ children }) => {
 
     const data = await res.json();
     if (!data.success) {
+      if (data.requiresRecovery) {
+        const err = new Error(data.message || 'An account with this email is pending deletion.');
+        err.requiresRecovery = true;
+        err.recoveryData = {
+          email: data.email,
+          username: data.username,
+          recoveryDeadline: data.recoveryDeadline
+        };
+        throw err;
+      }
       throw new Error(data.message || 'Registration failed');
     }
 
-    setUser(data.user);
-    if (data.token) {
-      setToken(data.token);
-      localStorage.setItem('pulsechat_token', data.token);
+    if (data.requiresEmailVerification) {
+      return {
+        requiresEmailVerification: true,
+        email: data.email,
+        username: data.username,
+        message: data.message
+      };
     }
 
-    const keys = await getOrCreateUserKeys(data.user._id);
-    setE2eeInfo(keys);
-
+    await setSession(data.user, data.token);
     return data.user;
+  };
+
+  const resendVerification = async (emailOrIdentifier) => {
+    const res = await fetch('/api/auth/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: emailOrIdentifier, identifier: emailOrIdentifier })
+    });
+    const data = await res.json();
+    if (!data.success) {
+      throw new Error(data.message || 'Failed to resend verification email.');
+    }
+    return data;
   };
 
   const logout = async () => {
@@ -156,6 +205,14 @@ export const AuthProvider = ({ children }) => {
     setUser(updatedUser);
   };
 
+  const authHeaders = (isJson = true) => {
+    const storedToken = token || localStorage.getItem('pulsechat_token');
+    const headers = {};
+    if (isJson) headers['Content-Type'] = 'application/json';
+    if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+    return headers;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -168,7 +225,12 @@ export const AuthProvider = ({ children }) => {
         logout,
         logoutAll,
         updateUser,
-        e2eeInfo
+        setUser,
+        setToken,
+        setSession,
+        authHeaders,
+        e2eeInfo,
+        resendVerification
       }}
     >
       {children}

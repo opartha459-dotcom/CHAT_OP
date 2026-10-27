@@ -29,7 +29,9 @@ import {
   Video,
   VideoOff,
   ArrowDownLeft,
-  ArrowUpRight
+  ArrowUpRight,
+  Share2,
+  Pin
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -37,6 +39,9 @@ import { useCall } from '../../context/CallContext';
 import { Avatar } from '../common/Avatar';
 import { ReportModal } from '../modals/ReportModal';
 import { JoinGroupModal } from '../modals/JoinGroupModal';
+import { shareContent } from '../../utils/share';
+import { PollBubble } from './PollBubble';
+import { VoiceMessagePlayer } from './VoiceMessagePlayer';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
@@ -138,7 +143,7 @@ const RenderMessageContent = ({ content, isMe, onOpenJoinModal }) => {
 
 export const MessageBubble = ({ message, isGroup = false }) => {
   const { user } = useAuth();
-  const { setReplyMessage, editMessage, deleteMessage, reactToMessage, activeConversation } = useChat();
+  const { setReplyMessage, editMessage, deleteMessage, reactToMessage, activeConversation, authHeaders } = useChat();
   const { startCall } = useCall();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -148,6 +153,19 @@ export const MessageBubble = ({ message, isGroup = false }) => {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [joinModalCode, setJoinModalCode] = useState(null);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+
+  const handleTogglePin = async () => {
+    try {
+      const method = message.isPinned ? 'DELETE' : 'POST';
+      await fetch(`/api/messages/${message._id}/pin`, {
+        method,
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+    } catch (err) {
+      console.error('Failed to toggle pin:', err);
+    }
+  };
 
   const senderId = (message.sender?._id || message.sender)?.toString();
   const isMe = senderId === user?._id?.toString();
@@ -391,7 +409,8 @@ export const MessageBubble = ({ message, isGroup = false }) => {
   return (
     <>
       <div
-        className={`group relative flex items-end space-x-2 my-2 select-text ${
+        id={`msg-${message._id}`}
+        className={`group relative flex items-end space-x-2 my-2 select-text transition-all duration-300 ${
           isMe ? 'justify-end' : 'justify-start'
         }`}
       >
@@ -477,6 +496,8 @@ export const MessageBubble = ({ message, isGroup = false }) => {
                   </button>
                 </div>
               </form>
+            ) : message.messageType === 'poll' ? (
+              <PollBubble message={message} />
             ) : (
               <>
                 {/* Media attachments */}
@@ -502,7 +523,7 @@ export const MessageBubble = ({ message, isGroup = false }) => {
                     ) : message.fileMimeType?.startsWith('video/') || message.messageType === 'video' ? (
                       <video src={message.fileUrl} controls className="max-h-60 rounded-xl" />
                     ) : message.fileMimeType?.startsWith('audio/') || message.messageType === 'audio' ? (
-                      <audio src={message.fileUrl} controls className="w-full my-1" />
+                      <VoiceMessagePlayer src={message.fileUrl} isMe={isMe} />
                     ) : (
                       <a
                         href={message.fileUrl}
@@ -545,6 +566,9 @@ export const MessageBubble = ({ message, isGroup = false }) => {
                 isMe ? 'text-indigo-200 justify-end' : 'text-slate-400 justify-end'
               }`}
             >
+              {message.isPinned && (
+                <Pin className="w-3 h-3 text-amber-400 fill-amber-400 flex-shrink-0" title="Pinned message" />
+              )}
               {message.isEdited && <span className="italic">edited</span>}
               <span>{timeString}</span>
 
@@ -631,6 +655,17 @@ export const MessageBubble = ({ message, isGroup = false }) => {
               <Reply className="w-3.5 h-3.5" />
             </button>
 
+            {/* Pin / Unpin message */}
+            <button
+              onClick={handleTogglePin}
+              className={`p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition ${
+                message.isPinned ? 'text-amber-500 fill-amber-500' : 'text-slate-400 hover:text-amber-500'
+              }`}
+              title={message.isPinned ? 'Unpin message' : 'Pin message'}
+            >
+              <Pin className="w-3.5 h-3.5" />
+            </button>
+
             {/* Edit (if me) */}
             {isMe && (
               <button
@@ -652,6 +687,21 @@ export const MessageBubble = ({ message, isGroup = false }) => {
               title="Delete message"
             >
               <Trash2 className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Share message */}
+            <button
+              onClick={async () => {
+                await shareContent({
+                  title: 'Message from PulseChat',
+                  text: message.content || '',
+                  url: message.fileUrl || undefined
+                });
+              }}
+              className="p-1 text-slate-400 hover:text-sky-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
+              title="Share message"
+            >
+              <Share2 className="w-3.5 h-3.5" />
             </button>
 
             {/* Report (if not me) */}

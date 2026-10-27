@@ -16,7 +16,9 @@ const connectDB = async () => {
       autoIndex: true,
       serverSelectionTimeoutMS: 10000,
     });
-    console.log(`[Database] MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`);
+    const host = conn.connection?.host || mongoose.connection?.host || 'connected';
+    const name = conn.connection?.name || mongoose.connection?.name || 'pulsechat';
+    console.log(`[Database] MongoDB Connected: ${host}/${name}`);
   } catch (error) {
     console.error(`[Database Error] ${error.message}`);
     if (error.message.includes('querySrv') || error.message.includes('ECONNREFUSED')) {

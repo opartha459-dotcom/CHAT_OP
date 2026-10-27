@@ -1,13 +1,24 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, createLogger } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const backendTarget = env.VITE_SERVER_URL || 'http://localhost:5000';
+  const backendTarget = env.VITE_SERVER_URL || 'http://127.0.0.1:5000';
+
+  // Custom logger to filter out benign TCP socket resets when tabs refresh or close
+  const customLogger = createLogger();
+  const originalError = customLogger.error.bind(customLogger);
+  customLogger.error = (msg, options) => {
+    if (typeof msg === 'string' && (msg.includes('ws proxy error') || msg.includes('ECONNRESET') || msg.includes('ECONNREFUSED'))) {
+      return;
+    }
+    originalError(msg, options);
+  };
 
   return {
+    customLogger,
     plugins: [react(), tailwindcss()],
     server: {
       port: 5173,
@@ -34,9 +45,8 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           ws: true,
           configure: (proxy) => {
-            proxy.on('error', (err) => {
-              // Suppress unhandled socket proxy reset when server restarts
-            });
+            proxy.on('error', () => {});
+            proxy.on('proxyReqWsError', () => {});
           }
         }
       }

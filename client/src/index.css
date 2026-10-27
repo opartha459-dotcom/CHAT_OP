@@ -165,3 +165,32 @@ html.dark body {
 .animate-float-fade {
   animation: floatFade 3.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
+
+@keyframes statusFloatUp {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.6) rotate(0deg);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(-40px) scale(1.25) rotate(-8deg);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(-160px) scale(1.1) rotate(10deg);
+  }
+  75% {
+    opacity: 0.9;
+    transform: translateY(-300px) scale(1) rotate(-6deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-460px) scale(0.7) rotate(12deg);
+  }
+}
+
+.animate-status-float {
+  animation-name: statusFloatUp;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
+}

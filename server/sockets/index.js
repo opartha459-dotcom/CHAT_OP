@@ -9,7 +9,10 @@ const activeCalls = new Map(); // callId -> { conversationId, callType, isGroup,
 const socketCallMap = new Map(); // socketId -> Set of callIds
 const userCallMap = new Map(); // userId -> callId (tracks active call per user to prevent clashes)
 
+let ioInstance = null;
+
 const setupSockets = (io) => {
+  ioInstance = io;
   // Helper to log call history messages and broadcast to conversation
   const logCallMessage = async (conversationId, senderId, callMetadata) => {
     try {
@@ -117,6 +120,7 @@ const setupSockets = (io) => {
 
     // Join personal user room for direct user notifications
     socket.join(`user:${userId}`);
+    socket.join(userId);
 
     // Update DB status to online
     await User.findByIdAndUpdate(userId, { status: 'online', lastSeen: new Date() });
@@ -342,6 +346,25 @@ const setupSockets = (io) => {
         });
       } else {
         callback(null);
+      }
+    });
+
+    socket.on('call:accept', ({ callId }) => {
+      const call = activeCalls.get(callId);
+      if (call) {
+        call.answered = true;
+        if (!call.connectedAt) call.connectedAt = new Date();
+        if (call.callerId) {
+          io.to(`user:${call.callerId}`).emit('call:accepted', {
+            callId,
+            acceptor: {
+              _id: socket.user._id,
+              username: socket.user.username,
+              nickname: socket.user.nickname || socket.user.username,
+              avatar: socket.user.avatar
+            }
+          });
+        }
       }
     });
 
@@ -593,5 +616,59 @@ const setupSockets = (io) => {
 };
 
 setupSockets.getActiveCall = (callId) => activeCalls.get(callId);
+
+setupSockets.declineCall = async (callId, declinerUser = null, reason = 'declined') => {
+  const call = activeCalls.get(callId);
+  if (!call) return false;
+
+  call.logged = true;
+  if (declinerUser && declinerUser._id) {
+    userCallMap.delete(declinerUser._id.toString());
+  } else if (call.targetUserId) {
+    userCallMap.delete(call.targetUserId.toString());
+  }
+
+  const byUser = declinerUser || {
+    _id: call.targetUserId || '',
+    username: 'Recipient',
+    nickname: 'Recipient'
+  };
+
+  if (ioInstance) {
+    if (call.callerId) {
+      ioInstance.to(`user:${call.callerId}`).emit('call:rejected', {
+        callId,
+        byUser
+      });
+    }
+    if (call.conversationId) {
+      ioInstance.to(call.conversationId.toString()).emit('call:participant-rejected', {
+        callId,
+        userId: byUser._id,
+        reason
+      });
+    }
+  }
+
+  activeCalls.delete(callId);
+  return true;
+};
+
+setupSockets.answerCall = async (callId, acceptorUser = null) => {
+  const call = activeCalls.get(callId);
+  if (!call) return false;
+  call.answered = true;
+  if (!call.connectedAt) call.connectedAt = new Date();
+
+  if (ioInstance) {
+    if (call.callerId) {
+      ioInstance.to(`user:${call.callerId}`).emit('call:accepted', {
+        callId,
+        acceptor: acceptorUser || { _id: call.targetUserId }
+      });
+    }
+  }
+  return true;
+};
 
 module.exports = setupSockets;

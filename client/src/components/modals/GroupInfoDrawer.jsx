@@ -27,6 +27,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { useCall } from '../../context/CallContext';
 import { Avatar } from '../common/Avatar';
+import { shareContent, copyToClipboard } from '../../utils/share';
 
 export const GroupInfoDrawer = ({ isOpen, onClose, group }) => {
   const { user } = useAuth();
@@ -125,29 +126,37 @@ export const GroupInfoDrawer = ({ isOpen, onClose, group }) => {
 
   // Native phone share or copy
   const handleShareGroup = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `Join "${group.groupDetails?.name || 'PulseChat Group'}"`,
-          text: `Join our group chat "${group.groupDetails?.name}" on PulseChat:`,
-          url: inviteUrl
-        });
-        return;
-      } catch (e) {
-        // user cancelled or share failed, fallback to copy
-      }
+    const res = await shareContent({
+      title: `Join "${group.groupDetails?.name || 'PulseChat Group'}"`,
+      text: `Join our group chat "${group.groupDetails?.name}" on PulseChat:`,
+      url: inviteUrl
+    });
+
+    if (res.cancelled) {
+      // User cancelled native share sheet; do not show error or misleading clipboard feedback
+      return;
     }
-    navigator.clipboard.writeText(inviteUrl);
-    setCopied(true);
-    showMsg('Invite link copied to clipboard!');
-    setTimeout(() => setCopied(false), 2000);
+
+    if (res.method === 'clipboard' && res.success) {
+      setCopied(true);
+      showMsg('Invite link copied to clipboard!');
+      setTimeout(() => setCopied(false), 2000);
+    } else if (res.method === 'native' && res.success) {
+      showMsg('Group link shared successfully!');
+    } else if (!res.success) {
+      showMsg(res.message || 'Could not share group link.');
+    }
   };
 
-  const handleCopyCodeOnly = () => {
-    navigator.clipboard.writeText(inviteCode);
-    setCopied(true);
-    showMsg('Invite code copied!');
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopyCodeOnly = async () => {
+    const copied = await copyToClipboard(inviteCode);
+    if (copied) {
+      setCopied(true);
+      showMsg('Invite code copied!');
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      showMsg('Failed to copy invite code.');
+    }
   };
 
   // Save updated group details

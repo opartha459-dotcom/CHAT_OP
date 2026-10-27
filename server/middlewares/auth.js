@@ -15,12 +15,13 @@ const protect = async (req, res, next) => {
     }
 
     const decoded = verifyToken(token);
-    if (!decoded || !decoded.userId) {
+    const userId = decoded?.userId || decoded?.id;
+    if (!decoded || !userId) {
       return res.status(401).json({ success: false, message: 'Invalid or expired session. Please log in again.' });
     }
 
     // Verify user exists and is not banned or deactivated
-    const user = await User.findById(decoded.userId);
+    const user = await User.findById(userId);
     if (!user) {
       return res.status(401).json({ success: false, message: 'User account not found.' });
     }

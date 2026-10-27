@@ -141,87 +141,100 @@ self.addEventListener('push', (event) => {
     event.waitUntil(self.registration.showNotification(title, options));
   }
 });
-```
-// Notification Click Event (Opens / focuses PulseChat app directly into the call)
+
+// Notification Click Event (Handles Answer, Decline, and Tap to open)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  if (event.action === 'decline') {
-    // User declined call from notification
-    return;
-  }
-
   const notificationData = event.notification.data || {};
-  const isAnswer = event.action === 'answer';
-  const targetUrl = notificationData.callId
-    ? buildCallUrl(notificationData.callData || { callId: notificationData.callId }, isAnswer ? 'answer' : 'incoming')
-    : notificationData.url || '/chat';
+  const callData = notificationData.callData || (notificationData.callId ? { callId: notificationData.callId } : null);
 
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Focus existing window if open and notify of call action
-      for (const client of windowClients) {
-        if (client.url.includes(self.location.origin)) {
-          client.postMessage({
-            type: 'INCOMING_CALL_ACTION',
-            callId: notificationData.callId,
-            action: isAnswer ? 'answer' : 'incoming',
-            callData: notificationData.callData
-          });
-          if ('navigate' in client) {
-            client.navigate(targetUrl).catch(() => {});
-          }
-          if ('focus' in client) {
-            return client.focus();
+  if (event.action === 'decline') {
+    // User declined call directly from notification
+    event.waitUntil(
+      (async () => {
+        const callId = notificationData.callId || (callData && callData.callId);
+        if (callId) {
+          try {
+            await fetch(`/api/users/call/${encodeURIComponent(callId)}/decline`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reason: 'declined' })
+            });
+          } catch (e) {
+            console.warn('[SW] Error notifying server of declined call:', e);
           }
         }
-      }
-      // If no window open, launch app window with target URL
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
-      }
-    })
-  );
-});
-```
 
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-
-  const notificationData = event.notification.data || {};
-
-  if (event.action === 'decline') {
+        // Notify open window clients so local ringing stops immediately
+        const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+        for (const client of windowClients) {
+          if (client.url.includes(self.location.origin)) {
+            client.postMessage({
+              type: 'INCOMING_CALL_DECLINED',
+              callId
+            });
+          }
+        }
+      })()
+    );
     return;
   }
 
-  const callData = notificationData.callData || {
-    callId: notificationData.callId
-  };
-
-  const isCall = Boolean(callData.callId);
-  const action = isCall
-    ? (event.action === 'answer' ? 'answer' : 'incoming')
-    : 'incoming';
-
+  const isAnswer = event.action === 'answer';
+  const isCall = Boolean(callData && callData.callId);
   const targetUrl = isCall
-    ? buildCallUrl(callData, action)
+    ? buildCallUrl(callData, isAnswer ? 'answer' : 'incoming')
     : (notificationData.url || '/chat');
 
-  event.waitUntil((async () => {
-    const windowClients = await clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true
-    });
+  event.waitUntil(
+    (async () => {
+      // If user tapped 'Answer', notify backend immediately to halt caller's ringback
+      if (isAnswer && callData && callData.callId) {
+        try {
+          fetch(`/api/users/call/${encodeURIComponent(callData.callId)}/answer`, {
+            method: 'POST'
+          }).catch(() => {});
+        } catch (e) {
+          // Non-blocking
+        }
+      }
 
-    const appClient = windowClients.find(client =>
-      new URL(client.url).origin === self.location.origin
-    );
+      const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const appClient = windowClients.find((client) => {
+        try {
+          return new URL(client.url).origin === self.location.origin;
+        } catch (e) {
+          return false;
+        }
+      });
 
-    if (appClient) {
-      const activeClient = await appClient.navigate(targetUrl);
-      await (activeClient || appClient).focus();
-    } else {
-      await clients.openWindow(targetUrl);
-    }
-  })());
+      if (appClient) {
+        // Send action message to existing window
+        appClient.postMessage({
+          type: 'INCOMING_CALL_ACTION',
+          callId: callData ? callData.callId : null,
+          action: isAnswer ? 'answer' : 'incoming',
+          callData
+        });
+
+        // If not already in /chat, navigate to targetUrl
+        try {
+          const clientUrl = new URL(appClient.url);
+          if (!clientUrl.pathname.startsWith('/chat')) {
+            await appClient.navigate(targetUrl).catch(() => {});
+          }
+        } catch (err) {
+          // ignore
+        }
+
+        if ('focus' in appClient) {
+          await appClient.focus().catch(() => {});
+        }
+      } else if (clients.openWindow) {
+        await clients.openWindow(targetUrl);
+      }
+    })()
+  );
 });
+

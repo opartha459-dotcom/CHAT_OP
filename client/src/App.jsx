@@ -3,13 +3,20 @@ import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLoca
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
+import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { ChatProvider, useChat } from './context/ChatContext';
 import { CallProvider } from './context/CallContext';
+import { StatusProvider } from './context/StatusContext';
 
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ChatDashboard } from './pages/ChatDashboard';
+import { AdminDashboard } from './pages/AdminDashboard';
+import { AccountRecoveryPage } from './pages/AccountRecoveryPage';
+import { VerifyEmailPage } from './pages/VerifyEmailPage';
+import { ConfirmDeletionPage } from './pages/ConfirmDeletionPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { DashboardSkeleton, AuthCardSkeleton } from './components/common/Skeleton';
 import { PulseLogo } from './components/common/PulseLogo';
 import { IncomingCallModal } from './components/call/IncomingCallModal';
@@ -28,6 +35,26 @@ const ProtectedRoute = ({ children }) => {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return children;
+};
+
+// Admin Route wrapper
+const AdminRoute = ({ children }) => {
+  const { isAuthenticated, user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <DashboardSkeleton />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (user?.role !== 'admin') {
+    return <Navigate to="/chat" replace />;
   }
 
   return children;
@@ -118,62 +145,90 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <SocketProvider>
-            <ChatProvider>
-              <CallProvider>
-                <BrowserRouter>
-                  <Routes>
-                    <Route
-                      path="/"
-                      element={
-                        <PublicRoute>
-                          <LandingPage />
-                        </PublicRoute>
-                      }
-                    />
-                    <Route
-                      path="/login"
-                      element={
-                        <PublicRoute>
-                          <LoginPage />
-                        </PublicRoute>
-                      }
-                    />
-                    <Route
-                      path="/register"
-                      element={
-                        <PublicRoute>
-                          <RegisterPage />
-                        </PublicRoute>
-                      }
-                    />
-                    <Route
-                      path="/chat"
-                      element={
-                        <ProtectedRoute>
-                          <ChatDashboard />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/join/:code"
-                      element={
-                        <ProtectedRoute>
-                          <JoinGroupHandler />
-                        </ProtectedRoute>
-                      }
-                    />
-                    {/* Fallback to Home / Chat with replace */}
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
+            <FeatureFlagsProvider>
+              <ChatProvider>
+                <CallProvider>
+                  <StatusProvider>
+                    <BrowserRouter>
+                      <Routes>
+                        <Route
+                          path="/"
+                          element={
+                            <PublicRoute>
+                              <LandingPage />
+                            </PublicRoute>
+                          }
+                        />
+                        <Route
+                          path="/login"
+                          element={
+                            <PublicRoute>
+                              <LoginPage />
+                            </PublicRoute>
+                          }
+                        />
+                        <Route
+                          path="/register"
+                          element={
+                            <PublicRoute>
+                              <RegisterPage />
+                            </PublicRoute>
+                          }
+                        />
+                        <Route
+                          path="/chat"
+                          element={
+                            <ProtectedRoute>
+                              <ChatDashboard />
+                            </ProtectedRoute>
+                          }
+                        />
+                        <Route
+                          path="/admin"
+                          element={
+                            <AdminRoute>
+                              <AdminDashboard />
+                            </AdminRoute>
+                          }
+                        />
+                        <Route
+                          path="/join/:code"
+                          element={
+                            <ProtectedRoute>
+                              <JoinGroupHandler />
+                            </ProtectedRoute>
+                          }
+                        />
+                        <Route
+                          path="/account-recovery"
+                          element={<AccountRecoveryPage />}
+                        />
+                        <Route
+                          path="/verify-email"
+                          element={<VerifyEmailPage />}
+                        />
+                        <Route
+                          path="/confirm-deletion"
+                          element={<ConfirmDeletionPage />}
+                        />
+                        <Route
+                          path="/reset-password"
+                          element={<ResetPasswordPage />}
+                        />
+                        {/* Fallback to Home / Chat with replace */}
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                      </Routes>
 
-                  {/* WebRTC Audio/Video Call Modals */}
-                  <IncomingCallModal />
-                  <ActiveCallModal />
-                </BrowserRouter>
-              </CallProvider>
+                      {/* WebRTC Audio/Video Call Modals */}
+                      <IncomingCallModal />
+                      <ActiveCallModal />
+                    </BrowserRouter>
+                  </StatusProvider>
+                </CallProvider>
             </ChatProvider>
-          </SocketProvider>
-        </AuthProvider>
+          </FeatureFlagsProvider>
+        </SocketProvider>
+      </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

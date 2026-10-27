@@ -296,19 +296,27 @@ const revokeSession = async (req, res) => {
 
 // @desc Upload avatar or media
 // @route POST /api/users/upload
-const uploadFile = (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, message: 'No file provided.' });
-  }
+const uploadFile = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file provided.' });
+    }
 
-  const fileUrl = `/uploads/${req.file.filename}`;
-  return res.json({
-    success: true,
-    fileUrl,
-    fileName: req.file.originalname,
-    fileSize: req.file.size,
-    fileMimeType: req.file.mimetype
-  });
+    const storageService = require('../services/storage');
+    const result = await storageService.upload(req.file);
+
+    return res.json({
+      success: true,
+      fileUrl: result.url,
+      fileName: result.fileName,
+      fileSize: result.fileSize,
+      fileMimeType: result.fileMimeType,
+      provider: result.provider
+    });
+  } catch (err) {
+    console.error('[Upload Error]', err);
+    return res.status(500).json({ success: false, message: 'File upload processing failed.' });
+  }
 };
 
 // @desc Get VAPID public key
@@ -400,6 +408,35 @@ const getCallInfo = (req, res) => {
   });
 };
 
+// @desc Handle call decline via REST (e.g. from service worker push notification action)
+// @route POST /api/users/call/:callId/decline
+const declineCall = async (req, res) => {
+  try {
+    const { callId } = req.params;
+    const { reason } = req.body || {};
+    const setupSockets = require('../sockets');
+    const success = await setupSockets.declineCall(callId, req.user || null, reason || 'declined');
+    return res.json({ success, message: success ? 'Call declined' : 'Call already ended or not found' });
+  } catch (err) {
+    console.error('[Call Decline Error]', err);
+    return res.status(500).json({ success: false, message: 'Failed to decline call' });
+  }
+};
+
+// @desc Handle call answer via REST (e.g. from service worker push notification action)
+// @route POST /api/users/call/:callId/answer
+const answerCall = async (req, res) => {
+  try {
+    const { callId } = req.params;
+    const setupSockets = require('../sockets');
+    const success = await setupSockets.answerCall(callId, req.user || null);
+    return res.json({ success, message: success ? 'Call marked answered' : 'Call already ended or not found' });
+  } catch (err) {
+    console.error('[Call Answer Error]', err);
+    return res.status(500).json({ success: false, message: 'Failed to answer call' });
+  }
+};
+
 module.exports = {
   searchUsers,
   getUserProfile,
@@ -415,5 +452,7 @@ module.exports = {
   getPushPublicKey,
   subscribePush,
   unsubscribePush,
-  getCallInfo
+  getCallInfo,
+  declineCall,
+  answerCall
 };

@@ -63,6 +63,48 @@ const userSchema = new mongoose.Schema(
     bannedAt: {
       type: Date
     },
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    emailVerificationToken: {
+      type: String,
+      select: false
+    },
+    emailVerificationExpires: {
+      type: Date
+    },
+    passwordResetToken: {
+      type: String,
+      select: false
+    },
+    passwordResetExpires: {
+      type: Date
+    },
+    deletionStatus: {
+      type: String,
+      enum: ['active', 'pending_deletion', 'deleted', 'retained'],
+      default: 'active',
+      index: true
+    },
+    deletionRequestedAt: {
+      type: Date
+    },
+    deletionConfirmedAt: {
+      type: Date
+    },
+    recoveryDeadline: {
+      type: Date,
+      index: true
+    },
+    deletionConfirmationToken: {
+      type: String,
+      select: false
+    },
+    deletionConfirmationExpires: {
+      type: Date
+    },
     isDeactivated: {
       type: Boolean,
       default: false

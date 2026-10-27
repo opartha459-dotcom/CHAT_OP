@@ -29,8 +29,30 @@ const messageSchema = new mongoose.Schema(
     },
     messageType: {
       type: String,
-      enum: ['text', 'image', 'video', 'file', 'audio', 'system', 'call'],
+      enum: ['text', 'image', 'video', 'file', 'audio', 'system', 'call', 'poll'],
       default: 'text'
+    },
+    isPinned: {
+      type: Boolean,
+      default: false
+    },
+    poll: {
+      question: { type: String, default: '' },
+      options: [
+        {
+          text: { type: String, required: true },
+          votes: [
+            {
+              type: mongoose.Schema.Types.ObjectId,
+              ref: 'User'
+            }
+          ]
+        }
+      ],
+      allowsMultiple: { type: Boolean, default: false },
+      isAnonymous: { type: Boolean, default: false },
+      expiresAt: { type: Date },
+      isClosed: { type: Boolean, default: false }
     },
     callMetadata: {
       callId: { type: String, default: '' },
