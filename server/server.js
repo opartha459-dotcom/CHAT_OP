@@ -36,29 +36,33 @@ const server = http.createServer(app);
 
 // Dynamic CORS origin to support local machine, configured env, and phone access on Wi-Fi
 // Dynamic CORS origin configuration
+// CORS configuration for production and local testing
+
 const allowedOrigins = process.env.CLIENT_URL
-  ? process.env.CLIENT_URL.split(',').map((u) => u.trim())
+  ? process.env.CLIENT_URL.split(',').map((u) => u.trim().replace(/\/$/, ''))
   : ['http://localhost:5173', 'http://127.0.0.1:5173'];
 
 const corsOriginValidator = (origin, callback) => {
-  // Allow requests without an Origin header
+  // Allow requests without Origin
   if (!origin) return callback(null, true);
 
-  // Allow configured frontend origins
-  if (allowedOrigins.includes(origin)) {
+  const normalizedOrigin = origin.replace(/\/$/, '');
+
+  // Allow configured frontend URLs
+  if (allowedOrigins.includes(normalizedOrigin)) {
     return callback(null, true);
   }
 
-  // Allow local network development
+  // Allow local development
   if (
     /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin)
   ) {
     return callback(null, true);
   }
 
+  console.error('[CORS BLOCKED]:', origin);
   return callback(new Error('Not allowed by CORS'));
 };
-
 // Initialize Socket.IO
 const io = new Server(server, {
   cors: {
