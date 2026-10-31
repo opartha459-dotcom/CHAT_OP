@@ -38,7 +38,7 @@ const adminController = require('./controllers/adminController');
 const uploadMiddleware = require('./middlewares/upload');
 
 // =====================================================
-// 2. ENVIRONMENT
+// 2. ENVIRONMENT CONFIGURATION
 // =====================================================
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -53,36 +53,46 @@ const PORT = process.env.PORT || 5000;
 const app = express();
 const server = http.createServer(app);
 
-// Configure trusted reverse proxy hops.
-// Render commonly uses one trusted proxy hop.
-// Set TRUST_PROXY_HOPS=1 in Render.
-const proxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
-
-if (!Number.isInteger(proxyHops) || proxyHops < 0) {
-  throw new Error('[CONFIG ERROR] Invalid TRUST_PROXY_HOPS');
-}
-
-if (proxyHops > 0) {
-  app.set('trust proxy', proxyHops);
-}
-
 // =====================================================
-// 4. CORS CONFIGURATION
+// 4. TRUST PROXY CONFIGURATION
 // =====================================================
 
-// Explicitly trusted production frontend.
-// Add additional domains through CLIENT_URL.
-const trustedProductionOrigins = [
-  'https://chat-with-her.netlify.app'
-];
+// Render normally requires one trusted reverse proxy hop.
+// Production defaults to 1 even if the environment
+// variable is missing.
 
-// Development frontend origins.
+const proxyHops = Number(
+  process.env.TRUST_PROXY_HOPS ??
+  (IS_PRODUCTION ? 1 : 0)
+);
+
+if (
+  !Number.isInteger(proxyHops) ||
+  proxyHops < 0
+) {
+  throw new Error(
+    '[CONFIG ERROR] TRUST_PROXY_HOPS must be a non-negative integer'
+  );
+}
+
+// IMPORTANT: Configure before rate limiting.
+app.set('trust proxy', proxyHops);
+
+console.log('[PROXY CONFIG]', {
+  environment: NODE_ENV,
+  trustProxy: proxyHops
+});
+
+// =====================================================
+// 5. CORS CONFIGURATION
+// =====================================================
+
 const developmentOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173'
 ];
 
-// Parse and validate CLIENT_URL.
+// Parse CLIENT_URL.
 function parseClientOrigins(value) {
   if (!value || !value.trim()) {
     return [];
@@ -93,44 +103,38 @@ function parseClientOrigins(value) {
     .map((item) => item.trim())
     .filter(Boolean)
     .map((item) => {
-      let parsed;
-
       try {
-        parsed = new URL(item);
-      } catch {
+        const parsed = new URL(item);
+
+        if (
+          !['http:', 'https:'].includes(parsed.protocol)
+        ) {
+          throw new Error('Unsupported protocol');
+        }
+
+        if (
+          parsed.username ||
+          parsed.password ||
+          parsed.pathname !== '/' ||
+          parsed.search ||
+          parsed.hash
+        ) {
+          throw new Error('Only origin URLs are allowed');
+        }
+
+        if (
+          IS_PRODUCTION &&
+          parsed.protocol !== 'https:'
+        ) {
+          throw new Error('Production requires HTTPS');
+        }
+
+        return parsed.origin;
+      } catch (error) {
         throw new Error(
-          `[CORS CONFIG ERROR] Invalid CLIENT_URL: ${item}`
+          `[CORS CONFIG ERROR] Invalid CLIENT_URL: ${item}. ${error.message}`
         );
       }
-
-      if (
-        parsed.protocol !== 'http:' &&
-        parsed.protocol !== 'https:'
-      ) {
-        throw new Error(
-          `[CORS CONFIG ERROR] Unsupported protocol: ${item}`
-        );
-      }
-
-      if (
-        parsed.username ||
-        parsed.password ||
-        parsed.pathname !== '/' ||
-        parsed.search ||
-        parsed.hash
-      ) {
-        throw new Error(
-          `[CORS CONFIG ERROR] CLIENT_URL must contain only an origin: ${item}`
-        );
-      }
-
-      if (IS_PRODUCTION && parsed.protocol !== 'https:') {
-        throw new Error(
-          `[CORS CONFIG ERROR] Production origins must use HTTPS: ${item}`
-        );
-      }
-
-      return parsed.origin;
     });
 }
 
@@ -140,13 +144,18 @@ const configuredOrigins = parseClientOrigins(
 
 const allowedOrigins = [
   ...new Set([
-    ...(IS_PRODUCTION ? trustedProductionOrigins : []),
     ...configuredOrigins,
     ...(!IS_PRODUCTION ? developmentOrigins : [])
   ])
 ];
 
-// Detect private IPv4 addresses for local development only.
+if (IS_PRODUCTION && allowedOrigins.length === 0) {
+  throw new Error(
+    '[CORS CONFIG ERROR] CLIENT_URL is required in production'
+  );
+}
+
+// Private IPv4 validation for local development only.
 function isPrivateIPv4(hostname) {
   const parts = hostname.split('.');
 
@@ -159,9 +168,7 @@ function isPrivateIPv4(hostname) {
 
   const [a, b, c, d] = parts.map(Number);
 
-  if (
-    [a, b, c, d].some((n) => n < 0 || n > 255)
-  ) {
+  if ([a, b, c, d].some((n) => n < 0 || n > 255)) {
     return false;
   }
 
@@ -172,9 +179,8 @@ function isPrivateIPv4(hostname) {
   );
 }
 
-// Single origin validation function.
-function checkOrigin(origin) {
-  // Requests without Origin.
+// Check incoming origin.
+function validateOrigin(origin) {
   if (!origin) {
     return {
       allowed: true,
@@ -189,13 +195,20 @@ function checkOrigin(origin) {
   } catch {
     return {
       allowed: false,
-      reason: 'INVALID_ORIGIN_FORMAT'
+      reason: 'INVALID_ORIGIN'
+    };
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    return {
+      allowed: false,
+      reason: 'UNSUPPORTED_PROTOCOL'
     };
   }
 
   const normalizedOrigin = parsed.origin;
 
-  // Exact allowlist match.
+  // Exact production/development allowlist.
   if (allowedOrigins.includes(normalizedOrigin)) {
     return {
       allowed: true,
@@ -204,23 +217,20 @@ function checkOrigin(origin) {
     };
   }
 
-  // Private network and localhost access only in development.
-  if (!IS_PRODUCTION && parsed.protocol === 'http:') {
-    const isLocalhost = [
-      'localhost',
-      '127.0.0.1'
-    ].includes(parsed.hostname);
-
-    if (
-      isLocalhost ||
+  // Private IPs are allowed only in development.
+  if (
+    !IS_PRODUCTION &&
+    parsed.protocol === 'http:' &&
+    (
+      ['localhost', '127.0.0.1'].includes(parsed.hostname) ||
       isPrivateIPv4(parsed.hostname)
-    ) {
-      return {
-        allowed: true,
-        reason: 'DEVELOPMENT_LOCAL_NETWORK',
-        normalizedOrigin
-      };
-    }
+    )
+  ) {
+    return {
+      allowed: true,
+      reason: 'LOCAL_NETWORK',
+      normalizedOrigin
+    };
   }
 
   return {
@@ -230,18 +240,25 @@ function checkOrigin(origin) {
   };
 }
 
-// Detailed CORS diagnostics.
+// CORS startup diagnostics.
 console.log('\n========== PULSECHAT CORS CONFIG ==========');
+
 console.log('[CORS] Environment:', NODE_ENV);
-console.log('[CORS] CLIENT_URL:', process.env.CLIENT_URL || '(not configured)');
+
+console.log(
+  '[CORS] CLIENT_URL:',
+  process.env.CLIENT_URL || '(missing)'
+);
+
 console.log('[CORS] Configured origins:', configuredOrigins);
+
 console.log('[CORS] Final allowed origins:', allowedOrigins);
-console.log('[CORS] Production mode:', IS_PRODUCTION);
+
 console.log('============================================\n');
 
-// CORS validator.
+// CORS callback.
 const corsOriginValidator = (origin, callback) => {
-  const result = checkOrigin(origin);
+  const result = validateOrigin(origin);
 
   if (result.allowed) {
     if (origin) {
@@ -270,7 +287,7 @@ const corsOriginValidator = (origin, callback) => {
 };
 
 // =====================================================
-// 5. SOCKET.IO INITIALIZATION
+// 6. SOCKET.IO INITIALIZATION
 // =====================================================
 
 const io = new Server(server, {
@@ -284,10 +301,10 @@ const io = new Server(server, {
 app.set('io', io);
 
 // =====================================================
-// 6. EXPRESS MIDDLEWARE
+// 7. EXPRESS MIDDLEWARE
 // =====================================================
 
-// CORS should run before body parsers.
+// CORS before other request middleware.
 app.use(cors({
   origin: corsOriginValidator,
   credentials: true,
@@ -318,35 +335,41 @@ app.use(express.urlencoded({
 app.use(cookieParser());
 
 // =====================================================
-// 7. RATE LIMITER
+// 8. AUTHENTICATION RATE LIMITER
 // =====================================================
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+
+  // Maximum 100 authentication requests per IP.
+  limit: 100,
+
   standardHeaders: true,
   legacyHeaders: false,
 
   message: {
     success: false,
-    message: 'Too many authentication attempts. Please try again after 15 minutes.'
+    message:
+      'Too many authentication attempts. Please try again after 15 minutes.'
   },
 
   handler: (req, res) => {
-    console.warn('[RATE LIMIT] Authentication limit reached:', {
+    console.warn('[RATE LIMIT]', {
       ip: req.ip,
-      path: req.path
+      path: req.path,
+      method: req.method
     });
 
     res.status(429).json({
       success: false,
-      message: 'Too many authentication attempts. Please try again after 15 minutes.'
+      message:
+        'Too many authentication attempts. Please try again after 15 minutes.'
     });
   }
 });
 
 // =====================================================
-// 8. DATABASE INITIALIZATION
+// 9. DATABASE INITIALIZATION
 // =====================================================
 
 const initializationPromise = (async () => {
@@ -372,15 +395,18 @@ const initializationPromise = (async () => {
 
   console.log('[JOBS] Retention schedule initialized');
 
-  console.log('[STARTUP] All initialization completed');
+  console.log('[STARTUP] Initialization completed successfully');
 })();
 
-// Log startup failures without silently swallowing them.
+// Log initialization failures.
 initializationPromise.catch((error) => {
-  console.error('[INITIALIZATION FAILED]', error.stack || error);
+  console.error(
+    '[INITIALIZATION FAILED]',
+    error.stack || error
+  );
 });
 
-// Wait for database initialization before processing API requests.
+// Wait for database initialization before API requests.
 app.use('/api', async (req, res, next) => {
   try {
     await initializationPromise;
@@ -391,7 +417,7 @@ app.use('/api', async (req, res, next) => {
 });
 
 // =====================================================
-// 9. STATIC UPLOADS
+// 10. STATIC UPLOAD FILES
 // =====================================================
 
 const defaultUploadDir = path.join(__dirname, 'uploads');
@@ -410,7 +436,7 @@ if (
 }
 
 // =====================================================
-// 10. ROOT ENDPOINT
+// 11. ROOT ENDPOINT
 // =====================================================
 
 app.get('/', (req, res) => {
@@ -437,7 +463,7 @@ app.get('/', (req, res) => {
 });
 
 // =====================================================
-// 11. HEALTH CHECK
+// 12. HEALTH CHECK
 // =====================================================
 
 const healthHandler = async (req, res) => {
@@ -454,6 +480,8 @@ const healthHandler = async (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    console.error('[HEALTH CHECK FAILED]', error.message);
+
     res.status(503).json({
       status: 'unhealthy',
       service: 'PulseChat Real-Time API',
@@ -468,7 +496,7 @@ app.get('/health', healthHandler);
 app.get('/api/health', healthHandler);
 
 // =====================================================
-// 12. PUBLIC SYSTEM FEATURES
+// 13. PUBLIC SYSTEM FEATURES
 // =====================================================
 
 app.get(
@@ -477,28 +505,37 @@ app.get(
 );
 
 // =====================================================
-// 13. API ROUTES
+// 14. API ROUTES
 // =====================================================
 
 app.use('/api/auth', authLimiter, authRoutes);
+
 app.use('/api/users', userRoutes);
+
 app.use('/api/chats', chatRoutes);
+
 app.use('/api/groups', groupRoutes);
+
 app.use('/api/messages', messageRoutes);
+
 app.use('/api/reports', reportRoutes);
+
 app.use('/api/admin', adminRoutes);
+
 app.use('/api/export', exportRoutes);
+
 app.use('/api/announcements', announcementRoutes);
+
 app.use('/api/status', statusRoutes);
 
 // =====================================================
-// 14. SOCKET.IO EVENT HANDLERS
+// 15. SOCKET.IO EVENT HANDLERS
 // =====================================================
 
 setupSockets(io);
 
 // =====================================================
-// 15. 404 HANDLER
+// 16. 404 HANDLER
 // =====================================================
 
 app.use((req, res) => {
@@ -509,7 +546,7 @@ app.use((req, res) => {
 });
 
 // =====================================================
-// 16. CENTRALIZED ERROR HANDLER
+// 17. CENTRALIZED ERROR HANDLER
 // =====================================================
 
 app.use((err, req, res, next) => {
@@ -517,7 +554,6 @@ app.use((err, req, res, next) => {
     return next(err);
   }
 
-  // CORS errors.
   if (
     err.code === 'CORS_ORIGIN_DENIED' ||
     err.message === 'Not allowed by CORS'
@@ -535,28 +571,24 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // MongoDB errors.
-  if (
-    err.name === 'MongoServerError' ||
-    err.name === 'MongooseError'
-  ) {
-    console.error('[DATABASE ERROR]', err.message);
-  } else {
-    console.error('[UNHANDLED ERROR]', err.stack || err);
-  }
+  console.error(
+    '[UNHANDLED ERROR]',
+    err.stack || err
+  );
 
   const status = err.statusCode || 500;
 
   res.status(status).json({
     success: false,
-    message: status >= 500
-      ? 'Internal server error occurred.'
-      : err.message
+    message:
+      status >= 500
+        ? 'Internal server error occurred.'
+        : err.message
   });
 });
 
 // =====================================================
-// 17. START SERVER
+// 18. START SERVER
 // =====================================================
 
 if (!process.env.VERCEL) {
@@ -567,6 +599,7 @@ if (!process.env.VERCEL) {
         console.log('[SERVER] PulseChat API started');
         console.log('[SERVER] Port:', PORT);
         console.log('[SERVER] Environment:', NODE_ENV);
+        console.log('[SERVER] Trust proxy:', proxyHops);
         console.log('[SERVER] Socket.IO: initialized');
         console.log('[DATABASE] Main database: connected');
         console.log('[CORS] Configuration: loaded');
@@ -580,7 +613,7 @@ if (!process.env.VERCEL) {
 }
 
 // =====================================================
-// 18. EXPORTS
+// 19. EXPORTS
 // =====================================================
 
 app.server = server;
