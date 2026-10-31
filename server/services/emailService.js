@@ -1,38 +1,38 @@
 const nodemailer = require('nodemailer');
 
-// Configure SMTP transporter
-let transporter = null;
+// Do NOT cache the transporter as a module-level singleton —
+// env vars may not be loaded yet when this module is first required.
+// Instead, create it fresh on every call (nodemailer handles connection pooling internally).
 
 function getTransporter() {
-  if (transporter) return transporter;
-
   const host = process.env.SMTP_HOST;
   const port = parseInt(process.env.SMTP_PORT || '587', 10);
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
 
   if (host && user && pass) {
-    transporter = nodemailer.createTransport({
+    return nodemailer.createTransport({
       host,
       port,
       secure: port === 465,
-      auth: { user, pass }
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false }
     });
-  } else {
-    // Development / Mock fallback: logs email securely without exposing credentials
-    transporter = {
-      sendMail: async (options) => {
-        console.log(`\n================== [EMAIL DISPATCHED] ==================`);
-        console.log(`To: ${options.to}`);
-        console.log(`Subject: ${options.subject}`);
-        console.log(`From: ${options.from || 'PulseChat <noreply@pulsechat.io>'}`);
-        if (options.text) console.log(`Text: ${options.text}`);
-        console.log(`========================================================\n`);
-        return { messageId: `mock_${Date.now()}` };
-      }
-    };
   }
-  return transporter;
+
+  // Development / Mock fallback: logs email securely without exposing credentials
+  return {
+    sendMail: async (options) => {
+      console.log(`\n================== [EMAIL DISPATCHED - MOCK] ==================`);
+      console.log(`⚠️  SMTP not configured — email was NOT sent. Set SMTP_HOST, SMTP_USER, SMTP_PASS in .env`);
+      console.log(`To: ${options.to}`);
+      console.log(`Subject: ${options.subject}`);
+      console.log(`From: ${options.from || 'PulseChat <noreply@pulsechat.io>'}`);
+      if (options.text) console.log(`Text: ${options.text}`);
+      console.log(`===============================================================\n`);
+      return { messageId: `mock_${Date.now()}` };
+    }
+  };
 }
 
 const getClientBaseUrl = () => {
@@ -126,6 +126,38 @@ const sendPasswordResetEmail = async (email, username, token) => {
     to: email,
     subject: 'Reset your PulseChat password',
     text: `Hello ${username},\nReset your password using this link: ${resetUrl}\nExpires in 1 hour.`,
+    html
+  };
+
+  return getTransporter().sendMail(mailOptions);
+};
+
+// ── Admin-deleted account notification ──────────────────────────────────────
+const sendAdminDeletionEmail = async (email, username, reason = '', appealUrl = '') => {
+  const bodyHtml = `
+    <h2>Your PulseChat Account Has Been Removed</h2>
+    <p>Hello <strong>${username}</strong>,</p>
+    <p>An administrator has <strong>permanently removed</strong> your PulseChat account.</p>
+    <div style="background:#fef2f2;border-left:4px solid #ef4444;padding:14px 16px;border-radius:6px;margin:16px 0;">
+      <p style="margin:0;font-weight:600;color:#b91c1c;">Reason provided by administrator:</p>
+      <p style="margin:8px 0 0;color:#374151;">${reason || 'No specific reason provided.'}</p>
+    </div>
+    <p>If you believe this action was made in error, you can submit an appeal below. An administrator will review your case.</p>
+  `;
+
+  const html = renderBaseTemplate({
+    title: 'PulseChat Account Removed',
+    bodyHtml,
+    actionUrl: appealUrl || undefined,
+    actionText: appealUrl ? 'Submit an Appeal' : undefined,
+    warningText: 'If this was not a mistake, no further action is required.'
+  });
+
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || '"PulseChat Support" <support@pulsechat.io>',
+    to: email,
+    subject: 'Your PulseChat account has been removed',
+    text: `Hello ${username},\n\nYour account has been removed by an administrator.\nReason: ${reason || 'No reason provided.'}\n\nTo appeal: ${appealUrl || 'Contact support.'}`,
     html
   };
 
@@ -227,5 +259,6 @@ module.exports = {
   sendPasswordResetEmail,
   sendDeletionConfirmationEmail,
   sendRecoveryNotificationEmail,
-  sendRecoveryDecisionEmail
+  sendRecoveryDecisionEmail,
+  sendAdminDeletionEmail
 };

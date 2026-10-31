@@ -62,21 +62,13 @@ export const LoginPage = () => {
   };
 
   const handleResend = async () => {
-    if (!unverifiedEmail && !identifier) return;
+    const emailOrId = unverifiedEmail || identifier;
+    if (!emailOrId) return;
     setResendStatus({ loading: true, msg: '', type: '' });
     try {
-      const data = await resendVerification(unverifiedEmail || identifier);
-      setResendStatus({ loading: false, msg: data.message || 'Verification email resent!', type: 'success' });
-      setResendCooldown(60);
-      const timer = setInterval(() => {
-        setResendCooldown((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+      await resendVerification(emailOrId);
+      // Navigate to the dedicated waiting page so user sees clear "check inbox" UI
+      navigate(`/verify-email?waiting=true&email=${encodeURIComponent(unverifiedEmail || identifier)}`, { replace: false });
     } catch (err) {
       setResendStatus({ loading: false, msg: err.message || 'Failed to resend email.', type: 'error' });
     }

@@ -100,7 +100,7 @@ const register = async (req, res) => {
       e2eePublicKey: e2eePublicKey || '',
       isEmailVerified: false,
       emailVerificationToken: verificationHash,
-      emailVerificationExpires: new Date(Date.now() + 24 * 3600 * 1000)
+      emailVerificationExpires: new Date(Date.now() + 72 * 3600 * 1000)
     });
 
     // Send verification email asynchronously
@@ -132,19 +132,48 @@ const verifyEmail = async (req, res) => {
     }
 
     const hashed = hashToken(token);
-    const user = await User.findOne({
-      emailVerificationToken: hashed,
-      emailVerificationExpires: { $gt: new Date() }
-    });
 
-    if (!user) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired verification link.' });
+    // First: check if the token exists at all (ignoring expiry)
+    const userWithToken = await User.findOne({ emailVerificationToken: hashed }).select('+emailVerificationToken +emailVerificationExpires');
+
+    if (!userWithToken) {
+      // Token not in DB at all — could be already verified or truly invalid
+      return res.status(400).json({
+        success: false,
+        expired: true,
+        message: 'This verification link is invalid or has already been used. Enter your email below to get a fresh link.'
+      });
     }
 
-    user.isEmailVerified = true;
-    user.emailVerificationToken = undefined;
-    user.emailVerificationExpires = undefined;
-    await user.save();
+    // Token exists — check if already verified
+    if (userWithToken.isEmailVerified) {
+      return res.json({ success: true, message: 'Your email is already verified. You can sign in.' });
+    }
+
+    // Token expired — auto-generate a new one and resend
+    if (!userWithToken.emailVerificationExpires || userWithToken.emailVerificationExpires < new Date()) {
+      const verificationRawToken = crypto.randomBytes(32).toString('hex');
+      userWithToken.emailVerificationToken = hashToken(verificationRawToken);
+      userWithToken.emailVerificationExpires = new Date(Date.now() + 72 * 3600 * 1000); // 72 hours
+      await userWithToken.save();
+
+      emailService.sendVerificationEmail(userWithToken.email, userWithToken.username, verificationRawToken).catch((err) => {
+        console.warn('[Email] Re-verification send error:', err.message);
+      });
+
+      return res.status(400).json({
+        success: false,
+        expired: true,
+        email: userWithToken.email,
+        message: 'Your verification link had expired. A fresh link has been sent to your email — please check your inbox.'
+      });
+    }
+
+    // Valid — verify the account
+    userWithToken.isEmailVerified = true;
+    userWithToken.emailVerificationToken = undefined;
+    userWithToken.emailVerificationExpires = undefined;
+    await userWithToken.save();
 
     return res.json({
       success: true,
@@ -182,7 +211,7 @@ const resendVerificationEmail = async (req, res) => {
 
     const verificationRawToken = crypto.randomBytes(32).toString('hex');
     user.emailVerificationToken = hashToken(verificationRawToken);
-    user.emailVerificationExpires = new Date(Date.now() + 24 * 3600 * 1000);
+    user.emailVerificationExpires = new Date(Date.now() + 72 * 3600 * 1000);
     await user.save();
 
     await emailService.sendVerificationEmail(user.email, user.username, verificationRawToken);
@@ -465,18 +494,30 @@ const submitAccountRecovery = async (req, res) => {
     }
 
     const cleanIdentifier = identifier.trim().toLowerCase();
+
+    // Find the retained account
     const user = await User.findOne({
       $or: [{ username: cleanIdentifier }, { email: cleanIdentifier }],
       deletionStatus: { $in: ['pending_deletion', 'retained'] }
     }).select('+password');
 
     if (!user) {
-      return res.status(404).json({ success: false, message: 'No retained account found matching those credentials.' });
+      // Check if account exists at all but isn't in deletion — give a better error
+      const anyUser = await User.findOne({
+        $or: [{ username: cleanIdentifier }, { email: cleanIdentifier }]
+      });
+      if (anyUser && anyUser.deletionStatus === 'active') {
+        return res.status(400).json({
+          success: false,
+          message: 'This account is active and does not require recovery. Please log in normally.'
+        });
+      }
+      return res.status(404).json({ success: false, message: 'No retained account found with that username or email.' });
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Password confirmation failed.' });
+      return res.status(401).json({ success: false, message: 'Incorrect password. Please try again.' });
     }
 
     // Check if recovery request already exists
@@ -534,16 +575,31 @@ const createAlternativeAccount = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Username is already taken. Please choose another.' });
     }
 
-    // Find the retained/pending account that holds this email
-    const pendingAccount = await User.findOne({
-      email: cleanEmail,
-      deletionStatus: { $in: ['pending_deletion', 'retained'] }
-    });
+    // Find any existing account with this email that would block creation
+    // Priority: pending_deletion/retained (old archived account) first,
+    // then any other status (e.g. a leftover from a previous partial attempt)
+    const pendingAccount = await User.findOne({ email: cleanEmail });
+
+    let oldAccountId = null;
+    let oldUsername = null;
+    let oldOriginalEmail = cleanEmail;
 
     if (pendingAccount) {
-      // Re-assign pending account email to a preserved historical alias so unique index is respected
-      pendingAccount.email = `retained_${pendingAccount._id}_${Date.now()}@archive.pulsechat.internal`;
-      await pendingAccount.save();
+      oldAccountId = pendingAccount._id;
+      oldUsername = pendingAccount.username;
+      oldOriginalEmail = pendingAccount.email;
+
+      // Archive the email using updateOne (bypasses validators) so unique index is freed
+      const archiveEmail = `archived_${pendingAccount._id}_${Date.now()}@archive.pulsechat.internal`;
+      await User.updateOne(
+        { _id: pendingAccount._id },
+        {
+          $set: {
+            email: archiveEmail,
+            archivedEmail: oldOriginalEmail   // preserve original for admin reference
+          }
+        }
+      );
     }
 
     // Create the brand-new independent account
@@ -573,15 +629,135 @@ const createAlternativeAccount = async (req, res) => {
 
     setTokenCookie(res, token);
 
+    // Create a data-migration recovery request (no items selected yet — user picks via /request-data-items)
+    let recoveryRequestId = null;
+    if (oldAccountId) {
+      try {
+        const migrationReq = await AccountRecoveryRequest.create({
+          user: oldAccountId,
+          newAccount: user._id,
+          requestType: 'data_migration',
+          email: oldOriginalEmail,
+          originalEmail: oldOriginalEmail,
+          originalUsername: oldUsername,
+          requestedItems: [],   // filled in by the next step (POST /request-data-items)
+          userNote: `User created a new account (@${cleanUsername}) and may request specific data from their old account.`,
+          ipAddress: req.ip
+        });
+        recoveryRequestId = migrationReq._id;
+        // Notify user
+        emailService.sendRecoveryNotificationEmail(cleanEmail, cleanUsername, recoveryRequestId.toString()).catch(() => {});
+      } catch (e) {
+        console.warn('[Alt Account] Could not create migration request:', e.message);
+      }
+    }
+
     return res.status(201).json({
       success: true,
-      message: 'New independent account created successfully.',
+      message: 'New account created successfully.',
       user: user.toJSON(),
-      token
+      token,
+      hasPendingOldAccount: !!oldAccountId,
+      recoveryRequestId: recoveryRequestId ? recoveryRequestId.toString() : null
     });
   } catch (error) {
     console.error('[Alternative Account Error]', error);
     return res.status(500).json({ success: false, message: error.message || 'Error creating new account.' });
+  }
+};
+
+// @desc User selects which data items to request from their old account
+// @route POST /api/auth/request-data-items
+// Body: { recoveryRequestId, items: ['chats','contacts','call_history','media','profile'] }
+const requestDataItems = async (req, res) => {
+  try {
+    const { recoveryRequestId, items } = req.body;
+    if (!recoveryRequestId || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: 'recoveryRequestId and at least one item are required.' });
+    }
+
+    const ALLOWED_ITEMS = {
+      chats:        'Chat History',
+      contacts:     'Contacts & Friends',
+      call_history: 'Call History',
+      media:        'Shared Media & Files',
+      profile:      'Profile Info & Bio'
+    };
+
+    const recoveryReq = await AccountRecoveryRequest.findById(recoveryRequestId);
+    if (!recoveryReq) {
+      return res.status(404).json({ success: false, message: 'Recovery request not found.' });
+    }
+
+    // Only allow the new-account owner to update
+    if (recoveryReq.newAccount?.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorised.' });
+    }
+
+    // Build items list — merge with existing, avoid duplicates
+    const existingKeys = new Set(recoveryReq.requestedItems.map(i => i.key));
+    const newItems = items
+      .filter(k => ALLOWED_ITEMS[k] && !existingKeys.has(k))
+      .map(k => ({ key: k, label: ALLOWED_ITEMS[k], status: 'pending' }));
+
+    recoveryReq.requestedItems.push(...newItems);
+    recoveryReq.status = 'pending'; // ensure overall still pending
+    await recoveryReq.save();
+
+    return res.json({
+      success: true,
+      message: 'Data items requested successfully. An admin will review each one.',
+      requestedItems: recoveryReq.requestedItems
+    });
+  } catch (error) {
+    console.error('[Request Data Items Error]', error);
+    return res.status(500).json({ success: false, message: 'Error requesting data items.' });
+  }
+};
+
+// @desc Submit a deletion appeal (public — no auth)
+// @route POST /api/auth/deletion-appeal
+const deletionAppeal = async (req, res) => {
+  try {
+    const { email, reason } = req.body;
+    if (!email || !reason) {
+      return res.status(400).json({ success: false, message: 'Email and reason are required.' });
+    }
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Notify admin(s) by email (non-blocking)
+    const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean);
+    const smtpUser = process.env.SMTP_USER;
+    const notifyTargets = adminEmails.length ? adminEmails : (smtpUser ? [smtpUser] : []);
+
+    if (notifyTargets.length) {
+      const nodemailer = require('nodemailer');
+      const host = process.env.SMTP_HOST;
+      const port = parseInt(process.env.SMTP_PORT || '587', 10);
+      const pass = process.env.SMTP_PASS;
+      if (host && smtpUser && pass) {
+        const transporter = nodemailer.createTransport({
+          host, port,
+          secure: port === 465,
+          auth: { user: smtpUser, pass },
+          tls: { rejectUnauthorized: false }
+        });
+        transporter.sendMail({
+          from: process.env.EMAIL_FROM || `"PulseChat Admin" <${smtpUser}>`,
+          to: notifyTargets.join(', '),
+          subject: `PulseChat Deletion Appeal — ${cleanEmail}`,
+          html: `<h2>Account Deletion Appeal</h2><p><strong>From:</strong> ${cleanEmail}</p><p><strong>Reason:</strong></p><blockquote style="border-left:4px solid #6366f1;padding:10px 16px;background:#f5f3ff;margin:12px 0;">${reason.replace(/\n/g, '<br/>')}</blockquote><p style="color:#6b7280;font-size:13px;">Review this appeal in the PulseChat admin panel.</p>`
+        }).catch((err) => console.warn('[Appeal] Admin notify error:', err.message));
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: 'Your appeal has been submitted. An admin will review it shortly.'
+    });
+  } catch (error) {
+    console.error('[Deletion Appeal Error]', error);
+    return res.status(500).json({ success: false, message: 'Error submitting appeal.' });
   }
 };
 
@@ -713,6 +889,8 @@ module.exports = {
   confirmAccountDeletion,
   submitAccountRecovery,
   createAlternativeAccount,
+  requestDataItems,
+  deletionAppeal,
   logout,
   logoutAll,
   getMe,

@@ -11,6 +11,8 @@ const {
   confirmAccountDeletion,
   submitAccountRecovery,
   createAlternativeAccount,
+  requestDataItems,
+  deletionAppeal,
   logout,
   logoutAll,
   getMe,
@@ -29,6 +31,7 @@ router.post('/reset-password', resetPassword);
 router.post('/confirm-deletion', confirmAccountDeletion);
 router.post('/recover-account', submitAccountRecovery);
 router.post('/create-alternative-account', createAlternativeAccount);
+router.post('/deletion-appeal', deletionAppeal);
 
 // Protected Routes (Session Required)
 router.post('/logout', protect, logout);
@@ -37,5 +40,6 @@ router.get('/me', protect, getMe);
 router.post('/change-password', protect, changePassword);
 router.post('/deactivate', protect, deactivateAccount);
 router.post('/request-deletion', protect, requestAccountDeletion);
+router.post('/request-data-items', protect, requestDataItems);
 
 module.exports = router;

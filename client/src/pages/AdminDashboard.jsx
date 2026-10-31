@@ -39,9 +39,13 @@ import {
   Play,
   Square,
   CheckSquare,
-  X
-} from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+  X,
+  RotateCcw,
+  Clock,
+  Hourglass,
+  XCircle,
+  Mail
+} from 'lucide-react';import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { GridListView } from '../components/common/GridListView';
 import { Avatar } from '../components/common/Avatar';
@@ -68,6 +72,14 @@ export const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Recovery requests state
+  const [recoveries, setRecoveries] = useState([]);
+  const [recoveriesLoading, setRecoveriesLoading] = useState(false);
+  const [resolveModal, setResolveModal] = useState(null); // { request, action: 'approve'|'reject' }
+  const [resolveReason, setResolveReason] = useState('');
+  const [resolveLoading, setResolveLoading] = useState(false);
+  const [resolveMsg, setResolveMsg] = useState({ text: '', type: '' });
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState('');
 
@@ -99,6 +111,15 @@ export const AdminDashboard = () => {
     isBanned: false,
     banReason: ''
   });
+
+  // Delete User Modal State
+  const [deleteUserModal, setDeleteUserModal] = useState(null); // { user }
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Recovery request multi-select delete state
+  const [selectedRecoveries, setSelectedRecoveries] = useState(new Set());
+  const [deletingRecoveries, setDeletingRecoveries] = useState(false);
 
   // Announcement Modal & Edit state
   const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
@@ -254,6 +275,8 @@ export const AdminDashboard = () => {
     else if (activeTab === 'databases') loadDbStatus();
     else if (activeTab === 'audit') loadAuditLogs();
     else if (activeTab === 'settings') loadSystemSettings();
+    else if (activeTab === 'recoveries') loadRecoveries();
+    else if (activeTab === 'recoveries') loadRecoveries();
   }, [activeTab]);
 
   // Actions: User Management
@@ -318,6 +341,34 @@ export const AdminDashboard = () => {
       banReason: u.banReason || ''
     });
     setUserModalOpen(true);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteUserModal?.user) return;
+    if (!deleteReason.trim()) { showMsg('Please provide a deletion reason.'); return; }
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users/${deleteUserModal.user._id}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ reason: deleteReason.trim() })
+      });
+      const d = await res.json();
+      if (d.success) {
+        setUsers((prev) => prev.filter((u) => u._id !== deleteUserModal.user._id));
+        setDeleteUserModal(null);
+        setDeleteReason('');
+        showMsg(`User @${deleteUserModal.user.username} permanently deleted.`);
+        loadStats();
+      } else {
+        showMsg(d.message || 'Failed to delete user.');
+      }
+    } catch (e) {
+      showMsg('Network error deleting user.');
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   const handleSaveUser = async (e) => {
@@ -717,11 +768,56 @@ export const AdminDashboard = () => {
     }
   };
 
+  // ── Recovery Requests ─────────────────────────────────────────────────────
+  const loadRecoveries = async () => {
+    setRecoveriesLoading(true);
+    try {
+      const res = await fetch('/api/admin/recoveries', { headers: authHeaders(), credentials: 'include' });
+      const d = await res.json();
+      if (d.success) setRecoveries(d.requests || []);
+    } catch { /* ignore */ }
+    setRecoveriesLoading(false);
+  };
+
+  const handleResolveRecovery = async () => {
+    if (!resolveModal) return;
+    setResolveLoading(true);
+    setResolveMsg({ text: '', type: '' });
+    try {
+      const res = await fetch(`/api/admin/recoveries/${resolveModal.request._id}/resolve`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ action: resolveModal.action, reason: resolveReason })
+      });
+      const d = await res.json();
+      if (d.success) {
+        setResolveMsg({ text: d.message || 'Done.', type: 'success' });
+        setRecoveries(prev => prev.map(r =>
+          r._id === resolveModal.request._id
+            ? { ...r, status: resolveModal.action === 'approve' ? 'approved' : 'rejected' }
+            : r
+        ));
+        setTimeout(() => {
+          setResolveModal(null);
+          setResolveReason('');
+          setResolveMsg({ text: '', type: '' });
+        }, 1500);
+      } else {
+        setResolveMsg({ text: d.message || 'Failed.', type: 'error' });
+      }
+    } catch {
+      setResolveMsg({ text: 'Network error.', type: 'error' });
+    }
+    setResolveLoading(false);
+  };
+
   const navItems = [
     { id: 'overview', label: 'Overview', icon: TrendingUp },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'groups', label: 'Chats & Groups', icon: MessageSquare },
     { id: 'announcements', label: 'Announcements', icon: Bell },
+    { id: 'recoveries', label: 'Account Recoveries', icon: RotateCcw },
     { id: 'databases', label: 'Databases & Health', icon: HardDrive },
     { id: 'audit', label: 'Audit Logs', icon: FileText },
     { id: 'settings', label: 'System Settings', icon: Sliders }
@@ -737,7 +833,8 @@ export const AdminDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans">
+    <>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans">
       {/* Top Navigation Bar */}
       <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
         <div className="flex items-center space-x-3">
@@ -1027,6 +1124,7 @@ export const AdminDashboard = () => {
                 storageKey="admin_users"
                 searchKeys={['username', 'email', 'nickname']}
                 searchPlaceholder="Search users by name or email..."
+                dateKey="createdAt"
                 filters={[
                   {
                     key: 'role',
@@ -1052,16 +1150,16 @@ export const AdminDashboard = () => {
                 renderItem={(u, mode) => (
                   <div
                     className={`p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs ${
-                      mode === 'grid' ? 'flex flex-col justify-between h-48' : 'flex items-center justify-between'
+                      mode === 'grid' ? 'flex flex-col gap-3' : 'flex items-center justify-between'
                     }`}
                   >
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center space-x-3 min-w-0">
                       <Avatar src={u.avatar} name={u.username} size="md" />
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <span className="font-bold text-xs text-slate-900 dark:text-white">{u.username}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center space-x-2 min-w-0">
+                          <span className="font-bold text-xs text-slate-900 dark:text-white truncate">{u.username}</span>
                           <span
-                            className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-semibold uppercase ${
+                            className={`shrink-0 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-semibold uppercase ${
                               u.role === 'admin'
                                 ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
                                 : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
@@ -1070,16 +1168,16 @@ export const AdminDashboard = () => {
                             {u.role}
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400">{u.email}</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{u.email}</div>
                         {u.isBanned && (
-                          <span className="inline-block mt-1 text-[10px] text-rose-500 font-semibold">
+                          <span className="inline-block mt-1 text-[10px] text-rose-500 font-semibold truncate">
                             Banned: {u.banReason || 'Policy violation'}
                           </span>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-2 mt-3 sm:mt-0">
+                    <div className={`flex items-center gap-1.5 mt-1 ${mode === 'grid' ? 'flex-wrap' : 'flex-nowrap'}`}>
                       {u._id !== user?._id && (
                         <button
                           onClick={() => handleStartDirectChat(u._id)}
@@ -1119,6 +1217,16 @@ export const AdminDashboard = () => {
                       >
                         {u.isBanned ? 'Unban' : 'Ban'}
                       </button>
+
+                      {u.role !== 'admin' && (
+                        <button
+                          onClick={() => { setDeleteUserModal({ user: u }); setDeleteReason(''); }}
+                          className="px-2.5 py-1 text-[11px] font-semibold bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900 rounded-xl transition cursor-pointer"
+                          title="Permanently delete user"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1182,6 +1290,7 @@ export const AdminDashboard = () => {
                 storageKey="admin_all_chats"
                 searchKeys={['groupDetails.name', 'groupDetails.description', 'participants.username', 'participants.nickname']}
                 searchPlaceholder="Search conversations by name or participant..."
+                dateKey="createdAt"
                 renderItem={(c, mode) => {
                   const isGroup = c.type === 'group';
                   const title = isGroup
@@ -1293,6 +1402,7 @@ export const AdminDashboard = () => {
                 storageKey="admin_announcements"
                 searchKeys={['title', 'content']}
                 searchPlaceholder="Search announcements..."
+                dateKey="createdAt"
                 headerActions={
                   <button
                     onClick={handleOpenCreateAnnouncement}
@@ -1332,7 +1442,7 @@ export const AdminDashboard = () => {
                           <span className="text-base select-none shrink-0" role="img" aria-label="badge">
                             {a.design?.badge || (a.hasPoll ? '🗳️' : '📢')}
                           </span>
-                          <span className="font-bold text-xs text-slate-900 dark:text-white">{a.title}</span>
+                          <span className="font-bold text-xs text-slate-900 dark:text-white truncate">{a.title}</span>
                           <span
                             className={`px-1.5 py-0.5 rounded-md text-[9px] font-mono uppercase font-semibold ${
                               a.type === 'critical'
@@ -1605,6 +1715,204 @@ export const AdminDashboard = () => {
             </div>
           )}
 
+          {/* TAB: ACCOUNT RECOVERIES */}
+          {activeTab === 'recoveries' && (
+            <div className="max-w-5xl space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">Account Recovery Requests</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Review, approve or reject user account restoration requests.</p>
+                </div>
+                <button onClick={loadRecoveries} className="flex items-center space-x-1.5 px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition">
+                  <RefreshCw className="w-3.5 h-3.5" /><span>Refresh</span>
+                </button>
+              </div>
+
+              {recoveriesLoading ? (
+                <div className="flex items-center justify-center py-16 text-slate-400">
+                  <RefreshCw className="w-6 h-6 animate-spin mr-2" /><span className="text-sm">Loading requests...</span>
+                </div>
+              ) : recoveries.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-slate-500 space-y-2">
+                  <RotateCcw className="w-10 h-10 opacity-30" />
+                  <p className="text-sm font-medium">No recovery requests</p>
+                  <p className="text-xs">All clear — no pending account restorations.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {recoveries.map(req => {
+                    const isPending    = req.status === 'pending' || req.status === 'partial';
+                    const isApproved   = req.status === 'approved';
+                    const isPartial    = req.status === 'partial';
+                    const isMigration  = req.requestType === 'data_migration';
+                    const statusColor  = isPending ? 'text-amber-400 bg-amber-950/40 border-amber-700/50'
+                      : isApproved ? 'text-emerald-400 bg-emerald-950/40 border-emerald-700/50'
+                      : isPartial ? 'text-indigo-400 bg-indigo-950/40 border-indigo-700/50'
+                      : 'text-rose-400 bg-rose-950/40 border-rose-700/50';
+                    const typeColor    = isMigration
+                      ? 'text-purple-300 bg-purple-950/40 border-purple-700/50'
+                      : 'text-blue-300 bg-blue-950/40 border-blue-700/50';
+
+                    return (
+                      <div key={req._id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                        {/* Header row */}
+                        <div className="flex items-start justify-between gap-3 flex-wrap">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center space-x-2 flex-wrap gap-1">
+                              <span className="text-sm font-bold text-white">@{req.user?.username || req.originalUsername}</span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColor}`}>
+                                {req.status.toUpperCase()}
+                              </span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${typeColor}`}>
+                                {isMigration ? '📦 DATA MIGRATION' : '🔄 RESTORE'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-400">{req.user?.email || req.email}</p>
+                          </div>
+                          <div className="text-right text-[11px] text-slate-500 space-y-0.5">
+                            <p>Submitted: {new Date(req.createdAt).toLocaleString()}</p>
+                            {req.user?.recoveryDeadline && (
+                              <p className="text-amber-400">Deadline: {new Date(req.user.recoveryDeadline).toLocaleDateString()}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Data migration: show old → new account link + per-item controls */}
+                        {isMigration && req.newAccount && (
+                          <div className="bg-purple-950/30 border border-purple-800/40 rounded-xl p-3 text-xs space-y-3">
+                            <p className="text-purple-300 font-bold text-[10px] uppercase tracking-wider">Data Migration Request</p>
+                            <div className="flex items-center space-x-3 flex-wrap gap-2">
+                              <div className="flex-1 bg-slate-900 rounded-lg p-2 space-y-0.5 min-w-[120px]">
+                                <p className="text-[10px] text-slate-500 font-bold uppercase">Old Account</p>
+                                <p className="text-rose-300 font-semibold">@{req.user?.username || req.originalUsername}</p>
+                                <p className="text-slate-500 text-[10px]">{req.originalEmail || req.user?.email || req.email}</p>
+                              </div>
+                              <span className="text-slate-500 text-lg">→</span>
+                              <div className="flex-1 bg-slate-900 rounded-lg p-2 space-y-0.5 min-w-[120px]">
+                                <p className="text-[10px] text-slate-500 font-bold uppercase">New Account</p>
+                                <p className="text-emerald-300 font-semibold">@{req.newAccount.username}</p>
+                                <p className="text-slate-500 text-[10px]">{req.newAccount.email}</p>
+                              </div>
+                            </div>
+
+                            {/* Per-item data controls */}
+                            {req.requestedItems && req.requestedItems.length > 0 && (
+                              <div className="space-y-2 pt-1">
+                                <p className="text-[10px] text-purple-300 font-bold uppercase tracking-wider">Requested Data Items</p>
+                                {req.requestedItems.map(item => {
+                                  const itemPending  = item.status === 'pending';
+                                  const itemApproved = item.status === 'approved';
+                                  return (
+                                    <div key={item.key} className="flex items-center justify-between bg-slate-900/80 rounded-lg px-3 py-2 gap-2">
+                                      <div className="flex items-center space-x-2">
+                                        <span className={`w-2 h-2 rounded-full shrink-0 ${itemApproved ? 'bg-emerald-400' : item.status === 'rejected' ? 'bg-rose-400' : 'bg-amber-400'}`} />
+                                        <span className="text-xs text-slate-200 font-medium">{item.label}</span>
+                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${itemApproved ? 'bg-emerald-900/60 text-emerald-300' : item.status === 'rejected' ? 'bg-rose-900/60 text-rose-300' : 'bg-amber-900/60 text-amber-300'}`}>
+                                          {item.status.toUpperCase()}
+                                        </span>
+                                      </div>
+                                      {itemPending && (
+                                        <div className="flex items-center space-x-1.5 shrink-0">
+                                          <button
+                                            onClick={async () => {
+                                              const r = await fetch(`/api/admin/recoveries/${req._id}/items/${item.key}/resolve`, {
+                                                method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, credentials: 'include',
+                                                body: JSON.stringify({ action: 'approve' })
+                                              });
+                                              const d = await r.json();
+                                              if (d.success) setRecoveries(prev => prev.map(x => x._id === req._id ? { ...x, requestedItems: d.overallStatus ? x.requestedItems.map(i => i.key === item.key ? { ...i, status: 'approved' } : i) : x.requestedItems, status: d.overallStatus || x.status } : x));
+                                            }}
+                                            className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 text-white text-[10px] font-bold rounded-lg transition"
+                                          >✓ Approve</button>
+                                          <button
+                                            onClick={async () => {
+                                              const r = await fetch(`/api/admin/recoveries/${req._id}/items/${item.key}/resolve`, {
+                                                method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, credentials: 'include',
+                                                body: JSON.stringify({ action: 'reject' })
+                                              });
+                                              const d = await r.json();
+                                              if (d.success) setRecoveries(prev => prev.map(x => x._id === req._id ? { ...x, requestedItems: x.requestedItems.map(i => i.key === item.key ? { ...i, status: 'rejected' } : i), status: d.overallStatus || x.status } : x));
+                                            }}
+                                            className="px-2 py-1 bg-rose-700 hover:bg-rose-600 text-white text-[10px] font-bold rounded-lg transition"
+                                          >✕ Reject</button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {req.requestedItems && req.requestedItems.length === 0 && (
+                              <p className="text-[10px] text-slate-500 italic">User hasn't selected specific data items yet.</p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Linked user data grid */}
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-[11px]">
+                          <div className="bg-slate-800/60 rounded-xl p-2.5 space-y-0.5">
+                            <p className="text-slate-500 uppercase tracking-wider font-bold text-[10px]">Old Acct Status</p>
+                            <p className="text-white font-semibold">{req.user?.deletionStatus || '—'}</p>
+                          </div>
+                          <div className="bg-slate-800/60 rounded-xl p-2.5 space-y-0.5">
+                            <p className="text-slate-500 uppercase tracking-wider font-bold text-[10px]">Registered</p>
+                            <p className="text-white font-semibold">{req.user?.createdAt ? new Date(req.user.createdAt).toLocaleDateString() : '—'}</p>
+                          </div>
+                          <div className="bg-slate-800/60 rounded-xl p-2.5 space-y-0.5">
+                            <p className="text-slate-500 uppercase tracking-wider font-bold text-[10px]">Request ID</p>
+                            <p className="text-indigo-300 font-mono text-[10px] break-all">{req._id?.slice(-8)}</p>
+                          </div>
+                          <div className="bg-slate-800/60 rounded-xl p-2.5 space-y-0.5">
+                            <p className="text-slate-500 uppercase tracking-wider font-bold text-[10px]">IP Address</p>
+                            <p className="text-white font-semibold">{req.ipAddress || '—'}</p>
+                          </div>
+                        </div>
+
+                        {/* User note */}
+                        {req.userNote && (
+                          <div className="bg-indigo-950/30 border border-indigo-800/40 rounded-xl p-3">
+                            <p className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider mb-1">User's Note</p>
+                            <p className="text-xs text-slate-300 leading-relaxed">{req.userNote}</p>
+                          </div>
+                        )}
+
+                        {/* Admin decision (resolved) */}
+                        {!isPending && req.adminDecisionReason && (
+                          <div className={`rounded-xl p-3 border text-xs ${isApproved ? 'bg-emerald-950/30 border-emerald-800/40' : 'bg-rose-950/30 border-rose-800/40'}`}>
+                            <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isApproved ? 'text-emerald-300' : 'text-rose-300'}`}>
+                              Admin Decision
+                            </p>
+                            <p className="text-slate-300">{req.adminDecisionReason}</p>
+                            {req.decidedAt && <p className="text-slate-500 text-[10px] mt-1">{new Date(req.decidedAt).toLocaleString()}</p>}
+                          </div>
+                        )}
+
+                        {/* Action buttons — pending only */}
+                        {isPending && (
+                          <div className="flex items-center space-x-3 pt-1">
+                            <button
+                              onClick={() => { setResolveModal({ request: req, action: 'approve' }); setResolveReason(''); setResolveMsg({ text: '', type: '' }); }}
+                              className="flex items-center space-x-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-md"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{isMigration ? 'Approve Migration' : 'Approve & Restore'}</span>
+                            </button>
+                            <button
+                              onClick={() => { setResolveModal({ request: req, action: 'reject' }); setResolveReason(''); setResolveMsg({ text: '', type: '' }); }}
+                              className="flex items-center space-x-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl transition shadow-md"
+                            >
+                              <XCircle className="w-3.5 h-3.5" /><span>Reject</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* TAB 6: AUDIT LOGS */}
           {activeTab === 'audit' && (
             <div className="max-w-6xl">
@@ -1616,6 +1924,7 @@ export const AdminDashboard = () => {
                 storageKey="admin_audit"
                 searchKeys={['action', 'details', 'admin.username', 'actor.username']}
                 searchPlaceholder="Search audit events..."
+                dateKey="createdAt"
                 headerActions={
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -1672,7 +1981,7 @@ export const AdminDashboard = () => {
                           ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/20 dark:bg-indigo-950/20'
                           : 'border-slate-200 dark:border-slate-800'
                       } ${
-                        mode === 'grid' ? 'flex flex-col justify-between h-40' : 'flex items-center justify-between'
+                        mode === 'grid' ? 'flex flex-col gap-3' : 'flex items-center justify-between'
                       }`}
                     >
                       <div className="flex items-start space-x-3 flex-1 min-w-0 pr-3">
@@ -1689,11 +1998,11 @@ export const AdminDashboard = () => {
                           )}
                         </button>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400 truncate">
                               {log.action}
                             </span>
-                            <span className="text-[11px] text-slate-400 font-mono">
+                            <span className="text-[11px] text-slate-400 font-mono shrink-0 truncate">
                               by @{actorName}
                             </span>
                           </div>
@@ -2567,6 +2876,152 @@ export const AdminDashboard = () => {
         </div>
       )}
     </div>
+
+      {/* ── Resolve Recovery Modal ─────────────────────────────────────────── */}
+      {resolveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                {resolveModal.action === 'approve'
+                  ? <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  : <XCircle className="w-5 h-5 text-rose-400" />}
+                <h3 className={`text-base font-bold ${resolveModal.action === 'approve' ? 'text-emerald-300' : 'text-rose-300'}`}>
+                  {resolveModal.action === 'approve' ? 'Approve & Restore Account' : 'Reject Recovery Request'}
+                </h3>
+              </div>
+              <button onClick={() => setResolveModal(null)} className="text-slate-500 hover:text-white transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-xs space-y-1">
+              <p className="text-slate-400">Account: <span className="text-white font-semibold">{resolveModal.request.user?.username || resolveModal.request.originalUsername}</span></p>
+              <p className="text-slate-400">Email: <span className="text-indigo-300">{resolveModal.request.user?.email || resolveModal.request.email}</span></p>
+            </div>
+
+            {resolveModal.action === 'approve' ? (
+              <p className="text-xs text-slate-300 leading-relaxed">
+                This will <span className="text-emerald-300 font-semibold">restore the account to active status</span>, reconnect all old messages, groups, and profile data, and send the user an approval email.
+              </p>
+            ) : (
+              <p className="text-xs text-slate-300 leading-relaxed">
+                This will <span className="text-rose-300 font-semibold">reject the recovery request</span> and notify the user via email. The account remains in retention until the deadline.
+              </p>
+            )}
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                {resolveModal.action === 'approve' ? 'Approval Note (optional)' : 'Rejection Reason (recommended)'}
+              </label>
+              <textarea
+                rows={2}
+                value={resolveReason}
+                onChange={e => setResolveReason(e.target.value)}
+                placeholder={resolveModal.action === 'approve'
+                  ? 'e.g. Identity verified via email...'
+                  : 'e.g. Could not verify account ownership...'}
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            {resolveMsg.text && (
+              <div className={`p-2.5 rounded-xl text-xs font-medium flex items-center space-x-2 border ${
+                resolveMsg.type === 'success'
+                  ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300'
+                  : 'bg-rose-950/60 border-rose-800 text-rose-300'
+              }`}>
+                {resolveMsg.type === 'success' ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
+                <span>{resolveMsg.text}</span>
+              </div>
+            )}
+
+            <div className="flex items-center space-x-3 pt-1">
+              <button
+                onClick={handleResolveRecovery}
+                disabled={resolveLoading}
+                className={`flex-1 py-2.5 text-white font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2 disabled:opacity-50 ${
+                  resolveModal.action === 'approve'
+                    ? 'bg-emerald-600 hover:bg-emerald-500'
+                    : 'bg-rose-600 hover:bg-rose-500'
+                }`}
+              >
+                {resolveLoading
+                  ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  : resolveModal.action === 'approve'
+                  ? <CheckCircle2 className="w-3.5 h-3.5" />
+                  : <XCircle className="w-3.5 h-3.5" />}
+                <span>{resolveLoading ? 'Processing...' : resolveModal.action === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}</span>
+              </button>
+              <button
+                onClick={() => setResolveModal(null)}
+                disabled={resolveLoading}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete User Modal ────────────────────────────────────────────────── */}
+      {deleteUserModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md bg-slate-900 border border-red-800/50 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Trash2 className="w-5 h-5 text-red-400" />
+                <h3 className="text-base font-bold text-red-300">Permanently Delete User</h3>
+              </div>
+              <button onClick={() => setDeleteUserModal(null)} className="text-slate-500 hover:text-white transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-xs space-y-1">
+              <p className="text-slate-400">Username: <span className="text-white font-semibold">@{deleteUserModal.user.username}</span></p>
+              <p className="text-slate-400">Email: <span className="text-indigo-300">{deleteUserModal.user.email}</span></p>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              This will <span className="text-red-300 font-semibold">permanently remove</span> the account, revoke all sessions, and send the user a deletion email with an appeal link. This action cannot be undone.
+            </p>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                Reason for Deletion <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                rows={3}
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                placeholder="e.g. Repeated violation of community guidelines, spam, harassment..."
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+            </div>
+
+            <div className="flex items-center space-x-3 pt-1">
+              <button
+                onClick={handleDeleteUser}
+                disabled={deleteLoading || !deleteReason.trim()}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2"
+              >
+                {deleteLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>{deleteLoading ? 'Deleting...' : 'Permanently Delete'}</span>
+              </button>
+              <button
+                onClick={() => setDeleteUserModal(null)}
+                disabled={deleteLoading}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

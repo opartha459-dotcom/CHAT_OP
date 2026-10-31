@@ -98,6 +98,11 @@ const userSchema = new mongoose.Schema(
       type: Date,
       index: true
     },
+    // Preserved original email when account is archived for Option B new-account flow
+    archivedEmail: {
+      type: String,
+      default: ''
+    },
     deletionConfirmationToken: {
       type: String,
       select: false

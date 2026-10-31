@@ -4,6 +4,7 @@ const Message = require('../models/Message');
 const Report = require('../models/Report');
 const Session = require('../models/Session');
 const AuditLog = require('../models/AuditLog');
+const emailService = require('../services/emailService');
 
 // @desc Get moderation dashboard overview statistics
 // @route GET /api/admin/stats
@@ -336,6 +337,7 @@ const deleteAuditLogs = async (req, res) => {
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
+    const { reason = '' } = req.body;
     const adminUser = req.user;
 
     const targetUser = await User.findById(id);
@@ -347,19 +349,28 @@ const deleteUser = async (req, res) => {
       return res.status(400).json({ success: false, message: 'You cannot delete your own admin account.' });
     }
 
+    // Store user info before deletion
+    const { email, username, _id: userId } = targetUser;
+
+    // Force-logout via socket BEFORE deleting sessions so the event still fires
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${userId}`).emit('admin:force_logout', { reason });
+    }
+
     // Revoke sessions
-    await Session.deleteMany({ user: targetUser._id });
+    await Session.deleteMany({ user: userId });
 
     // Clean up references in conversations
     await Conversation.updateMany(
-      { participants: targetUser._id },
+      { participants: userId },
       {
         $pull: {
-          participants: targetUser._id,
-          'groupDetails.admins': targetUser._id,
-          pinnedBy: targetUser._id,
-          archivedBy: targetUser._id,
-          mutedBy: targetUser._id
+          participants: userId,
+          'groupDetails.admins': userId,
+          pinnedBy: userId,
+          archivedBy: userId,
+          mutedBy: userId
         }
       }
     );
@@ -367,19 +378,26 @@ const deleteUser = async (req, res) => {
     // Delete user
     await User.findByIdAndDelete(id);
 
+    // Send deletion email with reason and appeal link (non-blocking)
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const appealUrl = `${clientUrl}/deletion-appeal?email=${encodeURIComponent(email)}`;
+    emailService.sendAdminDeletionEmail(email, username, reason, appealUrl).catch((err) => {
+      console.warn('[Admin Delete] Email send error:', err.message);
+    });
+
     // Audit log
     await AuditLog.create({
       actor: adminUser._id,
       action: 'USER_DELETE',
       targetType: 'User',
-      targetId: targetUser._id,
-      details: { username: targetUser.username, email: targetUser.email, role: targetUser.role },
+      targetId: userId,
+      details: { username, email, role: targetUser.role, reason },
       ipAddress: req.ip
     });
 
     return res.json({
       success: true,
-      message: `User @${targetUser.username} has been permanently deleted.`
+      message: `User @${username} has been permanently deleted.`
     });
   } catch (error) {
     console.error('[Admin Delete User Error]', error);
@@ -756,6 +774,7 @@ const getRecoveryRequests = async (req, res) => {
     const AccountRecoveryRequest = require('../models/AccountRecoveryRequest');
     const requests = await AccountRecoveryRequest.find()
       .populate('user', 'username email deletionStatus recoveryDeadline createdAt')
+      .populate('newAccount', 'username email createdAt')
       .populate('decidedBy', 'username')
       .sort({ createdAt: -1 })
       .lean();
@@ -766,7 +785,7 @@ const getRecoveryRequests = async (req, res) => {
   }
 };
 
-// @desc Approve or Reject account recovery request
+// @desc Approve or Reject a whole account recovery request (restore OR full migration)
 // @route POST /api/admin/recoveries/:id/resolve
 const resolveRecoveryRequest = async (req, res) => {
   try {
@@ -775,76 +794,240 @@ const resolveRecoveryRequest = async (req, res) => {
     const { id } = req.params;
     const { action, reason = '' } = req.body; // action: 'approve' | 'reject'
 
-    const recoveryReq = await AccountRecoveryRequest.findById(id).populate('user');
+    const recoveryReq = await AccountRecoveryRequest.findById(id)
+      .populate('user')
+      .populate('newAccount', 'username email _id');
+
     if (!recoveryReq) {
       return res.status(404).json({ success: false, message: 'Recovery request not found.' });
     }
-
-    if (recoveryReq.status !== 'pending') {
+    if (!['pending', 'partial'].includes(recoveryReq.status)) {
       return res.status(400).json({ success: false, message: `Request is already ${recoveryReq.status}.` });
     }
 
-    const targetUser = recoveryReq.user;
+    const targetUser = recoveryReq.user; // old account
     if (!targetUser) {
       return res.status(404).json({ success: false, message: 'Associated user account record not found.' });
     }
+
+    const isMigration = recoveryReq.requestType === 'data_migration';
+    const newAccount  = recoveryReq.newAccount;
+    const io          = req.app.get('io');
 
     if (action === 'approve') {
       recoveryReq.status = 'approved';
       recoveryReq.decidedBy = req.user._id;
       recoveryReq.decidedAt = new Date();
-      recoveryReq.adminDecisionReason = reason || 'Admin verified ownership and approved restoration.';
+      recoveryReq.adminDecisionReason = reason ||
+        (isMigration ? 'Admin approved data migration to new account.' : 'Admin verified ownership and approved restoration.');
+
+      // Approve all pending items too
+      recoveryReq.requestedItems = recoveryReq.requestedItems.map(item =>
+        item.status === 'pending' ? { ...item.toObject(), status: 'approved', decidedAt: new Date() } : item.toObject()
+      );
       await recoveryReq.save();
 
-      // Restore account
-      targetUser.deletionStatus = 'active';
-      targetUser.deletionConfirmedAt = undefined;
-      targetUser.recoveryDeadline = undefined;
-      await targetUser.save();
+      if (isMigration && newAccount) {
+        targetUser.deletionStatus = 'deleted';
+        targetUser.recoveryDeadline = undefined;
+        await targetUser.save();
 
-      // Send approval email
-      emailService.sendRecoveryDecisionEmail(targetUser.email, targetUser.username, true).catch(() => {});
+        emailService.sendRecoveryDecisionEmail(
+          newAccount.email, newAccount.username, true,
+          `Your old account data (@${targetUser.username}) has been approved for migration to your new account (@${newAccount.username}).`
+        ).catch(() => {});
 
-      await AuditLog.create({
-        admin: req.user._id,
-        action: 'approve_account_recovery',
-        target: targetUser._id,
-        targetModel: 'User',
-        details: `Approved account recovery for ${targetUser.username} (${targetUser.email})`,
-        ipAddress: req.ip
-      }).catch(() => {});
+        // Real-time: notify the new account user
+        if (io) {
+          io.to(`user:${newAccount._id}`).emit('recovery:decision', {
+            requestId: recoveryReq._id,
+            action: 'approved',
+            items: recoveryReq.requestedItems
+          });
+        }
 
-      return res.json({
-        success: true,
-        message: `Account recovery approved. Account ${targetUser.username} is now active.`
-      });
+        await AuditLog.create({
+          admin: req.user._id,
+          action: 'approve_data_migration',
+          target: newAccount._id,
+          targetModel: 'User',
+          details: `Approved data migration: old @${targetUser.username} → new @${newAccount.username}`,
+          ipAddress: req.ip
+        }).catch(() => {});
+
+        return res.json({
+          success: true,
+          message: `Data migration approved. Old @${targetUser.username} → new @${newAccount.username}.`
+        });
+
+      } else {
+        // RESTORE
+        targetUser.deletionStatus = 'active';
+        targetUser.deletionConfirmedAt = undefined;
+        targetUser.recoveryDeadline = undefined;
+        await targetUser.save();
+
+        emailService.sendRecoveryDecisionEmail(targetUser.email, targetUser.username, true, reason).catch(() => {});
+
+        if (io) {
+          io.to(`user:${targetUser._id}`).emit('recovery:decision', {
+            requestId: recoveryReq._id,
+            action: 'approved'
+          });
+        }
+
+        await AuditLog.create({
+          admin: req.user._id,
+          action: 'approve_account_recovery',
+          target: targetUser._id,
+          targetModel: 'User',
+          details: `Approved account recovery for ${targetUser.username} (${targetUser.email})`,
+          ipAddress: req.ip
+        }).catch(() => {});
+
+        return res.json({ success: true, message: `Account recovery approved. @${targetUser.username} is now active.` });
+      }
+
     } else {
+      // REJECT
       recoveryReq.status = 'rejected';
       recoveryReq.decidedBy = req.user._id;
       recoveryReq.decidedAt = new Date();
       recoveryReq.adminDecisionReason = reason || 'Ownership verification failed.';
+      recoveryReq.requestedItems = recoveryReq.requestedItems.map(item =>
+        item.status === 'pending' ? { ...item.toObject(), status: 'rejected', adminNote: reason, decidedAt: new Date() } : item.toObject()
+      );
       await recoveryReq.save();
 
-      // Send rejection email
-      emailService.sendRecoveryDecisionEmail(targetUser.email, targetUser.username, false, reason).catch(() => {});
+      const notifyEmail = isMigration && newAccount ? newAccount.email : targetUser.email;
+      const notifyName  = isMigration && newAccount ? newAccount.username : targetUser.username;
+      const notifyId    = isMigration && newAccount ? newAccount._id : targetUser._id;
+      emailService.sendRecoveryDecisionEmail(notifyEmail, notifyName, false, reason).catch(() => {});
+
+      if (io) {
+        io.to(`user:${notifyId}`).emit('recovery:decision', {
+          requestId: recoveryReq._id,
+          action: 'rejected',
+          reason,
+          items: recoveryReq.requestedItems
+        });
+      }
 
       await AuditLog.create({
         admin: req.user._id,
-        action: 'reject_account_recovery',
+        action: isMigration ? 'reject_data_migration' : 'reject_account_recovery',
         target: targetUser._id,
         targetModel: 'User',
-        details: `Rejected account recovery for ${targetUser.username}: ${reason}`,
+        details: `Rejected ${isMigration ? 'data migration' : 'account recovery'} for ${targetUser.username}: ${reason}`,
         ipAddress: req.ip
       }).catch(() => {});
 
       return res.json({
         success: true,
-        message: 'Account recovery request rejected.'
+        message: isMigration ? 'Data migration request rejected.' : 'Account recovery request rejected.'
       });
     }
   } catch (error) {
     console.error('[Resolve Recovery Error]', error);
     return res.status(500).json({ success: false, message: 'Failed to process recovery request.' });
+  }
+};
+
+// @desc Approve or Reject a single data item within a migration request
+// @route POST /api/admin/recoveries/:id/items/:itemKey/resolve
+const resolveDataItem = async (req, res) => {
+  try {
+    const AccountRecoveryRequest = require('../models/AccountRecoveryRequest');
+    const emailService = require('../services/emailService');
+    const { id, itemKey } = req.params;
+    const { action, adminNote = '' } = req.body;
+
+    const recoveryReq = await AccountRecoveryRequest.findById(id)
+      .populate('newAccount', 'username email _id');
+
+    if (!recoveryReq) {
+      return res.status(404).json({ success: false, message: 'Recovery request not found.' });
+    }
+
+    const item = recoveryReq.requestedItems.find(i => i.key === itemKey);
+    if (!item) {
+      return res.status(404).json({ success: false, message: `Item "${itemKey}" not found in this request.` });
+    }
+
+    item.status = action === 'approve' ? 'approved' : 'rejected';
+    item.adminNote = adminNote;
+    item.decidedAt = new Date();
+
+    // Recalculate overall status
+    const statuses = recoveryReq.requestedItems.map(i => i.status);
+    if (statuses.every(s => s === 'approved')) recoveryReq.status = 'approved';
+    else if (statuses.every(s => s === 'rejected')) recoveryReq.status = 'rejected';
+    else if (statuses.some(s => s !== 'pending')) recoveryReq.status = 'partial';
+
+    recoveryReq.decidedBy = req.user._id;
+    await recoveryReq.save();
+
+    const io = req.app.get('io');
+    if (io && recoveryReq.newAccount) {
+      io.to(`user:${recoveryReq.newAccount._id}`).emit('recovery:item_decision', {
+        requestId: recoveryReq._id,
+        itemKey,
+        action,
+        adminNote,
+        overallStatus: recoveryReq.status,
+        items: recoveryReq.requestedItems
+      });
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: `${action}_data_item`,
+      target: recoveryReq.newAccount?._id || recoveryReq.user,
+      targetModel: 'User',
+      details: `${action === 'approve' ? 'Approved' : 'Rejected'} data item "${itemKey}" for migration request ${id}`,
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: `Item "${itemKey}" ${action === 'approve' ? 'approved' : 'rejected'}.`,
+      item,
+      overallStatus: recoveryReq.status
+    });
+  } catch (error) {
+    console.error('[Resolve Data Item Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to resolve data item.' });
+  }
+};
+
+// @desc Delete one or multiple recovery/migration requests
+// @route DELETE /api/admin/recoveries
+const deleteRecoveryRequests = async (req, res) => {
+  try {
+    const AccountRecoveryRequest = require('../models/AccountRecoveryRequest');
+    const { ids, all } = req.body;
+
+    let result;
+    if (all) {
+      result = await AccountRecoveryRequest.deleteMany({});
+    } else if (Array.isArray(ids) && ids.length > 0) {
+      result = await AccountRecoveryRequest.deleteMany({ _id: { $in: ids } });
+    } else {
+      return res.status(400).json({ success: false, message: 'Provide ids or all=true.' });
+    }
+
+    await AuditLog.create({
+      actor: req.user._id,
+      action: 'RECOVERY_REQUESTS_DELETE',
+      targetType: 'AccountRecoveryRequest',
+      details: all ? 'Cleared all recovery requests' : `Deleted ${result.deletedCount} request(s)`,
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({ success: true, deleted: result.deletedCount });
+  } catch (error) {
+    console.error('[Delete Recovery Requests Error]', error);
+    return res.status(500).json({ success: false, message: 'Error deleting recovery requests.' });
   }
 };
 
@@ -870,5 +1053,7 @@ module.exports = {
   updateSystemSettings,
   getRecoveryRequests,
   resolveRecoveryRequest,
+  resolveDataItem,
+  deleteRecoveryRequests,
   runManualRetention
 };

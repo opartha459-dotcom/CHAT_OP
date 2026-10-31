@@ -124,6 +124,14 @@ export const SocketProvider = ({ children }) => {
       });
     });
 
+    // Admin force-logout: clear local auth and redirect to login
+    socketInstance.on('admin:force_logout', ({ reason } = {}) => {
+      socketInstance.disconnect();
+      localStorage.removeItem('pulsechat_token');
+      const msg = encodeURIComponent(reason || 'Your account was removed by an administrator.');
+      window.location.href = `/login?deleted=1&reason=${msg}`;
+    });
+
     // Clear typing indicator when user sends a message
     socketInstance.on('message:received', (message) => {
       if (message?.conversation && message?.sender?._id) {

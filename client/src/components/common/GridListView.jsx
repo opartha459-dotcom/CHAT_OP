@@ -10,7 +10,8 @@ import {
   Inbox,
   Loader2,
   SlidersHorizontal,
-  X
+  X,
+  Calendar
 } from 'lucide-react';
 
 /**
@@ -37,7 +38,9 @@ export const GridListView = ({
   loading = false,
   emptyTitle = 'No records found',
   emptyDescription = 'There are no items matching your criteria.',
-  onItemClick = null
+  onItemClick = null,
+  /** key on each item used for date-range filtering, e.g. 'createdAt' */
+  dateKey = null
 }) => {
   // Layout persistence (defaults to initialView, which is 'grid')
   const [viewMode, setViewMode] = useState(() => {
@@ -51,6 +54,8 @@ export const GridListView = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilters, setActiveFilters] = useState({});
   const [currentSort, setCurrentSort] = useState(defaultSort || (sortOptions[0] || null));
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
   // Sync layout mode to localStorage
@@ -64,7 +69,7 @@ export const GridListView = ({
   // Reset to page 1 on filter or search changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, activeFilters, currentSort]);
+  }, [searchTerm, activeFilters, currentSort, dateFrom, dateTo]);
 
   // Handle active filter changes
   const handleFilterChange = (key, value) => {
@@ -77,6 +82,8 @@ export const GridListView = ({
   const handleClearFilters = () => {
     setActiveFilters({});
     setSearchTerm('');
+    setDateFrom('');
+    setDateTo('');
   };
 
   // Filtered & Sorted items computation
@@ -116,7 +123,23 @@ export const GridListView = ({
       }
     });
 
-    // 3. Sorting
+    // 3. Date range filter
+    if (dateKey && (dateFrom || dateTo)) {
+      result = result.filter((item) => {
+        const raw = dateKey.split('.').reduce((acc, p) => acc && acc[p], item);
+        if (!raw) return false;
+        const ts = new Date(raw).getTime();
+        if (dateFrom && ts < new Date(dateFrom).getTime()) return false;
+        if (dateTo) {
+          const endOfDay = new Date(dateTo);
+          endOfDay.setHours(23, 59, 59, 999);
+          if (ts > endOfDay.getTime()) return false;
+        }
+        return true;
+      });
+    }
+
+    // 4. Sorting
     if (currentSort && currentSort.key) {
       const { key, direction = 'asc' } = currentSort;
       result.sort((a, b) => {
@@ -144,7 +167,7 @@ export const GridListView = ({
     }
 
     return result;
-  }, [items, searchTerm, searchKeys, activeFilters, currentSort]);
+  }, [items, searchTerm, searchKeys, activeFilters, currentSort, dateKey, dateFrom, dateTo]);
 
   // Pagination calculation
   const totalItems = processedItems.length;
@@ -154,7 +177,7 @@ export const GridListView = ({
     return processedItems.slice(start, start + pageSize);
   }, [processedItems, currentPage, pageSize]);
 
-  const hasActiveFilters = searchTerm.trim() !== '' || Object.values(activeFilters).some((v) => v !== '' && v !== 'all');
+  const hasActiveFilters = searchTerm.trim() !== '' || Object.values(activeFilters).some((v) => v !== '' && v !== 'all') || !!dateFrom || !!dateTo;
 
   return (
     <div className="w-full flex flex-col space-y-4 font-sans">
@@ -240,6 +263,29 @@ export const GridListView = ({
               </select>
             </div>
           ))}
+
+          {/* Date Range Filter */}
+          {dateKey && (
+            <div className="flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                title="From date"
+                className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer font-medium"
+              />
+              <span className="text-slate-400 text-xs">–</span>
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(e) => setDateTo(e.target.value)}
+                title="To date"
+                className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer font-medium"
+              />
+            </div>
+          )}
 
           {/* Sort Selector */}
           {sortOptions.length > 0 && (

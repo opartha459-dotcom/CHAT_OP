@@ -17,6 +17,7 @@ import { AccountRecoveryPage } from './pages/AccountRecoveryPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { ConfirmDeletionPage } from './pages/ConfirmDeletionPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { DeletionAppealPage } from './pages/DeletionAppealPage';
 import { DashboardSkeleton, AuthCardSkeleton } from './components/common/Skeleton';
 import { PulseLogo } from './components/common/PulseLogo';
 import { IncomingCallModal } from './components/call/IncomingCallModal';
@@ -214,6 +215,10 @@ export default function App() {
                         <Route
                           path="/reset-password"
                           element={<ResetPasswordPage />}
+                        />
+                        <Route
+                          path="/deletion-appeal"
+                          element={<DeletionAppealPage />}
                         />
                         {/* Fallback to Home / Chat with replace */}
                         <Route path="*" element={<Navigate to="/" replace />} />

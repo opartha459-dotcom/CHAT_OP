@@ -21,6 +21,7 @@ const {
   updateSystemSettings,
   getRecoveryRequests,
   resolveRecoveryRequest,
+  resolveDataItem,
   runManualRetention
 } = require('../controllers/adminController');
 const { protect } = require('../middlewares/auth');
@@ -48,6 +49,7 @@ router.get('/settings', getSystemSettings);
 router.put('/settings', updateSystemSettings);
 router.get('/recoveries', getRecoveryRequests);
 router.post('/recoveries/:id/resolve', resolveRecoveryRequest);
+router.post('/recoveries/:id/items/:itemKey/resolve', resolveDataItem);
 
 // Platform Chat Monitoring & Moderation
 router.get('/chats', getAllChats);

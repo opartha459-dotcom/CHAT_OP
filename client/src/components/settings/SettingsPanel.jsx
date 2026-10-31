@@ -274,7 +274,7 @@ export const SettingsPanel = ({
     setDeleteLoading(true);
     setDeleteError('');
     try {
-      const res = await fetch('/api/auth/delete-account', {
+      const res = await fetch('/api/auth/request-deletion', {
         method: 'POST',
         headers: authHeaders(),
         credentials: 'include',

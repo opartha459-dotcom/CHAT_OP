@@ -89,18 +89,9 @@ export const RegisterPage = () => {
     if (!registeredSuccess?.email) return;
     setResendStatus({ loading: true, msg: '', type: '' });
     try {
-      const data = await resendVerification(registeredSuccess.email);
-      setResendStatus({ loading: false, msg: data.message || 'Verification link resent!', type: 'success' });
-      setResendCooldown(60);
-      const timer = setInterval(() => {
-        setResendCooldown((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+      await resendVerification(registeredSuccess.email);
+      // Navigate to the waiting page so user sees clear "check your inbox" UI
+      navigate(`/verify-email?waiting=true&email=${encodeURIComponent(registeredSuccess.email)}`, { replace: true });
     } catch (err) {
       setResendStatus({ loading: false, msg: err.message || 'Failed to resend email.', type: 'error' });
     }

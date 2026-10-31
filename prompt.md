@@ -16,6 +16,8 @@ The objective is to create a professional, reliable, secure, maintainable, and m
 - Fix existing bugs before introducing unnecessary architectural changes.
 - Reuse components, services, hooks, middleware, and utilities wherever appropriate.
 - Prevent data loss during database changes, account deletion, recovery, and migration.
+
+
 - Enforce authentication, authorization, validation, and security on the backend.
 - Do not duplicate existing features or create parallel implementations without a clear reason.
 - Use free-tier services where practical, while respecting their actual limitations.
@@ -1000,3 +1002,505 @@ Do not silently omit requirements or claim success without evidence.
 Start by auditing the existing codebase and presenting the prioritized implementation plan. Then proceed incrementally, fixing critical existing bugs first, followed by UI/UX, account security, chat features, media, and database management.
 
 Preserve all working functionality and existing data. Never perform destructive changes without explicit authorization and a verified recovery strategy.
+
+---
+
+# PART N — PRODUCTION-GRADE REQUIREMENTS
+
+## 25. Real-Time Scalability
+
+Inspect the current real-time architecture before making modifications.
+
+### Requirements
+
+- Support multiple active user devices.
+- Prevent duplicate socket registrations.
+- Prevent duplicate message delivery.
+- Handle stale socket cleanup.
+- Maintain message ordering where practical.
+- Keep user presence synchronized across devices.
+
+### Presence States
+
+- Online
+- Offline
+- Last Seen
+- Away
+- Busy
+
+### Metrics
+
+Track:
+
+- Active users
+- Active sockets
+- Connected devices
+- Active calls
+- Failed calls
+- Message throughput
+
+If horizontal scaling is required, evaluate Redis-based Socket.IO scaling and document the implementation.
+
+---
+
+## 26. Message Delivery and Read Receipts
+
+Implement a complete message-state lifecycle.
+
+### Message States
+
+- Sending
+- Sent
+- Delivered
+- Read
+- Failed
+- Deleted
+- Recalled
+
+### Requirements
+
+- Synchronize states across devices.
+- Support offline recipients.
+- Retry failed deliveries.
+- Prevent duplicate delivery updates.
+- Aggregate read receipts for groups.
+- Preserve message state integrity after reconnects.
+
+### Acceptance Criteria
+
+A message's state must reflect actual backend confirmation rather than optimistic frontend assumptions.
+
+---
+
+## 27. Global Search System
+
+Implement a searchable experience across the application.
+
+### Search Targets
+
+- Users
+- Direct chats
+- Group chats
+- Messages
+- Polls
+- Statuses
+- Files
+- Announcements
+
+### Filters
+
+- Date range
+- Sender
+- Group
+- File type
+- Polls only
+- Status only
+- Media only
+
+### Requirements
+
+- Indexed search where practical.
+- Pagination.
+- Authorization filtering.
+- Secure query validation.
+- Performance optimization.
+
+Users must never see search results they do not have permission to access.
+
+---
+
+## 28. Block, Report, Archive, and Mute System
+
+### User Actions
+
+- Block user
+- Unblock user
+- Mute chat
+- Mute group
+- Archive conversation
+- Report user
+- Report message
+- Report media
+
+### Admin Actions
+
+- Review reports
+- Warning system
+- Suspend account
+- Ban account
+- Restore account
+
+All report actions must be recorded in audit logs.
+
+---
+
+## 29. Advanced Security Hardening
+
+In addition to existing security requirements:
+
+### Backend Security
+
+- Helmet
+- CSP headers
+- CSRF protection
+- XSS protection
+- NoSQL injection protection
+- Input sanitization
+- Request validation
+- Rate limiting
+
+### Sensitive Actions
+
+Require additional verification for:
+
+- Email change
+- Password change
+- Account deletion
+- Recovery approval
+- Administrative actions
+
+Support future MFA/TOTP integration.
+
+---
+
+## 30. Encryption and Privacy Roadmap
+
+Document future support for end-to-end encryption.
+
+### Requirements
+
+Define:
+
+- Key generation strategy
+- Key storage strategy
+- Device verification
+- Backup strategy
+- Multi-device support
+
+If E2EE is not implemented, explicitly document which information remains server-accessible.
+
+---
+
+## 31. Backup and Disaster Recovery
+
+Implement operational safeguards.
+
+### Requirements
+
+- Automated backups
+- Backup verification
+- Restore testing
+- Retention configuration
+- Snapshot management
+
+### Admin Dashboard
+
+Display:
+
+- Last backup time
+- Backup result
+- Restore history
+- Failure alerts
+
+Never perform destructive operations without recovery capability.
+
+---
+
+## 32. Observability, Monitoring, and Logging
+
+### Logging
+
+Record:
+
+- Logins
+- Logouts
+- Password changes
+- Account recovery requests
+- Admin actions
+- Message deletions
+- Permission changes
+- Call events
+
+### Monitoring
+
+Track:
+
+- API failures
+- Socket failures
+- Call failures
+- Upload failures
+- Email failures
+- Database failures
+
+Implement centralized error reporting.
+
+---
+
+## 33. Notification Management
+
+Create a structured notification system.
+
+### Notification Types
+
+- New message
+- Mention
+- Reply
+- Call
+- Status update
+- Poll activity
+- Announcement
+- Recovery approval
+
+### User Controls
+
+Allow:
+
+- Enable/disable categories
+- Quiet hours
+- Muted conversations
+- Notification preferences
+
+---
+
+## 34. Advanced Group Management
+
+### Group Roles
+
+- Owner
+- Admin
+- Moderator
+- Member
+
+### Group Features
+
+- Join requests
+- Invite links
+- Revoke links
+- Group rules
+- Group description
+- Slow mode
+- Member limits
+
+All permissions must be enforced on the backend.
+
+---
+
+## 35. Message Moderation
+
+### Features
+
+- Edit message
+- Delete for self
+- Delete for everyone
+- Recall message
+- Recall time limits
+
+### Requirements
+
+- Audit moderation actions.
+- Sync deletions across devices.
+- Handle offline users.
+- Preserve moderation history where necessary.
+
+---
+
+## 36. Data Export and Privacy Tools
+
+### User Export
+
+Allow export of:
+
+- Messages
+- Media metadata
+- Polls
+- Statuses
+- Settings
+- Profile information
+
+### Export Formats
+
+- JSON
+- ZIP archives
+
+### Admin Export
+
+- Audit logs
+- Reports
+- Analytics
+
+Implement permission checks.
+
+---
+
+## 37. Accessibility Compliance
+
+### Requirements
+
+- Keyboard navigation
+- Screen-reader compatibility
+- Proper labels
+- Accessible dialogs
+- Accessible notifications
+- Reduced-motion support
+- WCAG-compliant color contrast
+
+The application must remain usable without a mouse.
+
+---
+
+## 38. Performance Requirements
+
+### Targets
+
+- Initial application load under 3 seconds where practical.
+- Chat switching under 500ms.
+- Message delivery under 300ms in normal conditions.
+- Search response under 1 second.
+- Call setup under 5 seconds.
+
+### Optimizations
+
+- Lazy loading
+- Code splitting
+- Virtualized message rendering
+- Media optimization
+- Query optimization
+- Database indexing
+
+Document any limitations.
+
+---
+
+## 39. CI/CD and Code Quality
+
+### Requirements
+
+- ESLint
+- Prettier
+- Consistent code standards
+- Pre-commit validation
+- Automated builds
+
+### Pipeline
+
+- Lint
+- Unit tests
+- Integration tests
+- Production build validation
+
+No feature should bypass quality checks.
+
+---
+
+## 40. Analytics Dashboard
+
+### Metrics
+
+Show administrators:
+
+- Total users
+- Active users
+- Daily active users
+- New registrations
+- Messages per day
+- Calls per day
+- Groups created
+- Media uploads
+- Recovery requests
+
+Analytics must never expose private message content.
+
+---
+
+## 41. Internationalization
+
+### Requirements
+
+- Multi-language support
+- RTL support
+- Localized dates
+- Timezone awareness
+- Translation-friendly UI
+
+Avoid hard-coded text.
+
+---
+
+## 42. Feature Flags
+
+Implement configurable feature toggles.
+
+### Admin Controls
+
+Enable or disable:
+
+- Calls
+- Polls
+- Statuses
+- Voice messages
+- Announcements
+- File sharing
+
+Feature changes should not require deployment.
+
+---
+
+## 43. Message Reactions
+
+### Features
+
+- Emoji reactions
+- Multiple reaction types
+- Real-time synchronization
+- Add reaction
+- Remove reaction
+- Change reaction
+
+Support direct chats and groups.
+
+---
+
+## 44. Draft Messages
+
+### Requirements
+
+- Auto-save drafts
+- Restore drafts
+- Draft indicators
+- Separate drafts per conversation
+
+Drafts must persist across refreshes where practical.
+
+---
+
+## 45. Chat Organization
+
+### Features
+
+- Archive chats
+- Favorite chats
+- Saved messages
+- Starred messages
+- Chat folders
+
+Support synchronization across devices.
+
+---
+
+## 46. Final Non-Functional Requirements
+
+The application must:
+
+- Preserve backward compatibility.
+- Prevent unnecessary breaking changes.
+- Avoid data loss.
+- Use idempotent operations for critical workflows.
+- Support rollback of migrations.
+- Maintain auditability of administrative actions.
+- Remain mobile-first.
+- Degrade gracefully under failure conditions.
+- Handle partial outages safely.
+- Maintain documentation for architecture decisions.
+- Preserve existing functionality unless explicitly approved otherwise.
+
+No requirement shall be marked complete unless functionality, validation, authorization, testing, failure handling, and user feedback have all been verified.
