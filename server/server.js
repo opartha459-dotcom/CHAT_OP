@@ -12,12 +12,13 @@ const rateLimit = require('express-rate-limit');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 
-// Database and background services
+// =====================================================
+// 1. IMPORT CONFIGURATIONS
+// =====================================================
+
 const connectDB = require('./config/db');
 const { initMultiDb } = require('./config/multiDb');
 const { initRetentionSchedule } = require('./jobs/retentionJob');
-
-// Socket.IO
 const setupSockets = require('./sockets');
 
 // Routes
@@ -32,34 +33,33 @@ const exportRoutes = require('./routes/exportRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const statusRoutes = require('./routes/statusRoutes');
 
-// Controllers
+// Controllers and middleware
 const adminController = require('./controllers/adminController');
-
-// Upload middleware
 const uploadMiddleware = require('./middlewares/upload');
 
 // =====================================================
-// 1. ENVIRONMENT CONFIGURATION
+// 2. ENVIRONMENT
 // =====================================================
 
-const isProduction = process.env.NODE_ENV === 'production';
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const IS_PRODUCTION = NODE_ENV === 'production';
 
 const PORT = process.env.PORT || 5000;
 
 // =====================================================
-// 2. EXPRESS INITIALIZATION
+// 3. EXPRESS INITIALIZATION
 // =====================================================
 
 const app = express();
 const server = http.createServer(app);
 
-// Configure trusted proxy hops.
-// Set TRUST_PROXY_HOPS=1 on Render when using its
-// standard single reverse-proxy deployment.
+// Configure trusted reverse proxy hops.
+// Render commonly uses one trusted proxy hop.
+// Set TRUST_PROXY_HOPS=1 in Render.
 const proxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
 
 if (!Number.isInteger(proxyHops) || proxyHops < 0) {
-  throw new Error('TRUST_PROXY_HOPS must be a non-negative integer');
+  throw new Error('[CONFIG ERROR] Invalid TRUST_PROXY_HOPS');
 }
 
 if (proxyHops > 0) {
@@ -67,23 +67,51 @@ if (proxyHops > 0) {
 }
 
 // =====================================================
-// 3. CORS CONFIGURATION
+// 4. CORS CONFIGURATION
 // =====================================================
 
-const allowedOrigins = (process.env.CLIENT_URL || '')
-  .split(',')
-  .map((url) => url.trim())
-  .filter(Boolean)
-  .map((url) => {
-    try {
-      const parsed = new URL(url);
+// Explicitly trusted production frontend.
+// Add additional domains through CLIENT_URL.
+const trustedProductionOrigins = [
+  'https://chat-with-her.netlify.app'
+];
 
-      // Production frontend must use HTTPS.
-      if (isProduction && parsed.protocol !== 'https:') {
-        throw new Error('Production origins must use HTTPS');
+// Development frontend origins.
+const developmentOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173'
+];
+
+// Parse and validate CLIENT_URL.
+function parseClientOrigins(value) {
+  if (!value || !value.trim()) {
+    return [];
+  }
+
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      let parsed;
+
+      try {
+        parsed = new URL(item);
+      } catch {
+        throw new Error(
+          `[CORS CONFIG ERROR] Invalid CLIENT_URL: ${item}`
+        );
       }
 
-      // Do not accept URL paths, query strings or credentials.
+      if (
+        parsed.protocol !== 'http:' &&
+        parsed.protocol !== 'https:'
+      ) {
+        throw new Error(
+          `[CORS CONFIG ERROR] Unsupported protocol: ${item}`
+        );
+      }
+
       if (
         parsed.username ||
         parsed.password ||
@@ -91,68 +119,158 @@ const allowedOrigins = (process.env.CLIENT_URL || '')
         parsed.search ||
         parsed.hash
       ) {
-        throw new Error('CLIENT_URL must contain only an origin');
+        throw new Error(
+          `[CORS CONFIG ERROR] CLIENT_URL must contain only an origin: ${item}`
+        );
+      }
+
+      if (IS_PRODUCTION && parsed.protocol !== 'https:') {
+        throw new Error(
+          `[CORS CONFIG ERROR] Production origins must use HTTPS: ${item}`
+        );
       }
 
       return parsed.origin;
-    } catch (error) {
-      throw new Error(`Invalid CLIENT_URL: ${url}`);
-    }
-  });
+    });
+}
 
-const developmentOrigins = [
-  'http://localhost:5173',
-  'http://127.0.0.1:5173'
+const configuredOrigins = parseClientOrigins(
+  process.env.CLIENT_URL || ''
+);
+
+const allowedOrigins = [
+  ...new Set([
+    ...(IS_PRODUCTION ? trustedProductionOrigins : []),
+    ...configuredOrigins,
+    ...(!IS_PRODUCTION ? developmentOrigins : [])
+  ])
 ];
 
-// Production must have explicitly configured origins.
-if (isProduction && allowedOrigins.length === 0) {
-  throw new Error(
-    'CLIENT_URL is required in production. Configure it in your hosting environment.'
+// Detect private IPv4 addresses for local development only.
+function isPrivateIPv4(hostname) {
+  const parts = hostname.split('.');
+
+  if (
+    parts.length !== 4 ||
+    parts.some((part) => !/^\d+$/.test(part))
+  ) {
+    return false;
+  }
+
+  const [a, b, c, d] = parts.map(Number);
+
+  if (
+    [a, b, c, d].some((n) => n < 0 || n > 255)
+  ) {
+    return false;
+  }
+
+  return (
+    a === 10 ||
+    (a === 192 && b === 168) ||
+    (a === 172 && b >= 16 && b <= 31)
   );
 }
 
-const corsOriginValidator = (origin, callback) => {
-  // Allow requests without Origin (server-to-server clients).
-  // This is not an authentication bypass protection.
+// Single origin validation function.
+function checkOrigin(origin) {
+  // Requests without Origin.
   if (!origin) {
-    return callback(null, true);
+    return {
+      allowed: true,
+      reason: 'NO_ORIGIN_HEADER'
+    };
   }
 
-  let normalizedOrigin;
+  let parsed;
 
   try {
-    normalizedOrigin = new URL(origin).origin;
+    parsed = new URL(origin);
   } catch {
-    return callback(new Error('Not allowed by CORS'));
+    return {
+      allowed: false,
+      reason: 'INVALID_ORIGIN_FORMAT'
+    };
   }
 
-  // Production: strict allowlist.
-  if (isProduction) {
-    if (allowedOrigins.includes(normalizedOrigin)) {
-      return callback(null, true);
+  const normalizedOrigin = parsed.origin;
+
+  // Exact allowlist match.
+  if (allowedOrigins.includes(normalizedOrigin)) {
+    return {
+      allowed: true,
+      reason: 'EXACT_ALLOWLIST_MATCH',
+      normalizedOrigin
+    };
+  }
+
+  // Private network and localhost access only in development.
+  if (!IS_PRODUCTION && parsed.protocol === 'http:') {
+    const isLocalhost = [
+      'localhost',
+      '127.0.0.1'
+    ].includes(parsed.hostname);
+
+    if (
+      isLocalhost ||
+      isPrivateIPv4(parsed.hostname)
+    ) {
+      return {
+        allowed: true,
+        reason: 'DEVELOPMENT_LOCAL_NETWORK',
+        normalizedOrigin
+      };
+    }
+  }
+
+  return {
+    allowed: false,
+    reason: 'ORIGIN_NOT_IN_ALLOWLIST',
+    normalizedOrigin
+  };
+}
+
+// Detailed CORS diagnostics.
+console.log('\n========== PULSECHAT CORS CONFIG ==========');
+console.log('[CORS] Environment:', NODE_ENV);
+console.log('[CORS] CLIENT_URL:', process.env.CLIENT_URL || '(not configured)');
+console.log('[CORS] Configured origins:', configuredOrigins);
+console.log('[CORS] Final allowed origins:', allowedOrigins);
+console.log('[CORS] Production mode:', IS_PRODUCTION);
+console.log('============================================\n');
+
+// CORS validator.
+const corsOriginValidator = (origin, callback) => {
+  const result = checkOrigin(origin);
+
+  if (result.allowed) {
+    if (origin) {
+      console.log('[CORS ALLOWED]', {
+        origin,
+        normalized: result.normalizedOrigin,
+        reason: result.reason
+      });
     }
 
-    console.warn('[CORS BLOCKED]:', normalizedOrigin);
-
-    return callback(new Error('Not allowed by CORS'));
-  }
-
-  // Development: configured domains + localhost.
-  if (
-    allowedOrigins.includes(normalizedOrigin) ||
-    developmentOrigins.includes(normalizedOrigin)
-  ) {
     return callback(null, true);
   }
 
-  console.warn('[CORS BLOCKED]:', normalizedOrigin);
+  console.error('[CORS BLOCKED]', {
+    origin,
+    normalized: result.normalizedOrigin || null,
+    reason: result.reason,
+    environment: NODE_ENV,
+    allowedOrigins
+  });
 
-  return callback(new Error('Not allowed by CORS'));
+  const error = new Error('Not allowed by CORS');
+  error.code = 'CORS_ORIGIN_DENIED';
+
+  return callback(error);
 };
 
 // =====================================================
-// 4. SOCKET.IO INITIALIZATION
+// 5. SOCKET.IO INITIALIZATION
 // =====================================================
 
 const io = new Server(server, {
@@ -163,25 +281,13 @@ const io = new Server(server, {
   }
 });
 
-// Make Socket.IO available inside controllers.
 app.set('io', io);
 
 // =====================================================
-// 5. GLOBAL MIDDLEWARE
+// 6. EXPRESS MIDDLEWARE
 // =====================================================
 
-app.use(express.json({
-  limit: '20mb'
-}));
-
-app.use(express.urlencoded({
-  extended: true,
-  limit: '20mb'
-}));
-
-app.use(cookieParser());
-
-// Express CORS.
+// CORS should run before body parsers.
 app.use(cors({
   origin: corsOriginValidator,
   credentials: true,
@@ -200,28 +306,81 @@ app.use(cors({
   optionsSuccessStatus: 204
 }));
 
+app.use(express.json({
+  limit: '20mb'
+}));
+
+app.use(express.urlencoded({
+  extended: true,
+  limit: '20mb'
+}));
+
+app.use(cookieParser());
+
 // =====================================================
-// 6. DATABASE INITIALIZATION
+// 7. RATE LIMITER
+// =====================================================
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+
+  message: {
+    success: false,
+    message: 'Too many authentication attempts. Please try again after 15 minutes.'
+  },
+
+  handler: (req, res) => {
+    console.warn('[RATE LIMIT] Authentication limit reached:', {
+      ip: req.ip,
+      path: req.path
+    });
+
+    res.status(429).json({
+      success: false,
+      message: 'Too many authentication attempts. Please try again after 15 minutes.'
+    });
+  }
+});
+
+// =====================================================
+// 8. DATABASE INITIALIZATION
 // =====================================================
 
 const initializationPromise = (async () => {
-  console.log('[Database] Connecting to main database...');
+  console.log('[DATABASE] Connecting to main database...');
 
   await connectDB();
 
-  console.log('[Database] Main database connected');
+  if (mongoose.connection.readyState !== 1) {
+    throw new Error('Main MongoDB connection is not ready');
+  }
+
+  console.log('[DATABASE] Main database connected');
+
+  console.log('[DATABASE] Initializing multi-database...');
 
   await initMultiDb();
 
-  console.log('[Database] Multi-database initialized');
+  console.log('[DATABASE] Multi-database initialized');
+
+  console.log('[JOBS] Initializing retention schedule...');
 
   await initRetentionSchedule();
 
-  console.log('[Jobs] Retention schedule initialized');
+  console.log('[JOBS] Retention schedule initialized');
+
+  console.log('[STARTUP] All initialization completed');
 })();
 
-// For serverless requests, wait for database initialization
-// before processing API routes.
+// Log startup failures without silently swallowing them.
+initializationPromise.catch((error) => {
+  console.error('[INITIALIZATION FAILED]', error.stack || error);
+});
+
+// Wait for database initialization before processing API requests.
 app.use('/api', async (req, res, next) => {
   try {
     await initializationPromise;
@@ -232,22 +391,7 @@ app.use('/api', async (req, res, next) => {
 });
 
 // =====================================================
-// 7. RATE LIMITING
-// =====================================================
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    message: 'Too many authentication attempts. Please try again after 15 minutes.'
-  }
-});
-
-// =====================================================
-// 8. STATIC UPLOAD FILES
+// 9. STATIC UPLOADS
 // =====================================================
 
 const defaultUploadDir = path.join(__dirname, 'uploads');
@@ -256,23 +400,28 @@ app.use('/uploads', express.static(defaultUploadDir));
 
 if (
   uploadMiddleware.uploadDir &&
-  path.resolve(uploadMiddleware.uploadDir) !== path.resolve(defaultUploadDir)
+  path.resolve(uploadMiddleware.uploadDir) !==
+  path.resolve(defaultUploadDir)
 ) {
-  app.use('/uploads', express.static(uploadMiddleware.uploadDir));
+  app.use(
+    '/uploads',
+    express.static(uploadMiddleware.uploadDir)
+  );
 }
 
 // =====================================================
-// 9. ROOT ENDPOINT
+// 10. ROOT ENDPOINT
 // =====================================================
 
 app.get('/', (req, res) => {
-  const isDbConnected = mongoose.connection.readyState === 1;
+  const dbConnected = mongoose.connection.readyState === 1;
 
   res.json({
     status: 'online',
     message: 'PulseChat Real-Time Encrypted Messenger API is running',
     version: '1.0.0',
-    database: isDbConnected ? 'connected' : 'disconnected',
+    environment: NODE_ENV,
+    database: dbConnected ? 'connected' : 'disconnected',
     uptime: `${Math.floor(process.uptime())}s`,
     endpoints: {
       health: '/health',
@@ -288,26 +437,38 @@ app.get('/', (req, res) => {
 });
 
 // =====================================================
-// 10. HEALTH CHECK
+// 11. HEALTH CHECK
 // =====================================================
 
-const healthHandler = (req, res) => {
-  const isDbConnected = mongoose.connection.readyState === 1;
+const healthHandler = async (req, res) => {
+  try {
+    await initializationPromise;
 
-  res.status(isDbConnected ? 200 : 503).json({
-    status: isDbConnected ? 'healthy' : 'degraded',
-    service: 'PulseChat Real-Time API',
-    database: isDbConnected ? 'connected' : 'disconnected',
-    uptime: `${Math.floor(process.uptime())}s`,
-    timestamp: new Date().toISOString()
-  });
+    const dbConnected = mongoose.connection.readyState === 1;
+
+    res.status(dbConnected ? 200 : 503).json({
+      status: dbConnected ? 'healthy' : 'degraded',
+      service: 'PulseChat Real-Time API',
+      database: dbConnected ? 'connected' : 'disconnected',
+      uptime: `${Math.floor(process.uptime())}s`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      service: 'PulseChat Real-Time API',
+      database: 'unavailable',
+      message: 'Service initialization failed',
+      timestamp: new Date().toISOString()
+    });
+  }
 };
 
 app.get('/health', healthHandler);
 app.get('/api/health', healthHandler);
 
 // =====================================================
-// 11. PUBLIC FEATURE FLAGS
+// 12. PUBLIC SYSTEM FEATURES
 // =====================================================
 
 app.get(
@@ -316,48 +477,39 @@ app.get(
 );
 
 // =====================================================
-// 12. API ROUTES
+// 13. API ROUTES
 // =====================================================
 
 app.use('/api/auth', authLimiter, authRoutes);
-
 app.use('/api/users', userRoutes);
-
 app.use('/api/chats', chatRoutes);
-
 app.use('/api/groups', groupRoutes);
-
 app.use('/api/messages', messageRoutes);
-
 app.use('/api/reports', reportRoutes);
-
 app.use('/api/admin', adminRoutes);
-
 app.use('/api/export', exportRoutes);
-
 app.use('/api/announcements', announcementRoutes);
-
 app.use('/api/status', statusRoutes);
 
 // =====================================================
-// 13. SOCKET.IO EVENT HANDLERS
+// 14. SOCKET.IO EVENT HANDLERS
 // =====================================================
 
 setupSockets(io);
 
 // =====================================================
-// 14. 404 HANDLER
+// 15. 404 HANDLER
 // =====================================================
 
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: 'API endpoint not found.'
+    message: 'API endpoint not found'
   });
 });
 
 // =====================================================
-// 15. CENTRALIZED ERROR HANDLER
+// 16. CENTRALIZED ERROR HANDLER
 // =====================================================
 
 app.use((err, req, res, next) => {
@@ -367,21 +519,31 @@ app.use((err, req, res, next) => {
 
   // CORS errors.
   if (
-    err.message === 'Not allowed by CORS' ||
-    err.message === 'Invalid origin'
+    err.code === 'CORS_ORIGIN_DENIED' ||
+    err.message === 'Not allowed by CORS'
   ) {
-    console.warn('[CORS BLOCKED]:', req.headers.origin);
+    console.warn('[CORS ERROR RESPONSE]', {
+      origin: req.headers.origin || null,
+      path: req.originalUrl,
+      method: req.method
+    });
 
     return res.status(403).json({
       success: false,
-      message: 'Origin not allowed by server CORS policy.'
+      code: 'CORS_ORIGIN_DENIED',
+      message: 'Your frontend origin is not allowed by the server.'
     });
   }
 
-  console.error(
-    '[Unhandled Error]:',
-    err.stack || err
-  );
+  // MongoDB errors.
+  if (
+    err.name === 'MongoServerError' ||
+    err.name === 'MongooseError'
+  ) {
+    console.error('[DATABASE ERROR]', err.message);
+  } else {
+    console.error('[UNHANDLED ERROR]', err.stack || err);
+  }
 
   const status = err.statusCode || 500;
 
@@ -394,30 +556,31 @@ app.use((err, req, res, next) => {
 });
 
 // =====================================================
-// 16. START SERVER
+// 17. START SERVER
 // =====================================================
 
 if (!process.env.VERCEL) {
   initializationPromise
     .then(() => {
       server.listen(PORT, '0.0.0.0', () => {
-        console.log('====================================');
-        console.log('[Server] PulseChat API started');
-        console.log(`[Server] Port: ${PORT}`);
-        console.log(`[Server] Environment: ${process.env.NODE_ENV || 'development'}`);
-        console.log('[Database] Connected');
-        console.log('[Socket.IO] Initialized');
-        console.log('====================================');
+        console.log('\n====================================');
+        console.log('[SERVER] PulseChat API started');
+        console.log('[SERVER] Port:', PORT);
+        console.log('[SERVER] Environment:', NODE_ENV);
+        console.log('[SERVER] Socket.IO: initialized');
+        console.log('[DATABASE] Main database: connected');
+        console.log('[CORS] Configuration: loaded');
+        console.log('====================================\n');
       });
     })
     .catch((error) => {
-      console.error('[Startup Failed]:', error);
+      console.error('[SERVER STARTUP FAILED]', error);
       process.exit(1);
     });
 }
 
 // =====================================================
-// 17. EXPORTS
+// 18. EXPORTS
 // =====================================================
 
 app.server = server;
