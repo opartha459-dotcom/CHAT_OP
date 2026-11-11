@@ -4,6 +4,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
 import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
+import { MaintenanceProvider } from './context/MaintenanceContext';
 import { ChatProvider, useChat } from './context/ChatContext';
 import { CallProvider } from './context/CallContext';
 import { StatusProvider } from './context/StatusContext';
@@ -23,6 +24,8 @@ import { PulseLogo } from './components/common/PulseLogo';
 import { IncomingCallModal } from './components/call/IncomingCallModal';
 import { ActiveCallModal } from './components/call/ActiveCallModal';
 import { IncomingCodeModal } from './components/common/IncomingCodeModal';
+import { MaintenanceBanner } from './components/common/MaintenanceBanner';
+import { MaintenanceScreen } from './components/common/MaintenanceScreen';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 
@@ -148,11 +151,13 @@ export default function App() {
         <AuthProvider>
           <SocketProvider>
             <FeatureFlagsProvider>
-              <ChatProvider>
-                <CallProvider>
-                  <StatusProvider>
-                    <BrowserRouter>
-                      <Routes>
+              <MaintenanceProvider>
+                <ChatProvider>
+                  <CallProvider>
+                    <StatusProvider>
+                      <BrowserRouter>
+                        <MaintenanceBanner />
+                        <Routes>
                         <Route
                           path="/"
                           element={
@@ -231,10 +236,14 @@ export default function App() {
 
                       {/* Manual Admin Verification Code Delivery Modal */}
                       <IncomingCodeModal />
+
+                      {/* Full-System Scheduled Maintenance Overlay */}
+                      <MaintenanceScreen />
                     </BrowserRouter>
                   </StatusProvider>
                 </CallProvider>
-            </ChatProvider>
+              </ChatProvider>
+            </MaintenanceProvider>
           </FeatureFlagsProvider>
         </SocketProvider>
       </AuthProvider>

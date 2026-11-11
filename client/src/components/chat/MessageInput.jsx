@@ -16,6 +16,7 @@ import { useSocket } from '../../context/SocketContext';
 import { CreatePollModal } from './CreatePollModal';
 import { VoiceRecorder } from './VoiceRecorder';
 import { useFeatureFlags } from '../../context/FeatureFlagsContext';
+import { useMaintenance } from '../../context/MaintenanceContext';
 
 const EMOJI_LIST = [
   '😀', '😂', '😍', '🥳', '😎', '👍', '🔥', '🎉',
@@ -28,6 +29,7 @@ export const MessageInput = () => {
   const { activeConversation, replyMessage, setReplyMessage, sendMessage } = useChat();
   const { sendTypingStart, sendTypingStop } = useSocket();
   const { featureFlags } = useFeatureFlags();
+  const { isFeatureInMaintenance } = useMaintenance();
 
   const [text, setText] = useState('');
   const [fileAttachment, setFileAttachment] = useState(null);
@@ -59,6 +61,24 @@ export const MessageInput = () => {
   const isOwner = isGroup && activeConversation?.groupDetails?.owner?.toString() === user?._id?.toString();
   const isAdmin = isGroup && activeConversation?.groupDetails?.admins?.some((a) => a.toString() === user?._id?.toString());
   const canSend = !onlyAdminsCanMessage || isOwner || isAdmin;
+
+  const isChatInMaintenance = isFeatureInMaintenance('chat') && user?.role !== 'admin';
+  const isChatDisabled = (featureFlags.chatEnabled === false || isChatInMaintenance) && user?.role !== 'admin';
+
+  if (isChatDisabled) {
+    return (
+      <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-center text-xs text-slate-400 select-none">
+        <span className="inline-flex items-center space-x-1.5 font-medium text-amber-500 dark:text-amber-400">
+          <AlertCircle className="w-4 h-4" />
+          <span>
+            {isChatInMaintenance
+              ? 'Chat & Messaging is temporarily unavailable due to scheduled maintenance.'
+              : 'Chat messaging is temporarily disabled by administrators.'}
+          </span>
+        </span>
+      </div>
+    );
+  }
 
   // Handle typing indicator
   const handleInputChange = (e) => {

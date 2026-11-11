@@ -11,16 +11,17 @@ const {
   deleteStatus
 } = require('../controllers/statusController');
 const { protect } = require('../middlewares/auth');
+const { checkFeature } = require('../middlewares/checkFeature');
 
 router.use(protect);
 
-router.post('/', createStatus);
+router.post('/', checkFeature('status'), createStatus);
 router.get('/feed', getStatusFeed);
 router.get('/mine', getMyStatuses);
 router.post('/:id/view', viewStatus);
-router.post('/:id/react', reactToStatus);
-router.post('/:id/poll/vote', voteStatusPoll);
-router.post('/:id/poll/close', closeStatusPoll);
+router.post('/:id/react', checkFeature('status'), reactToStatus);
+router.post('/:id/poll/vote', checkFeature('status'), voteStatusPoll);
+router.post('/:id/poll/close', checkFeature('status'), closeStatusPoll);
 router.delete('/:id', deleteStatus);
 
 module.exports = router;

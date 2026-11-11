@@ -511,6 +511,14 @@ const setupSockets = (io) => {
         await broadcastPresence(userId, 'online', now);
       }
 
+      // Send current maintenance state to the connected client
+      try {
+        const { getCurrentMaintenanceState } = require('../jobs/maintenanceScheduler');
+        getCurrentMaintenanceState().then((maintState) => {
+          socket.emit('maintenance:updated', maintState);
+        }).catch(() => {});
+      } catch (e) {}
+
       // Join only conversations the user is allowed to access.
       const conversations = await Conversation.find({
         participants: userId,
@@ -741,6 +749,38 @@ const setupSockets = (io) => {
 
         if (!['audio', 'video'].includes(callType || 'audio')) {
           return;
+        }
+
+        // Verify callsEnabled feature flag and scheduled maintenance
+        try {
+          const SystemConfig = require('../models/SystemConfig');
+          const MaintenanceSchedule = require('../models/MaintenanceSchedule');
+          const sysCfg = await SystemConfig.findOne({ key: 'system_settings' }).lean();
+          if (sysCfg?.featureFlags?.callsEnabled === false && user.role !== 'admin') {
+            socket.emit('call:error', {
+              callId,
+              message: 'Voice & Video Calling is currently disabled by administrators.'
+            });
+            return;
+          }
+
+          const activeMaint = await MaintenanceSchedule.findOne({
+            status: 'active',
+            startTime: { $lte: new Date() },
+            $or: [{ endTime: { $exists: false } }, { endTime: null }, { endTime: { $gte: new Date() } }]
+          }).lean();
+
+          if (activeMaint && user.role !== 'admin') {
+            if (activeMaint.scope === 'full_system' || (Array.isArray(activeMaint.affectedFeatures) && activeMaint.affectedFeatures.includes('calls'))) {
+              socket.emit('call:error', {
+                callId,
+                message: 'Calling is currently unavailable due to scheduled maintenance.'
+              });
+              return;
+            }
+          }
+        } catch (maintErr) {
+          console.warn('[Socket Call Maintenance Check Error]', maintErr);
         }
 
         if (activeCalls.has(callId)) {

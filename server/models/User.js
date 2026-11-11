@@ -244,6 +244,32 @@ const userSchema = new mongoose.Schema(
         type: String,
         enum: ['everyone', 'contacts', 'nobody'],
         default: 'everyone'
+      },
+
+      // Status Viewer & Privacy Settings
+      statusAudience: {
+        type: String,
+        enum: ['everyone', 'contacts', 'custom', 'only_share_with'],
+        default: 'everyone'
+      },
+
+      statusAllowedUsers: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User'
+        }
+      ],
+
+      statusExcludedUsers: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User'
+        }
+      ],
+
+      statusViewReceipts: {
+        type: Boolean,
+        default: true
       }
     },
 

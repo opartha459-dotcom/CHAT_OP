@@ -1040,7 +1040,9 @@ const logoutAll = async (req, res) => {
 // @route GET /api/auth/me
 const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id)
+      .populate('privacySettings.statusAllowedUsers', 'username nickname avatar')
+      .populate('privacySettings.statusExcludedUsers', 'username nickname avatar');
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }

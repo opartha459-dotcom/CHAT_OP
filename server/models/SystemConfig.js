@@ -9,12 +9,16 @@ const systemConfigSchema = new mongoose.Schema(
       default: 'system_settings'
     },
     featureFlags: {
-      callsEnabled: { type: Boolean, default: true },
-      pollsEnabled: { type: Boolean, default: true },
+      chatEnabled: { type: Boolean, default: true },
       statusesEnabled: { type: Boolean, default: true },
+      callsEnabled: { type: Boolean, default: true },
+      fileSharingEnabled: { type: Boolean, default: true },
+      userRegistrationEnabled: { type: Boolean, default: true },
+      notificationsEnabled: { type: Boolean, default: true },
       voiceMessagesEnabled: { type: Boolean, default: true },
+      pollsEnabled: { type: Boolean, default: true },
       announcementsEnabled: { type: Boolean, default: true },
-      fileSharingEnabled: { type: Boolean, default: true }
+      e2eeEnabled: { type: Boolean, default: true }
     },
     databaseAssignments: {
       authDb: { type: String, default: 'primary' },

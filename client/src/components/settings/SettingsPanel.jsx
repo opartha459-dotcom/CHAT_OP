@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   User,
@@ -19,10 +19,18 @@ import {
   Share2,
   PlusSquare,
   Lock,
-  Type
+  Type,
+  Eye,
+  EyeOff,
+  UserCheck,
+  UserX,
+  Users,
+  Search,
+  Sliders
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useChat } from '../../context/ChatContext';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { Avatar } from '../common/Avatar';
 
@@ -36,6 +44,7 @@ export const SettingsPanel = ({
   const navigate = useNavigate();
   const { user, token, updateUser, logout, logoutAll } = useAuth();
   const { theme, setTheme, accentColor, setAccentColor, fontSize, setFontSize } = useTheme();
+  const { conversations } = useChat();
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
 
   const [internalActiveTab, setInternalActiveTab] = useState('appearance');
@@ -49,6 +58,14 @@ export const SettingsPanel = ({
   const [profileVisibility, setProfileVisibility] = useState(user?.privacySettings?.profileVisibility || 'everyone');
   const [lastSeenVisibility, setLastSeenVisibility] = useState(user?.privacySettings?.lastSeenVisibility || 'everyone');
   const [statusAudience, setStatusAudience] = useState(user?.privacySettings?.statusAudience || 'everyone');
+  const [statusAllowedUsers, setStatusAllowedUsers] = useState(user?.privacySettings?.statusAllowedUsers || []);
+  const [statusExcludedUsers, setStatusExcludedUsers] = useState(user?.privacySettings?.statusExcludedUsers || []);
+  const [statusViewReceipts, setStatusViewReceipts] = useState(user?.privacySettings?.statusViewReceipts ?? true);
+  const [contactPickerMode, setContactPickerMode] = useState(null); // 'allowed' | 'excluded' | null
+  const [contactSearchQuery, setContactSearchQuery] = useState('');
+  const [searchedUsers, setSearchedUsers] = useState([]);
+  const [searchingContacts, setSearchingContacts] = useState(false);
+
   const [readReceipts, setReadReceipts] = useState(user?.privacySettings?.readReceipts ?? true);
   const [typingIndicators, setTypingIndicators] = useState(user?.privacySettings?.typingIndicators ?? true);
   const [blockedUsers, setBlockedUsers] = useState([]);
@@ -68,6 +85,62 @@ export const SettingsPanel = ({
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteEmailCooldown, setDeleteEmailCooldown] = useState(0);
 
+  const knownContacts = useMemo(() => {
+    const map = new Map();
+    (conversations || []).forEach((c) => {
+      if (c.type === 'direct' && c.otherUser?._id) {
+        map.set(c.otherUser._id.toString(), c.otherUser);
+      } else if (c.type === 'group' && Array.isArray(c.participants)) {
+        c.participants.forEach((p) => {
+          if (p?._id && p._id.toString() !== user?._id?.toString()) {
+            map.set(p._id.toString(), p);
+          }
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [conversations, user?._id]);
+
+  useEffect(() => {
+    const query = contactSearchQuery.trim();
+    if (!contactPickerMode || query.length < 2) {
+      setSearchedUsers([]);
+      setSearchingContacts(false);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setSearchingContacts(true);
+      try {
+        const res = await fetch(`/api/users/search?query=${encodeURIComponent(query)}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'include',
+          signal: controller.signal
+        });
+        const data = await res.json();
+        if (res.ok && data.success && Array.isArray(data.users)) {
+          setSearchedUsers(data.users);
+        } else if (!controller.signal.aborted) {
+          setSearchedUsers([]);
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('Contact search error:', err);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setSearchingContacts(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [contactSearchQuery, contactPickerMode, token]);
+
   const authHeaders = () => ({
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -81,6 +154,9 @@ export const SettingsPanel = ({
       setProfileVisibility(user.privacySettings?.profileVisibility || 'everyone');
       setLastSeenVisibility(user.privacySettings?.lastSeenVisibility || 'everyone');
       setStatusAudience(user.privacySettings?.statusAudience || 'everyone');
+      setStatusAllowedUsers(user.privacySettings?.statusAllowedUsers || []);
+      setStatusExcludedUsers(user.privacySettings?.statusExcludedUsers || []);
+      setStatusViewReceipts(user.privacySettings?.statusViewReceipts ?? true);
       setReadReceipts(user.privacySettings?.readReceipts ?? true);
       setTypingIndicators(user.privacySettings?.typingIndicators ?? true);
     }
@@ -152,25 +228,35 @@ export const SettingsPanel = ({
           profileVisibility,
           lastSeenVisibility,
           statusAudience,
+          statusAllowedUsers: statusAllowedUsers.map((u) => u._id || u),
+          statusExcludedUsers: statusExcludedUsers.map((u) => u._id || u),
+          statusViewReceipts,
           readReceipts,
           typingIndicators
         })
       });
       const data = await res.json();
       if (data.success) {
-        updateUser({
-          ...user,
-          privacySettings: {
-            ...(user?.privacySettings || {}),
-            ...(data.privacySettings || {}),
-            profileVisibility,
-            lastSeenVisibility,
-            statusAudience,
-            readReceipts,
-            typingIndicators
-          }
-        });
-        showFeedback('Privacy preferences saved!');
+        if (data.user) {
+          updateUser(data.user);
+        } else {
+          updateUser({
+            ...user,
+            privacySettings: {
+              ...(user?.privacySettings || {}),
+              ...(data.privacySettings || {}),
+              profileVisibility,
+              lastSeenVisibility,
+              statusAudience,
+              statusAllowedUsers,
+              statusExcludedUsers,
+              statusViewReceipts,
+              readReceipts,
+              typingIndicators
+            }
+          });
+        }
+        showFeedback('Privacy and status viewer preferences saved!');
       } else {
         showFeedback(data.message || 'Error saving settings', 'error');
       }
@@ -721,34 +807,157 @@ export const SettingsPanel = ({
                   </label>
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-950/30 to-slate-900/70 p-4 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-violet-300" />
-                    <h4 className="text-xs font-bold text-white">Status privacy</h4>
+                {/* STATUS VIEWER & PRIVACY SETTINGS SUITE */}
+                <div className="mt-4 rounded-2xl border border-violet-500/25 bg-gradient-to-br from-violet-950/40 via-slate-900/80 to-[#0B0F19] p-4 sm:p-5 space-y-4 shadow-xl shadow-black/20">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-violet-300" />
+                        <h4 className="text-sm font-bold text-white">Status Viewer & Privacy Settings</h4>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Control who can view your 24h status updates and manage your status read receipts.
+                      </p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                      Stories
+                    </span>
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    Choose the default audience for new status updates. You can still customize each status before sharing it.
-                  </p>
-                  <select
-                    value={statusAudience}
-                    onChange={(e) => setStatusAudience(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs bg-[#0E1422] border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                  >
-                    <option value="everyone">Everyone</option>
-                    <option value="contacts">My contacts</option>
-                  </select>
-                  <p className="text-[10px] text-slate-500">
-                    This is a default for the status composer, not a replacement for server-side audience checks.
-                  </p>
+
+                  {/* Status Audience Options */}
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      Who can see my status updates
+                    </label>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {[
+                        {
+                          id: 'everyone',
+                          title: 'Everyone',
+                          desc: 'Anyone on PulseChat can see your stories'
+                        },
+                        {
+                          id: 'contacts',
+                          title: 'My Contacts',
+                          desc: 'Only your direct chat contacts and groups'
+                        },
+                        {
+                          id: 'custom',
+                          title: 'My Contacts Except...',
+                          desc: statusExcludedUsers.length > 0
+                            ? `Excluding ${statusExcludedUsers.length} contact(s)`
+                            : 'Hide your status from selected contacts'
+                        },
+                        {
+                          id: 'only_share_with',
+                          title: 'Only Share With...',
+                          desc: statusAllowedUsers.length > 0
+                            ? `Sharing with ${statusAllowedUsers.length} contact(s)`
+                            : 'Only visible to specific chosen contacts'
+                        }
+                      ].map((opt) => {
+                        const isSelected = statusAudience === opt.id;
+                        return (
+                          <div
+                            key={opt.id}
+                            onClick={() => {
+                              setStatusAudience(opt.id);
+                              if (opt.id === 'custom') setContactPickerMode('excluded');
+                              if (opt.id === 'only_share_with') setContactPickerMode('allowed');
+                            }}
+                            className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between ${
+                              isSelected
+                                ? 'bg-violet-600/20 border-violet-400/80 text-white shadow-sm'
+                                : 'bg-[#0E1422] border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-bold text-xs text-white">{opt.title}</span>
+                              <div
+                                className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                                  isSelected
+                                    ? 'border-violet-400 bg-violet-500 text-white'
+                                    : 'border-slate-700'
+                                }`}
+                              >
+                                {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                              </div>
+                            </div>
+                            <span className="text-[10px] text-slate-400 leading-tight">{opt.desc}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Manage Excluded/Allowed Contacts Action Buttons */}
+                    {statusAudience === 'custom' && (
+                      <div className="pt-1 flex items-center justify-between text-xs">
+                        <span className="text-slate-400 text-[11px]">
+                          {statusExcludedUsers.length} contact(s) currently excluded
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setContactPickerMode('excluded')}
+                          className="px-3 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-semibold cursor-pointer transition"
+                        >
+                          Configure Excluded Contacts
+                        </button>
+                      </div>
+                    )}
+
+                    {statusAudience === 'only_share_with' && (
+                      <div className="pt-1 flex items-center justify-between text-xs">
+                        <span className="text-slate-400 text-[11px]">
+                          {statusAllowedUsers.length} contact(s) currently allowed
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setContactPickerMode('allowed')}
+                          className="px-3 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-semibold cursor-pointer transition"
+                        >
+                          Configure Allowed Contacts
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Status Read Receipts Toggle */}
+                  <div className="pt-3 border-t border-slate-800/80">
+                    <label className="flex items-start justify-between gap-3 text-xs text-slate-300 cursor-pointer">
+                      <div>
+                        <div className="font-semibold text-white flex items-center gap-1.5">
+                          {statusViewReceipts ? (
+                            <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                          )}
+                          <span>Status View Receipts</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                          If turned off, you will not see who viewed your status updates, and others will not see when you view theirs.
+                        </p>
+                      </div>
+
+                      <input
+                        type="checkbox"
+                        checked={statusViewReceipts}
+                        onChange={(e) => setStatusViewReceipts(e.target.checked)}
+                        className="mt-1 rounded border-slate-700 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                      />
+                    </label>
+                  </div>
                 </div>
 
-                <button
-                  onClick={handleSavePrivacy}
-                  disabled={loading}
-                  className="px-5 py-2.5 text-xs font-bold text-white bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 rounded-2xl shadow-md transition cursor-pointer"
-                >
-                  Save Privacy Preferences
-                </button>
+                <div className="pt-2">
+                  <button
+                    onClick={handleSavePrivacy}
+                    disabled={loading}
+                    className="px-5 py-2.5 text-xs font-bold text-white bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 rounded-2xl shadow-md transition cursor-pointer flex items-center space-x-2"
+                  >
+                    <span>Save Privacy & Status Preferences</span>
+                  </button>
+                </div>
               </div>
 
               <div className="pt-4 border-t border-slate-800">
@@ -1099,6 +1308,169 @@ export const SettingsPanel = ({
           )}
         </div>
       </div>
+
+      {/* STATUS CONTACT PICKER MODAL (ALLOWED / EXCLUDED) */}
+      {contactPickerMode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-md bg-[#0F1524] rounded-3xl border border-slate-800 shadow-2xl p-5 flex flex-col max-h-[85vh] text-white">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  {contactPickerMode === 'excluded' ? (
+                    <>
+                      <UserX className="w-4 h-4 text-rose-400" />
+                      <span>Hide Status From (Exclude)</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="w-4 h-4 text-emerald-400" />
+                      <span>Share Status Only With</span>
+                    </>
+                  )}
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {contactPickerMode === 'excluded'
+                    ? 'Selected contacts will NOT see your status updates.'
+                    : 'ONLY selected contacts will see your status updates.'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setContactPickerMode(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="mt-3 relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search contacts..."
+                value={contactSearchQuery}
+                onChange={(e) => setContactSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs bg-[#090D16] border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+              />
+            </div>
+
+            {/* Contact List */}
+            <div className="flex-1 overflow-y-auto my-3 space-y-1 no-scrollbar pr-1">
+              {searchingContacts && (
+                <div className="py-4 text-center text-xs text-slate-400 animate-pulse">
+                  Searching contacts...
+                </div>
+              )}
+
+              {(() => {
+                const list =
+                  contactSearchQuery.trim().length >= 2 && searchedUsers.length > 0
+                    ? searchedUsers
+                    : knownContacts;
+
+                if (!searchingContacts && list.length === 0) {
+                  return (
+                    <div className="py-8 text-center text-xs text-slate-500">
+                      No contacts found. Start chats to add contacts here.
+                    </div>
+                  );
+                }
+
+                return list.map((person) => {
+                  const pId = person._id?.toString();
+                  const targetList =
+                    contactPickerMode === 'excluded'
+                      ? statusExcludedUsers
+                      : statusAllowedUsers;
+                  const isChecked = targetList.some(
+                    (u) => (u._id?.toString() || u.toString()) === pId
+                  );
+
+                  const toggleSelection = () => {
+                    if (contactPickerMode === 'excluded') {
+                      setStatusExcludedUsers((prev) =>
+                        isChecked
+                          ? prev.filter(
+                              (u) => (u._id?.toString() || u.toString()) !== pId
+                            )
+                          : [...prev, person]
+                      );
+                    } else {
+                      setStatusAllowedUsers((prev) =>
+                        isChecked
+                          ? prev.filter(
+                              (u) => (u._id?.toString() || u.toString()) !== pId
+                            )
+                          : [...prev, person]
+                      );
+                    }
+                  };
+
+                  return (
+                    <div
+                      key={pId}
+                      onClick={toggleSelection}
+                      className={`flex items-center justify-between p-2 rounded-xl transition cursor-pointer ${
+                        isChecked
+                          ? contactPickerMode === 'excluded'
+                            ? 'bg-rose-950/20 border border-rose-500/30'
+                            : 'bg-emerald-950/20 border border-emerald-500/30'
+                          : 'hover:bg-slate-800/40 border border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5 min-w-0">
+                        <Avatar
+                          src={person.avatar}
+                          name={person.nickname || person.username}
+                          size="sm"
+                        />
+                        <div className="truncate min-w-0">
+                          <div className="text-xs font-semibold text-white truncate">
+                            {person.nickname || person.username}
+                          </div>
+                          <div className="text-[10px] text-slate-400 truncate">
+                            @{person.username}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        className={`w-5 h-5 rounded-md border flex items-center justify-center transition ${
+                          isChecked
+                            ? contactPickerMode === 'excluded'
+                              ? 'bg-rose-500 border-rose-500 text-white'
+                              : 'bg-emerald-500 border-emerald-500 text-white'
+                            : 'border-slate-700 bg-slate-900'
+                        }`}
+                      >
+                        {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">
+                {contactPickerMode === 'excluded'
+                  ? `${statusExcludedUsers.length} excluded`
+                  : `${statusAllowedUsers.length} allowed`}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setContactPickerMode(null)}
+                className="px-4 py-2 text-xs font-bold text-white bg-violet-600 hover:bg-violet-500 rounded-xl transition cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -21,9 +21,10 @@ const {
   deactivateAccount
 } = require('../controllers/authController');
 const { protect } = require('../middlewares/auth');
+const { checkFeature } = require('../middlewares/checkFeature');
 
 // Public Authentication & Lifecycle Routes
-router.post('/register', register);
+router.post('/register', checkFeature('registration'), register);
 router.post('/login', login);
 router.post('/verify-email', verifyEmail);
 router.post('/resend-verification', resendVerificationEmail);

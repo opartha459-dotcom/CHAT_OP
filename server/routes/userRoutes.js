@@ -20,6 +20,7 @@ const {
   answerCall
 } = require('../controllers/userController');
 const { protect } = require('../middlewares/auth');
+const { checkFeature } = require('../middlewares/checkFeature');
 const upload = require('../middlewares/upload');
 
 router.get('/push-key', getPushPublicKey);
@@ -33,7 +34,7 @@ router.get('/search', protect, searchUsers);
 router.get('/blocked', protect, getBlockedUsers);
 router.get('/sessions', protect, getActiveSessions);
 router.delete('/sessions/:id', protect, revokeSession);
-router.post('/upload', protect, upload.single('file'), uploadFile);
+router.post('/upload', protect, checkFeature('fileSharing'), upload.single('file'), uploadFile);
 router.put('/profile', protect, updateProfile);
 router.put('/settings/privacy', protect, updatePrivacySettings);
 router.put('/settings/chat', protect, updateChatSettings);

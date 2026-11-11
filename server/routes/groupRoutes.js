@@ -14,8 +14,9 @@ const {
   joinByInvite
 } = require('../controllers/groupController');
 const { protect } = require('../middlewares/auth');
+const { checkFeature } = require('../middlewares/checkFeature');
 
-router.post('/', protect, createGroup);
+router.post('/', protect, checkFeature('chat'), createGroup);
 router.get('/:id', protect, getGroupDetails);
 router.put('/:id', protect, updateGroup);
 router.post('/:id/members', protect, addMembers);

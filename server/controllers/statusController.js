@@ -151,6 +151,20 @@ const canViewStatus = async (status, userId) => {
     return allowedUsers.includes(currentId);
   }
 
+  if (audience === 'contacts') {
+    const Conversation = require('../models/Conversation');
+    const hasConversation = await Conversation.exists({
+      participants: { $all: [status.user, userId] }
+    });
+    if (!hasConversation) {
+      return false;
+    }
+  }
+
+  if (audience === 'nobody') {
+    return false;
+  }
+
   return true;
 };
 
@@ -277,9 +291,18 @@ const createStatus = async (req, res) => {
       },
 
       privacy: {
-        audience: privacy?.audience || 'everyone',
-        allowedUsers: privacy?.allowedUsers || [],
-        excludedUsers: privacy?.excludedUsers || []
+        audience:
+          privacy?.audience ||
+          req.user.privacySettings?.statusAudience ||
+          'everyone',
+        allowedUsers:
+          privacy?.allowedUsers ||
+          req.user.privacySettings?.statusAllowedUsers ||
+          [],
+        excludedUsers:
+          privacy?.excludedUsers ||
+          req.user.privacySettings?.statusExcludedUsers ||
+          []
       },
 
       hasPoll: Boolean(pollData),
@@ -533,20 +556,26 @@ const viewStatus = async (req, res) => {
     let newViewer = null;
 
     if (authorId !== currentUserId.toString()) {
-      newViewer = await recordViewer(status, currentUserId);
+      // Check viewer's status view receipt privacy setting
+      const viewerHasReceipts =
+        req.user?.privacySettings?.statusViewReceipts !== false;
 
-      if (newViewer) {
-        status.markModified('viewers');
-        await status.save();
+      if (viewerHasReceipts) {
+        newViewer = await recordViewer(status, currentUserId);
 
-        const viewerPayload = getViewerPayload(req, newViewer);
+        if (newViewer) {
+          status.markModified('viewers');
+          await status.save();
 
-        emitViewerUpdate(
-          req,
-          status,
-          viewerPayload,
-          status.viewers.length
-        );
+          const viewerPayload = getViewerPayload(req, newViewer);
+
+          emitViewerUpdate(
+            req,
+            status,
+            viewerPayload,
+            status.viewers.length
+          );
+        }
       }
     }
 

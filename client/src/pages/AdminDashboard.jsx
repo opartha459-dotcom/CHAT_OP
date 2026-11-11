@@ -18,6 +18,7 @@ import {
   Bell,
   Sliders,
   Settings,
+  Wrench,
   ArrowLeft,
   ChevronRight,
   Sparkles,
@@ -127,6 +128,22 @@ export const AdminDashboard = () => {
   // Recovery request multi-select delete state
   const [selectedRecoveries, setSelectedRecoveries] = useState(new Set());
   const [deletingRecoveries, setDeletingRecoveries] = useState(false);
+
+  // Scheduled Maintenance State
+  const [schedules, setSchedules] = useState([]);
+  const [schedulesLoading, setSchedulesLoading] = useState(false);
+  const [activeMaintRecord, setActiveMaintRecord] = useState(null);
+  const [upcomingMaintRecord, setUpcomingMaintRecord] = useState(null);
+  const [maintenanceModalOpen, setMaintenanceModalOpen] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(null);
+  const [maintTitle, setMaintTitle] = useState('');
+  const [maintDesc, setMaintDesc] = useState('');
+  const [maintScope, setMaintScope] = useState('full_system');
+  const [maintFeatures, setMaintFeatures] = useState(['chat', 'calls', 'status']);
+  const [maintStart, setMaintStart] = useState('');
+  const [maintEnd, setMaintEnd] = useState('');
+  const [maintIsImmediate, setMaintIsImmediate] = useState(false);
+  const [maintSubmitting, setMaintSubmitting] = useState(false);
   const [recoverySearch, setRecoverySearch] = useState('');
   const [recoveryStatusFilter, setRecoveryStatusFilter] = useState('all');
   const [recoveryDateFrom, setRecoveryDateFrom] = useState('');
@@ -325,6 +342,7 @@ export const AdminDashboard = () => {
     else if (activeTab === 'audit') loadAuditLogs();
     else if (activeTab === 'settings') loadSystemSettings();
     else if (activeTab === 'recoveries') loadRecoveries();
+    else if (activeTab === 'maintenance') loadMaintenance();
   }, [activeTab]);
 
   // Actions: User Management
@@ -816,6 +834,183 @@ export const AdminDashboard = () => {
     }
   };
 
+  // ── Scheduled Maintenance Handlers ─────────────────────────────────────────
+  const loadMaintenance = async () => {
+    setSchedulesLoading(true);
+    try {
+      const res = await fetch('/api/admin/maintenance', {
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        setSchedules(d.schedules || []);
+        setActiveMaintRecord(d.active || null);
+        setUpcomingMaintRecord(d.upcoming || null);
+      }
+    } catch (e) {
+      showMsg('Failed to load maintenance schedules.');
+    } finally {
+      setSchedulesLoading(false);
+    }
+  };
+
+  const toLocalDatetimeInput = (dateInput) => {
+    if (!dateInput) return '';
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    const YYYY = d.getFullYear();
+    const MM = pad(d.getMonth() + 1);
+    const DD = pad(d.getDate());
+    const HH = pad(d.getHours());
+    const mm = pad(d.getMinutes());
+    return `${YYYY}-${MM}-${DD}T${HH}:${mm}`;
+  };
+
+  const fromLocalDatetimeInput = (val) => {
+    if (!val) return null;
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  };
+
+  const openScheduleModal = (existing = null) => {
+    if (existing) {
+      setEditingSchedule(existing);
+      setMaintTitle(existing.title || '');
+      setMaintDesc(existing.description || '');
+      setMaintScope(existing.scope || 'full_system');
+      setMaintFeatures(existing.affectedFeatures || ['chat', 'calls', 'status']);
+      setMaintStart(toLocalDatetimeInput(existing.startTime));
+      setMaintEnd(toLocalDatetimeInput(existing.endTime));
+      setMaintIsImmediate(existing.isImmediate || false);
+    } else {
+      setEditingSchedule(null);
+      setMaintTitle('');
+      setMaintDesc('');
+      setMaintScope('full_system');
+      setMaintFeatures(['chat', 'calls', 'status']);
+      const inTenMins = new Date(Date.now() + 10 * 60 * 1000);
+      const inOneHour = new Date(Date.now() + 70 * 60 * 1000);
+      setMaintStart(toLocalDatetimeInput(inTenMins));
+      setMaintEnd(toLocalDatetimeInput(inOneHour));
+      setMaintIsImmediate(false);
+    }
+    setMaintenanceModalOpen(true);
+  };
+
+  const handleSaveMaintenance = async (e) => {
+    e.preventDefault();
+    if (!maintTitle.trim()) {
+      showMsg('Maintenance title is required.');
+      return;
+    }
+
+    const startIso = maintIsImmediate ? new Date().toISOString() : fromLocalDatetimeInput(maintStart);
+    const endIso = maintEnd ? fromLocalDatetimeInput(maintEnd) : null;
+
+    if (!maintIsImmediate && !startIso) {
+      showMsg('Please provide a valid start date and time.');
+      return;
+    }
+
+    if (endIso && startIso && new Date(endIso) <= new Date(startIso)) {
+      showMsg('End time must be after start time.');
+      return;
+    }
+
+    setMaintSubmitting(true);
+    try {
+      const payload = {
+        title: maintTitle.trim(),
+        description: maintDesc.trim(),
+        scope: maintScope,
+        affectedFeatures: maintScope === 'partial' ? maintFeatures : [],
+        startTime: startIso,
+        endTime: endIso,
+        isImmediate: maintIsImmediate
+      };
+
+      const endpoint = editingSchedule
+        ? `/api/admin/maintenance/${editingSchedule._id}`
+        : '/api/admin/maintenance';
+      const method = editingSchedule ? 'PUT' : 'POST';
+
+      const res = await fetch(endpoint, {
+        method,
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg(d.message || 'Maintenance saved successfully.');
+        setMaintenanceModalOpen(false);
+        loadMaintenance();
+      } else {
+        showMsg(d.message || 'Error saving maintenance.');
+      }
+    } catch (err) {
+      showMsg('Network error saving maintenance schedule.');
+    } finally {
+      setMaintSubmitting(false);
+    }
+  };
+
+  const handleActivateSchedule = async (id) => {
+    if (!window.confirm('Activate maintenance mode immediately? Affected features will be unavailable to normal users.')) return;
+    try {
+      const res = await fetch(`/api/admin/maintenance/${id}/activate`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg(d.message || 'Maintenance activated.');
+        loadMaintenance();
+      }
+    } catch {
+      showMsg('Failed to activate maintenance.');
+    }
+  };
+
+  const handleEndSchedule = async (id) => {
+    if (!window.confirm('End this maintenance mode now? All services will be immediately restored.')) return;
+    try {
+      const res = await fetch(`/api/admin/maintenance/${id}/end`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg(d.message || 'Maintenance completed.');
+        loadMaintenance();
+      }
+    } catch {
+      showMsg('Failed to end maintenance.');
+    }
+  };
+
+  const handleCancelSchedule = async (id) => {
+    if (!window.confirm('Cancel this maintenance schedule?')) return;
+    try {
+      const res = await fetch(`/api/admin/maintenance/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg(d.message || 'Maintenance schedule cancelled.');
+        loadMaintenance();
+      }
+    } catch {
+      showMsg('Failed to cancel maintenance.');
+    }
+  };
+
   // ── Recovery Requests ─────────────────────────────────────────────────────
   const loadRecoveries = async () => {
     setRecoveriesLoading(true);
@@ -1010,9 +1205,10 @@ export const AdminDashboard = () => {
     { id: 'groups', label: 'Chats & Groups', icon: MessageSquare },
     { id: 'announcements', label: 'Announcements', icon: Bell },
     { id: 'recoveries', label: 'Account Recoveries', icon: RotateCcw },
+    { id: 'maintenance', label: 'Maintenance', icon: Wrench },
+    { id: 'settings', label: 'System Settings', icon: Sliders },
     { id: 'databases', label: 'Databases & Health', icon: HardDrive },
     { id: 'audit', label: 'Audit Logs', icon: FileText },
-    { id: 'settings', label: 'System Settings', icon: Sliders }
   ];
 
   if (auth.loading) {
@@ -2918,52 +3114,402 @@ export const AdminDashboard = () => {
             </div>
           )}
 
+          {/* TAB: MAINTENANCE & DOWNTIME MANAGER */}
+          {activeTab === 'maintenance' && (
+            <div className="space-y-6 max-w-5xl">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                    <Wrench className="w-5 h-5 text-indigo-500" />
+                    <span>Scheduled Maintenance Manager</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Schedule automated downtime windows or toggle instant maintenance with granular feature-level control
+                  </p>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={() => loadMaintenance()}
+                    disabled={schedulesLoading}
+                    className="p-2 text-slate-500 hover:text-white rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                    title="Refresh Schedules"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${schedulesLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                  <button
+                    onClick={() => openScheduleModal()}
+                    className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Schedule Maintenance</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Overview Banner */}
+              {activeMaintRecord ? (
+                <div className="p-5 bg-gradient-to-r from-rose-950/40 via-slate-900 to-slate-900 border-2 border-rose-500/50 rounded-2xl shadow-xl shadow-rose-950/30 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/10 rounded-full blur-2xl pointer-events-none" />
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="relative flex h-3 w-3">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                        </span>
+                        <span className="text-xs font-bold uppercase tracking-wider text-rose-400">
+                          Maintenance Mode Active
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          activeMaintRecord.scope === 'full_system'
+                            ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        }`}>
+                          {activeMaintRecord.scope === 'full_system' ? 'Full System Outage' : 'Partial / Feature-Specific'}
+                        </span>
+                      </div>
+
+                      <h3 className="text-lg font-bold text-white">{activeMaintRecord.title}</h3>
+                      {activeMaintRecord.description && (
+                        <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                          {activeMaintRecord.description}
+                        </p>
+                      )}
+
+                      {activeMaintRecord.scope === 'partial' && activeMaintRecord.affectedFeatures?.length > 0 && (
+                        <div className="flex items-center gap-2 pt-1 flex-wrap">
+                          <span className="text-[11px] text-slate-400 font-medium">Affected Features:</span>
+                          {activeMaintRecord.affectedFeatures.map((f) => (
+                            <span key={f} className="px-2 py-0.5 bg-slate-800 text-amber-300 rounded-md text-[10px] font-mono border border-slate-700">
+                              {f}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex items-center space-x-4 pt-2 text-[11px] text-slate-400">
+                        <span className="flex items-center space-x-1">
+                          <Clock className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Started: {new Date(activeMaintRecord.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </span>
+                        {activeMaintRecord.endTime && (
+                          <span className="flex items-center space-x-1">
+                            <Hourglass className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Expected End: {new Date(activeMaintRecord.endTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <button
+                        onClick={() => openScheduleModal(activeMaintRecord)}
+                        className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleEndSchedule(activeMaintRecord._id)}
+                        className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-rose-600/30 cursor-pointer flex items-center space-x-1.5"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>End Maintenance Now</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-emerald-950/20 border border-emerald-500/30 rounded-2xl flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold text-emerald-300">All Systems Operational</div>
+                      <div className="text-[11px] text-slate-400">No active maintenance in progress. Normal users have full access.</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      openScheduleModal();
+                      setMaintIsImmediate(true);
+                    }}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg border border-slate-700 transition cursor-pointer"
+                  >
+                    Quick Emergency Mode
+                  </button>
+                </div>
+              )}
+
+              {/* Upcoming Schedules */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                    <Calendar className="w-4 h-4 text-indigo-400" />
+                    <span>Upcoming Maintenance Windows</span>
+                  </h3>
+                  <span className="text-[11px] text-slate-500">
+                    {schedules.filter((s) => s.status === 'scheduled').length} scheduled
+                  </span>
+                </div>
+
+                {schedules.filter((s) => s.status === 'scheduled').length === 0 ? (
+                  <div className="p-8 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs text-slate-500">
+                    <Hourglass className="w-8 h-8 text-slate-600 mx-auto mb-2 opacity-50" />
+                    <p className="font-medium">No upcoming maintenance windows scheduled</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Users will not experience scheduled downtime.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {schedules
+                      .filter((s) => s.status === 'scheduled')
+                      .map((sch) => {
+                        const start = new Date(sch.startTime);
+                        const end = sch.endTime ? new Date(sch.endTime) : null;
+                        const startsInMin = Math.round((start.getTime() - Date.now()) / (1000 * 60));
+
+                        return (
+                          <div
+                            key={sch._id}
+                            className="p-4 bg-white dark:bg-slate-900 border border-indigo-500/20 hover:border-indigo-500/40 rounded-2xl shadow-xs space-y-3 transition"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                                  {startsInMin > 0 ? `Starts in ${startsInMin}m` : 'Starting Soon'}
+                                </span>
+                                <h4 className="text-sm font-bold text-white mt-1.5">{sch.title}</h4>
+                                {sch.description && (
+                                  <p className="text-xs text-slate-400 line-clamp-2 mt-0.5">{sch.description}</p>
+                                )}
+                              </div>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                                sch.scope === 'full_system'
+                                  ? 'bg-rose-500/10 text-rose-300'
+                                  : 'bg-amber-500/10 text-amber-300'
+                              }`}>
+                                {sch.scope === 'full_system' ? 'Full System' : 'Partial'}
+                              </span>
+                            </div>
+
+                            <div className="text-[11px] text-slate-400 space-y-1 bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/80">
+                              <div className="flex justify-between">
+                                <span>Start:</span>
+                                <span className="font-mono text-slate-200">{start.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                              </div>
+                              {end && (
+                                <div className="flex justify-between">
+                                  <span>End:</span>
+                                  <span className="font-mono text-slate-200">{end.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                </div>
+                              )}
+                              {sch.scope === 'partial' && sch.affectedFeatures?.length > 0 && (
+                                <div className="flex justify-between items-center pt-1 border-t border-slate-800">
+                                  <span>Features:</span>
+                                  <span className="text-[10px] text-amber-300">{sch.affectedFeatures.join(', ')}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-end space-x-2 pt-1">
+                              <button
+                                onClick={() => handleActivateSchedule(sch._id)}
+                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition cursor-pointer flex items-center space-x-1"
+                              >
+                                <Play className="w-3 h-3" />
+                                <span>Activate Now</span>
+                              </button>
+                              <button
+                                onClick={() => openScheduleModal(sch)}
+                                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition cursor-pointer"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleCancelSchedule(sch._id)}
+                                className="px-3 py-1.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold rounded-lg border border-rose-800/40 transition cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+
+              {/* Maintenance History */}
+              <div className="space-y-3 pt-4 border-t border-slate-800">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                  <Clock className="w-4 h-4 text-slate-400" />
+                  <span>Maintenance History</span>
+                </h3>
+
+                {schedules.filter((s) => s.status === 'completed' || s.status === 'cancelled').length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-500">No past maintenance history records.</div>
+                ) : (
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                    {schedules
+                      .filter((s) => s.status === 'completed' || s.status === 'cancelled')
+                      .slice(0, 10)
+                      .map((sch) => (
+                        <div key={sch._id} className="p-3.5 flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              sch.status === 'completed'
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : 'bg-slate-700/50 text-slate-400'
+                            }`}>
+                              {sch.status}
+                            </span>
+                            <div>
+                              <div className="font-bold text-white">{sch.title}</div>
+                              <div className="text-[11px] text-slate-400">
+                                {sch.scope === 'full_system' ? 'Full System' : `Partial (${(sch.affectedFeatures || []).join(', ')})`}
+                                {' • '}
+                                {new Date(sch.startTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-mono">
+                            {sch.completedAt ? `Ended ${new Date(sch.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* TAB 7: SETTINGS & FEATURE FLAGS */}
           {activeTab === 'settings' && (
             <div className="space-y-6 max-w-4xl">
               <div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">System Feature Flags</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Toggle application features without triggering cold redeployments
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                  <Sliders className="w-5 h-5 text-indigo-500" />
+                  <span>System Feature Flags & Management</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Centrally enable or disable application features across both frontend interfaces and backend API routes in real-time.
                 </p>
               </div>
 
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                {[
-                  { key: 'callsEnabled', label: 'Voice & Video Calling', desc: 'Real-time WebRTC audio & video peer connections' },
-                  { key: 'pollsEnabled', label: 'In-Chat Interactive Polls', desc: 'Direct-message and group polling system' },
-                  { key: 'statusesEnabled', label: 'Text Statuses', desc: 'WhatsApp-style 24h expiring status updates' },
-                  { key: 'voiceMessagesEnabled', label: 'Voice Audio Messages', desc: 'Audio recording and streaming in conversations' },
-                  { key: 'fileSharingEnabled', label: 'Media & File Uploads', desc: 'Uploading documents, videos, and image attachments' },
-                  { key: 'announcementsEnabled', label: 'Admin News & Announcements', desc: 'Display global broadcast banner in user view' }
-                ].map((feat) => {
-                  const isEnabled = systemSettings?.featureFlags
-                    ? systemSettings.featureFlags[feat.key] !== false
-                    : true;
+              {[
+                {
+                  category: 'Core Communication Modules',
+                  items: [
+                    {
+                      key: 'chatEnabled',
+                      label: 'Direct & Group Messaging (Chat System)',
+                      desc: 'Enables 1-on-1 private messaging, group conversations, and chat history retrieval'
+                    },
+                    {
+                      key: 'statusesEnabled',
+                      label: 'Status Updates & Stories',
+                      desc: '24-hour expiring status updates, viewer counts, reactions, and story feeds'
+                    },
+                    {
+                      key: 'callsEnabled',
+                      label: 'Voice & Video Calling',
+                      desc: 'Real-time WebRTC audio & video peer connections and incoming ring alerts'
+                    }
+                  ]
+                },
+                {
+                  category: 'Media & Interactive Features',
+                  items: [
+                    {
+                      key: 'fileSharingEnabled',
+                      label: 'Media & File Attachments Sharing',
+                      desc: 'Uploading and previewing documents, audio clips, videos, and image attachments'
+                    },
+                    {
+                      key: 'voiceMessagesEnabled',
+                      label: 'Voice Audio Messages',
+                      desc: 'In-app audio recording and waveform player streaming in chat threads'
+                    },
+                    {
+                      key: 'pollsEnabled',
+                      label: 'In-Chat Interactive Polls',
+                      desc: 'Interactive voting polls with single or multiple choice responses in chats'
+                    }
+                  ]
+                },
+                {
+                  category: 'Access, Security & System',
+                  items: [
+                    {
+                      key: 'userRegistrationEnabled',
+                      label: 'Public User Registration',
+                      desc: 'Allow new visitors to register accounts. When disabled, only admins can create users'
+                    },
+                    {
+                      key: 'e2eeEnabled',
+                      label: 'End-to-End Encryption Indicators',
+                      desc: 'E2EE key negotiation protocols and secure badge verification in conversation views'
+                    },
+                    {
+                      key: 'notificationsEnabled',
+                      label: 'Push & Realtime Notifications',
+                      desc: 'Sound chimes, visual badge counts, and realtime alert popups for active sessions'
+                    },
+                    {
+                      key: 'announcementsEnabled',
+                      label: 'Admin Broadcast Announcements',
+                      desc: 'Global announcement banner and interactive polls displayed on user dashboards'
+                    }
+                  ]
+                }
+              ].map((grp) => (
+                <div key={grp.category} className="space-y-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    {grp.category}
+                  </h3>
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs divide-y divide-slate-100 dark:divide-slate-800 text-xs overflow-hidden">
+                    {grp.items.map((feat) => {
+                      const isEnabled = systemSettings?.featureFlags
+                        ? systemSettings.featureFlags[feat.key] !== false
+                        : true;
 
-                  return (
-                    <div key={feat.key} className="p-4 flex items-center justify-between">
-                      <div>
-                        <div className="font-bold text-sm text-slate-900 dark:text-white">{feat.label}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{feat.desc}</div>
-                      </div>
+                      return (
+                        <div key={feat.key} className="p-4 flex items-center justify-between hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                          <div className="pr-4">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-bold text-sm text-slate-900 dark:text-white">
+                                {feat.label}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                isEnabled
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                  : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                              }`}>
+                                {isEnabled ? 'ENABLED' : 'DISABLED'}
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                              {feat.desc}
+                            </div>
+                          </div>
 
-                      <button
-                        onClick={() => handleToggleFeature(feat.key, isEnabled)}
-                        className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
-                          isEnabled ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
-                        }`}
-                      >
-                        <span
-                          className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
-                            isEnabled ? 'right-1' : 'left-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+                          <button
+                            onClick={() => handleToggleFeature(feat.key, isEnabled)}
+                            className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
+                              isEnabled ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+                            }`}
+                            title={isEnabled ? 'Click to disable feature' : 'Click to enable feature'}
+                          >
+                            <span
+                              className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                                isEnabled ? 'right-1' : 'left-1'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </main>
@@ -3904,6 +4450,238 @@ export const AdminDashboard = () => {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* ── Scheduled Maintenance Modal ─────────────────────────────────────── */}
+      {maintenanceModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center space-x-2">
+                <Wrench className="w-5 h-5 text-indigo-500" />
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {editingSchedule ? 'Edit Maintenance Window' : 'Schedule Maintenance'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setMaintenanceModalOpen(false)}
+                className="text-slate-400 hover:text-white transition p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMaintenance} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Maintenance Title <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={maintTitle}
+                  onChange={(e) => setMaintTitle(e.target.value)}
+                  placeholder="e.g. Core Database Upgrade & Infrastructure Migration"
+                  required
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Public Announcement & Description
+                </label>
+                <textarea
+                  rows={2}
+                  value={maintDesc}
+                  onChange={(e) => setMaintDesc(e.target.value)}
+                  placeholder="Explain why maintenance is happening and what users should expect..."
+                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+
+              {/* Maintenance Timing Mode */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Timing & Activation Mode
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMaintIsImmediate(false);
+                      const inTenMins = new Date(Date.now() + 10 * 60 * 1000);
+                      const inOneHour = new Date(Date.now() + 70 * 60 * 1000);
+                      setMaintStart(toLocalDatetimeInput(inTenMins));
+                      setMaintEnd(toLocalDatetimeInput(inOneHour));
+                    }}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                      !maintIsImmediate
+                        ? 'border-indigo-500 bg-indigo-500/10 ring-2 ring-indigo-500/20'
+                        : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold text-xs text-white flex items-center space-x-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Scheduled Ahead</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1">
+                      Announces countdown banner and auto-activates at start time
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMaintIsImmediate(true);
+                      const now = new Date();
+                      const inOneHour = new Date(Date.now() + 60 * 60 * 1000);
+                      setMaintStart(toLocalDatetimeInput(now));
+                      setMaintEnd(toLocalDatetimeInput(inOneHour));
+                    }}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                      maintIsImmediate
+                        ? 'border-rose-500 bg-rose-500/10 ring-2 ring-rose-500/20'
+                        : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold text-xs text-white flex items-center space-x-1.5">
+                      <Play className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Activate Immediately</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1">
+                      Starts maintenance instantly upon submission
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Date & Time Pickers */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                    Start Date & Time {!maintIsImmediate && <span className="text-rose-400">*</span>}
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={maintStart}
+                    disabled={maintIsImmediate}
+                    onChange={(e) => setMaintStart(e.target.value)}
+                    required={!maintIsImmediate}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                    Estimated End Time (Optional)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={maintEnd}
+                    onChange={(e) => setMaintEnd(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Scope Selection */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Maintenance Impact Scope
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMaintScope('full_system')}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                      maintScope === 'full_system'
+                        ? 'border-red-500 bg-red-500/10 ring-2 ring-red-500/20'
+                        : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold text-xs text-white">Full System Outage</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Entire app displays maintenance screen for all normal users
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMaintScope('partial')}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                      maintScope === 'partial'
+                        ? 'border-amber-500 bg-amber-500/10 ring-2 ring-amber-500/20'
+                        : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold text-xs text-white">Partial / Feature-Specific</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Only specific features disabled; rest remains online
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Partial Features Selection */}
+              {maintScope === 'partial' && (
+                <div className="space-y-2 p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <label className="block text-[11px] font-bold text-slate-300">
+                    Select Features Affected by Maintenance:
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {[
+                      { key: 'chat', label: 'Chat & Messaging' },
+                      { key: 'calls', label: 'Voice & Video Calls' },
+                      { key: 'status', label: 'Status Updates' },
+                      { key: 'fileSharing', label: 'File Sharing' },
+                      { key: 'polls', label: 'Interactive Polls' },
+                      { key: 'registration', label: 'User Registration' }
+                    ].map((f) => {
+                      const isChecked = maintFeatures.includes(f.key);
+                      return (
+                        <label
+                          key={f.key}
+                          className="flex items-center space-x-2 text-slate-300 cursor-pointer p-1.5 rounded-lg hover:bg-slate-900"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setMaintFeatures([...maintFeatures, f.key]);
+                              } else {
+                                setMaintFeatures(maintFeatures.filter((x) => x !== f.key));
+                              }
+                            }}
+                            className="rounded border-slate-700 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span className="text-[11px]">{f.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center space-x-3 pt-3 border-t border-slate-800">
+                <button
+                  type="submit"
+                  disabled={maintSubmitting}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2 shadow-lg shadow-indigo-600/20 cursor-pointer"
+                >
+                  {maintSubmitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                  <span>{maintSubmitting ? 'Saving...' : editingSchedule ? 'Update Schedule' : maintIsImmediate ? 'Activate Maintenance Now' : 'Schedule Maintenance'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMaintenanceModalOpen(false)}
+                  disabled={maintSubmitting}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

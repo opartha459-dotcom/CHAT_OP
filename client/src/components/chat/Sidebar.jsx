@@ -154,6 +154,12 @@ export const Sidebar = () => {
   const [isJoinGroupOpen, setIsJoinGroupOpen] = useState(false);
   const [isInstallAppOpen, setIsInstallAppOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState('appearance');
+
+  const openSettingsTo = (tab = 'appearance') => {
+    setSettingsInitialTab(tab);
+    setIsSettingsOpen(true);
+  };
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isPushBannerDismissed, setIsPushBannerDismissed] = useState(false);
@@ -454,6 +460,17 @@ export const Sidebar = () => {
                   >
                     <Radio className="w-4 h-4 text-purple-500 flex-shrink-0" />
                     <span className="font-medium">Post Status Update</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      openSettingsTo('privacy');
+                    }}
+                    className="w-full px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-2.5 transition text-left cursor-pointer"
+                  >
+                    <Shield className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <span className="font-medium">Status Privacy</span>
                   </button>
 
                   {user?.role === 'admin' && (
@@ -773,7 +790,7 @@ export const Sidebar = () => {
                 <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
                   <span>Status</span>
                   <button
-                    onClick={() => setCreateModalOpen(true)}
+                    onClick={() => openSettingsTo('privacy')}
                     className="text-emerald-600 dark:text-emerald-400 text-xs font-semibold hover:underline cursor-pointer"
                   >
                     Privacy
@@ -1250,7 +1267,11 @@ export const Sidebar = () => {
       <CreateGroupModal isOpen={isCreateGroupOpen} onClose={() => setIsCreateGroupOpen(false)} />
       <JoinGroupModal isOpen={isJoinGroupOpen} onClose={() => setIsJoinGroupOpen(false)} />
       <InstallAppModal isOpen={isInstallAppOpen} onClose={() => setIsInstallAppOpen(false)} />
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        initialTab={settingsInitialTab}
+      />
       <AdminModal isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
     </>
   );

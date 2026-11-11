@@ -10,9 +10,10 @@ const {
   markAsRead
 } = require('../controllers/chatController');
 const { protect } = require('../middlewares/auth');
+const { checkFeature } = require('../middlewares/checkFeature');
 
 router.get('/', protect, getConversations);
-router.post('/private', protect, getOrCreatePrivateChat);
+router.post('/private', protect, checkFeature('chat'), getOrCreatePrivateChat);
 router.post('/:id/pin', protect, togglePin);
 router.post('/:id/archive', protect, toggleArchive);
 router.post('/:id/mute', protect, toggleMute);

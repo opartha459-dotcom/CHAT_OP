@@ -747,21 +747,41 @@ const getPublicFeatureFlags = async (req, res) => {
     if (!config) {
       config = await SystemConfig.create({ key: 'system_settings' });
     }
+    const DEFAULT_FLAGS = {
+      chatEnabled: true,
+      statusesEnabled: true,
+      callsEnabled: true,
+      fileSharingEnabled: true,
+      userRegistrationEnabled: true,
+      notificationsEnabled: true,
+      voiceMessagesEnabled: true,
+      pollsEnabled: true,
+      announcementsEnabled: true,
+      e2eeEnabled: true
+    };
+
     return res.json({
       success: true,
-      featureFlags: config.featureFlags
+      featureFlags: {
+        ...DEFAULT_FLAGS,
+        ...(config?.featureFlags || {})
+      }
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: 'Error fetching feature flags',
       featureFlags: {
-        callsEnabled: true,
-        pollsEnabled: true,
+        chatEnabled: true,
         statusesEnabled: true,
+        callsEnabled: true,
+        fileSharingEnabled: true,
+        userRegistrationEnabled: true,
+        notificationsEnabled: true,
         voiceMessagesEnabled: true,
+        pollsEnabled: true,
         announcementsEnabled: true,
-        fileSharingEnabled: true
+        e2eeEnabled: true
       }
     });
   }
@@ -1171,6 +1191,339 @@ const deleteVerificationCodes = async (req, res) => {
   }
 };
 
+/* =========================================================
+   SCHEDULED MAINTENANCE MANAGEMENT CONTROLLERS
+========================================================= */
+
+// @desc Get all maintenance schedules
+// @route GET /api/admin/maintenance
+const getMaintenanceSchedules = async (req, res) => {
+  try {
+    const MaintenanceSchedule = require('../models/MaintenanceSchedule');
+    const schedules = await MaintenanceSchedule.find()
+      .populate('createdBy', 'username email avatar')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const { getCurrentMaintenanceState } = require('../jobs/maintenanceScheduler');
+    const currentState = await getCurrentMaintenanceState();
+
+    return res.json({
+      success: true,
+      schedules,
+      active: currentState.active,
+      upcoming: currentState.upcoming
+    });
+  } catch (error) {
+    console.error('[Get Maintenance Schedules Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve maintenance schedules.' });
+  }
+};
+
+// @desc Create a new maintenance schedule
+// @route POST /api/admin/maintenance
+const createMaintenanceSchedule = async (req, res) => {
+  try {
+    const MaintenanceSchedule = require('../models/MaintenanceSchedule');
+    const { getCurrentMaintenanceState } = require('../jobs/maintenanceScheduler');
+
+    const {
+      title,
+      description = '',
+      scope = 'full_system',
+      affectedFeatures = [],
+      startTime,
+      endTime,
+      isImmediate = false
+    } = req.body;
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({ success: false, message: 'Maintenance title is required.' });
+    }
+
+    const now = new Date();
+    const parsedStart = isImmediate || !startTime ? now : new Date(startTime);
+    const parsedEnd = endTime ? new Date(endTime) : null;
+
+    if (isNaN(parsedStart.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid start time.' });
+    }
+
+    if (parsedEnd && isNaN(parsedEnd.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid end time.' });
+    }
+
+    if (parsedEnd && parsedEnd <= parsedStart) {
+      return res.status(400).json({ success: false, message: 'End time must be after start time.' });
+    }
+
+    const status = isImmediate || parsedStart <= now ? 'active' : 'scheduled';
+
+    if (status === 'active' && scope === 'full_system') {
+      await MaintenanceSchedule.updateMany(
+        { status: 'active' },
+        { $set: { status: 'completed', completedAt: now } }
+      );
+    }
+
+    const schedule = await MaintenanceSchedule.create({
+      title: title.trim(),
+      description: description ? description.trim() : '',
+      scope,
+      affectedFeatures: scope === 'partial' ? affectedFeatures : [],
+      status,
+      startTime: parsedStart,
+      endTime: parsedEnd,
+      isImmediate: Boolean(isImmediate),
+      createdBy: req.user._id
+    });
+
+    const populated = await MaintenanceSchedule.findById(schedule._id)
+      .populate('createdBy', 'username email avatar')
+      .lean();
+
+    // Broadcast updated state to all connected clients
+    const io = req.app.get('io');
+    if (io) {
+      const currentState = await getCurrentMaintenanceState();
+      io.emit('maintenance:updated', currentState);
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'create_maintenance_schedule',
+      details: `Created ${status} maintenance: "${title}" (${scope})`,
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.status(201).json({
+      success: true,
+      message: isImmediate ? 'Maintenance mode activated immediately.' : 'Maintenance successfully scheduled.',
+      schedule: populated
+    });
+  } catch (error) {
+    console.error('[Create Maintenance Schedule Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to create maintenance schedule.' });
+  }
+};
+
+// @desc Update/reschedule an existing maintenance schedule
+// @route PUT /api/admin/maintenance/:id
+const updateMaintenanceSchedule = async (req, res) => {
+  try {
+    const MaintenanceSchedule = require('../models/MaintenanceSchedule');
+    const { getCurrentMaintenanceState } = require('../jobs/maintenanceScheduler');
+    const { id } = req.params;
+    const { title, description, scope, affectedFeatures, startTime, endTime } = req.body;
+
+    const schedule = await MaintenanceSchedule.findById(id);
+    if (!schedule) {
+      return res.status(404).json({ success: false, message: 'Maintenance schedule not found.' });
+    }
+
+    if (schedule.status === 'completed' || schedule.status === 'cancelled') {
+      return res.status(400).json({ success: false, message: 'Cannot edit a finished maintenance schedule.' });
+    }
+
+    if (title !== undefined) schedule.title = title.trim();
+    if (description !== undefined) schedule.description = description.trim();
+    if (scope !== undefined) schedule.scope = scope;
+    if (affectedFeatures !== undefined) schedule.affectedFeatures = affectedFeatures;
+
+    if (startTime) {
+      const s = new Date(startTime);
+      if (!isNaN(s.getTime())) schedule.startTime = s;
+    }
+
+    if (endTime !== undefined) {
+      if (!endTime) {
+        schedule.endTime = null;
+      } else {
+        const e = new Date(endTime);
+        if (!isNaN(e.getTime())) schedule.endTime = e;
+      }
+    }
+
+    await schedule.save();
+
+    const populated = await MaintenanceSchedule.findById(schedule._id)
+      .populate('createdBy', 'username email avatar')
+      .lean();
+
+    const io = req.app.get('io');
+    if (io) {
+      const currentState = await getCurrentMaintenanceState();
+      io.emit('maintenance:updated', currentState);
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'update_maintenance_schedule',
+      details: `Updated maintenance: "${schedule.title}"`,
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'Maintenance schedule updated.',
+      schedule: populated
+    });
+  } catch (error) {
+    console.error('[Update Maintenance Schedule Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to update maintenance schedule.' });
+  }
+};
+
+// @desc Immediately activate a maintenance schedule
+// @route POST /api/admin/maintenance/:id/activate
+const activateMaintenanceSchedule = async (req, res) => {
+  try {
+    const MaintenanceSchedule = require('../models/MaintenanceSchedule');
+    const { getCurrentMaintenanceState } = require('../jobs/maintenanceScheduler');
+    const { id } = req.params;
+
+    const schedule = await MaintenanceSchedule.findById(id);
+    if (!schedule) {
+      return res.status(404).json({ success: false, message: 'Maintenance schedule not found.' });
+    }
+
+    const now = new Date();
+    schedule.status = 'active';
+    schedule.startTime = now;
+
+    if (schedule.endTime && new Date(schedule.endTime) <= now) {
+      schedule.endTime = new Date(now.getTime() + 60 * 60 * 1000);
+    }
+
+    if (schedule.scope === 'full_system') {
+      await MaintenanceSchedule.updateMany(
+        { _id: { $ne: schedule._id }, status: 'active' },
+        { $set: { status: 'completed', completedAt: now } }
+      );
+    }
+
+    await schedule.save();
+
+    const populated = await MaintenanceSchedule.findById(schedule._id)
+      .populate('createdBy', 'username email avatar')
+      .lean();
+
+    const io = req.app.get('io');
+    if (io) {
+      const currentState = await getCurrentMaintenanceState();
+      io.emit('maintenance:updated', currentState);
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'activate_maintenance_schedule',
+      details: `Activated maintenance mode: "${schedule.title}"`,
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'Maintenance mode is now active.',
+      schedule: populated
+    });
+  } catch (error) {
+    console.error('[Activate Maintenance Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to activate maintenance.' });
+  }
+};
+
+// @desc Immediately complete/end an active maintenance schedule
+// @route POST /api/admin/maintenance/:id/end
+const endMaintenanceSchedule = async (req, res) => {
+  try {
+    const MaintenanceSchedule = require('../models/MaintenanceSchedule');
+    const { getCurrentMaintenanceState } = require('../jobs/maintenanceScheduler');
+    const { id } = req.params;
+
+    const schedule = await MaintenanceSchedule.findById(id);
+    if (!schedule) {
+      return res.status(404).json({ success: false, message: 'Maintenance schedule not found.' });
+    }
+
+    const now = new Date();
+    schedule.status = 'completed';
+    schedule.completedAt = now;
+    schedule.endTime = now;
+    await schedule.save();
+
+    const populated = await MaintenanceSchedule.findById(schedule._id)
+      .populate('createdBy', 'username email avatar')
+      .lean();
+
+    const io = req.app.get('io');
+    if (io) {
+      const currentState = await getCurrentMaintenanceState();
+      io.emit('maintenance:updated', currentState);
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'end_maintenance_schedule',
+      details: `Ended maintenance: "${schedule.title}"`,
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'Maintenance ended. All services restored.',
+      schedule: populated
+    });
+  } catch (error) {
+    console.error('[End Maintenance Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to end maintenance.' });
+  }
+};
+
+// @desc Cancel a scheduled or active maintenance
+// @route DELETE /api/admin/maintenance/:id
+const cancelMaintenanceSchedule = async (req, res) => {
+  try {
+    const MaintenanceSchedule = require('../models/MaintenanceSchedule');
+    const { getCurrentMaintenanceState } = require('../jobs/maintenanceScheduler');
+    const { id } = req.params;
+
+    const schedule = await MaintenanceSchedule.findById(id);
+    if (!schedule) {
+      return res.status(404).json({ success: false, message: 'Maintenance schedule not found.' });
+    }
+
+    schedule.status = 'cancelled';
+    schedule.cancelledAt = new Date();
+    await schedule.save();
+
+    const populated = await MaintenanceSchedule.findById(schedule._id)
+      .populate('createdBy', 'username email avatar')
+      .lean();
+
+    const io = req.app.get('io');
+    if (io) {
+      const currentState = await getCurrentMaintenanceState();
+      io.emit('maintenance:updated', currentState);
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'cancel_maintenance_schedule',
+      details: `Cancelled maintenance schedule: "${schedule.title}"`,
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'Maintenance schedule cancelled.',
+      schedule: populated
+    });
+  } catch (error) {
+    console.error('[Cancel Maintenance Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to cancel maintenance.' });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getUsers,
@@ -1198,5 +1551,11 @@ module.exports = {
   getVerificationCodes,
   sendVerificationCode,
   deleteVerificationCodes,
-  runManualRetention
+  runManualRetention,
+  getMaintenanceSchedules,
+  createMaintenanceSchedule,
+  updateMaintenanceSchedule,
+  activateMaintenanceSchedule,
+  endMaintenanceSchedule,
+  cancelMaintenanceSchedule
 };

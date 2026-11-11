@@ -19,6 +19,10 @@ const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const { initMultiDb } = require('./config/multiDb');
 const { initRetentionSchedule } = require('./jobs/retentionJob');
+const {
+  initMaintenanceScheduler,
+  getCurrentMaintenanceState
+} = require('./jobs/maintenanceScheduler');
 
 const setupSockets = require('./sockets');
 
@@ -255,6 +259,16 @@ app.get(
   require('./controllers/adminController').getPublicFeatureFlags
 );
 
+// Public maintenance status.
+app.get('/api/system/maintenance', async (req, res) => {
+  try {
+    const state = await getCurrentMaintenanceState();
+    return res.json({ success: true, ...state });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Failed to retrieve maintenance state' });
+  }
+});
+
 // ============================================
 // API ROUTES
 // ============================================
@@ -341,12 +355,15 @@ async function startServer() {
 
     console.log('[DATABASE] Multi-database initialized.');
 
-    // 3. Initialize retention scheduler.
+    // 3. Initialize retention and maintenance schedulers.
     console.log('[JOBS] Initializing retention scheduler...');
 
     await initRetentionSchedule();
 
     console.log('[JOBS] Retention scheduler initialized.');
+
+    console.log('[JOBS] Initializing maintenance scheduler...');
+    initMaintenanceScheduler(app);
 
     // 4. Register Socket.IO event handlers.
     console.log('[SOCKET.IO] Initializing socket handlers...');

@@ -26,7 +26,13 @@ const {
   getVerificationCodes,
   sendVerificationCode,
   deleteVerificationCodes,
-  runManualRetention
+  runManualRetention,
+  getMaintenanceSchedules,
+  createMaintenanceSchedule,
+  updateMaintenanceSchedule,
+  activateMaintenanceSchedule,
+  endMaintenanceSchedule,
+  cancelMaintenanceSchedule
 } = require('../controllers/adminController');
 const { protect } = require('../middlewares/auth');
 const { requireAdmin } = require('../middlewares/adminAuth');
@@ -51,6 +57,14 @@ router.get('/database/status', getDatabaseStatus);
 router.post('/retention/run', runManualRetention);
 router.get('/settings', getSystemSettings);
 router.put('/settings', updateSystemSettings);
+
+// Scheduled Maintenance Management
+router.get('/maintenance', getMaintenanceSchedules);
+router.post('/maintenance', createMaintenanceSchedule);
+router.put('/maintenance/:id', updateMaintenanceSchedule);
+router.post('/maintenance/:id/activate', activateMaintenanceSchedule);
+router.post('/maintenance/:id/end', endMaintenanceSchedule);
+router.delete('/maintenance/:id', cancelMaintenanceSchedule);
 router.get('/recoveries', getRecoveryRequests);
 router.post('/recoveries/:id/resolve', resolveRecoveryRequest);
 router.post('/recoveries/:id/items/:itemKey/resolve', resolveDataItem);

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Lock, User, Mail, KeyRound, AlertCircle, ArrowRight, Sparkles, CheckCircle2, Send } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useFeatureFlags } from '../context/FeatureFlagsContext';
+import { useMaintenance } from '../context/MaintenanceContext';
 import { PulseLogo } from '../components/common/PulseLogo';
 
 const PRESET_AVATARS = [
@@ -14,8 +16,13 @@ const PRESET_AVATARS = [
 
 export const RegisterPage = () => {
   const { register, resendVerification } = useAuth();
+  const { featureFlags } = useFeatureFlags();
+  const { isFeatureInMaintenance } = useMaintenance();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const isRegistrationInMaintenance = isFeatureInMaintenance('registration');
+  const isRegistrationDisabled = featureFlags.userRegistrationEnabled === false || isRegistrationInMaintenance;
 
   let from = '/chat';
   if (location.state?.from) {
@@ -164,6 +171,17 @@ export const RegisterPage = () => {
               <p className="text-xs text-slate-400 mt-1">End-to-End Encrypted messaging starts here</p>
             </div>
 
+            {isRegistrationDisabled && (
+              <div className="mb-4 p-3 bg-amber-950/60 border border-amber-900 text-amber-300 rounded-2xl text-xs flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-400" />
+                <span>
+                  {isRegistrationInMaintenance
+                    ? 'User registration is temporarily unavailable due to scheduled maintenance.'
+                    : 'New user registration is currently disabled by administrators.'}
+                </span>
+              </div>
+            )}
+
         {error && (
           <div className="mb-4 p-3 bg-rose-950/60 border border-rose-900 text-rose-400 rounded-2xl text-xs flex items-center space-x-2">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -264,7 +282,7 @@ export const RegisterPage = () => {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || isRegistrationDisabled}
             className="w-full py-3 px-4 mt-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/25 flex items-center justify-center space-x-2 transition hover:scale-[1.02] active:scale-[0.98]"
           >
             <span>{loading ? 'Creating Account & Keys...' : 'Create Account'}</span>

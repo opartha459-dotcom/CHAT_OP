@@ -332,7 +332,11 @@ const updatePrivacySettings = async (req, res) => {
       lastSeenVisibility,
       readReceipts,
       typingIndicators,
-      groupAddPermission
+      groupAddPermission,
+      statusAudience,
+      statusAllowedUsers,
+      statusExcludedUsers,
+      statusViewReceipts
     } = req.body;
 
     const user = await User.findById(req.user._id);
@@ -368,12 +372,38 @@ const updatePrivacySettings = async (req, res) => {
       user.privacySettings.groupAddPermission = groupAddPermission;
     }
 
+    if (statusAudience !== undefined) {
+      user.privacySettings.statusAudience = statusAudience;
+    }
+
+    if (statusAllowedUsers !== undefined) {
+      user.privacySettings.statusAllowedUsers = Array.isArray(statusAllowedUsers)
+        ? statusAllowedUsers.map((u) => u._id || u)
+        : [];
+    }
+
+    if (statusExcludedUsers !== undefined) {
+      user.privacySettings.statusExcludedUsers = Array.isArray(statusExcludedUsers)
+        ? statusExcludedUsers.map((u) => u._id || u)
+        : [];
+    }
+
+    if (statusViewReceipts !== undefined) {
+      user.privacySettings.statusViewReceipts = Boolean(statusViewReceipts);
+    }
+
     await user.save();
+
+    const populatedUser = await User.findById(user._id)
+      .populate('privacySettings.statusAllowedUsers', 'username nickname avatar')
+      .populate('privacySettings.statusExcludedUsers', 'username nickname avatar')
+      .lean();
 
     return res.json({
       success: true,
       message: 'Privacy settings saved.',
-      privacySettings: user.privacySettings
+      privacySettings: populatedUser.privacySettings,
+      user: populatedUser
     });
 
   } catch (error) {

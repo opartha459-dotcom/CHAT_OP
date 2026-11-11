@@ -1,7 +1,15 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { SettingsPanel } from '../settings/SettingsPanel';
 
-export const SettingsModal = ({ isOpen, onClose }) => {
+export const SettingsModal = ({ isOpen, onClose, initialTab = 'appearance' }) => {
+  const [tab, setTab] = useState(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setTab(initialTab);
+    }
+  }, [initialTab, isOpen]);
+
   if (!isOpen) return null;
 
   return (
@@ -12,7 +20,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
       }}
     >
       <div className="w-full max-w-3xl bg-[#0B0F19] text-slate-100 border border-slate-800/90 rounded-[28px] shadow-2xl shadow-purple-950/30 overflow-hidden flex flex-col max-h-[88vh]">
-        <SettingsPanel isModal={true} onClose={onClose} />
+        <SettingsPanel isModal={true} onClose={onClose} activeTab={tab} setActiveTab={setTab} />
       </div>
     </div>
   );
