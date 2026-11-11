@@ -19,13 +19,14 @@ import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { ConfirmDeletionPage } from './pages/ConfirmDeletionPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { DeletionAppealPage } from './pages/DeletionAppealPage';
-import { DashboardSkeleton, AuthCardSkeleton } from './components/common/Skeleton';
+import { DashboardSkeleton, AuthCardSkeleton, AdminDashboardSkeleton } from './components/common/Skeleton';
 import { PulseLogo } from './components/common/PulseLogo';
 import { IncomingCallModal } from './components/call/IncomingCallModal';
 import { ActiveCallModal } from './components/call/ActiveCallModal';
 import { IncomingCodeModal } from './components/common/IncomingCodeModal';
 import { MaintenanceBanner } from './components/common/MaintenanceBanner';
 import { MaintenanceScreen } from './components/common/MaintenanceScreen';
+import { CyberSplitscreenLoader } from './components/common/CyberSplitscreenLoader';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 
@@ -51,7 +52,7 @@ const AdminRoute = ({ children }) => {
   const location = useLocation();
 
   if (loading) {
-    return <DashboardSkeleton />;
+    return <AdminDashboardSkeleton />;
   }
 
   if (!isAuthenticated) {
@@ -239,6 +240,9 @@ export default function App() {
 
                       {/* Full-System Scheduled Maintenance Overlay */}
                       <MaintenanceScreen />
+
+                      {/* Sci-Fi 01 Green Data Cloud Split-Screen Intro Animation */}
+                      <CyberSplitscreenLoader />
                     </BrowserRouter>
                   </StatusProvider>
                 </CallProvider>

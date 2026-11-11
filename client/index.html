@@ -8,7 +8,7 @@
     <meta name="description" content="PulseChat - Full-Stack Real-Time Encrypted Messaging Application with End-to-End Encryption, Groups, Media Sharing, and Moderation" />
     
     <!-- PWA & Mobile Web App Meta Tags -->
-    <meta name="theme-color" content="#4f46e5" />
+    <meta name="theme-color" content="#090D16" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -27,8 +27,52 @@
       });
     </script>
   </head>
-  <body class="bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white">
-    <div id="root"></div>
+  <body class="bg-[#090D16] text-slate-100 antialiased selection:bg-indigo-500 selection:text-white">
+    <div id="root">
+      <!-- Pre-React Branded App Shell / Loading Webpage -->
+      <div id="app-shell-loading" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#050811;color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,monospace;z-index:99999;user-select:none;">
+        <style>
+          @keyframes pc-pulse-glow {
+            0%, 100% { transform: scale(1); filter: drop-shadow(0 0 20px rgba(16,185,129,0.5)); opacity: 0.95; }
+            50% { transform: scale(1.06); filter: drop-shadow(0 0 36px rgba(52,211,153,0.8)); opacity: 1; }
+          }
+          @keyframes pc-bar-stream {
+            0% { transform: translateX(-100%); }
+            50% { transform: translateX(25%); }
+            100% { transform: translateX(200%); }
+          }
+          .pc-logo-anim { animation: pc-pulse-glow 2.2s infinite ease-in-out; }
+          .pc-bar-anim { animation: pc-bar-stream 1.6s infinite cubic-bezier(0.65, 0, 0.35, 1); }
+        </style>
+
+        <div style="position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;padding:24px;max-width:380px;">
+          <!-- Ambient Radial Backdrop Glow -->
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:320px;height:320px;background:radial-gradient(circle,rgba(16,185,129,0.25) 0%,rgba(5,150,105,0.08) 50%,transparent 70%);border-radius:50%;pointer-events:none;"></div>
+
+          <!-- Pulsing Icon Container -->
+          <div class="pc-logo-anim" style="width:82px;height:82px;margin-bottom:20px;border-radius:26px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(5,46,22,0.92),rgba(5,8,17,0.98));border:2px solid rgba(52,211,153,0.6);box-shadow:0 16px 40px -10px rgba(16,185,129,0.6);">
+            <svg width="50" height="50" viewBox="0 0 512 512" fill="none">
+              <path d="M72 236C72 142.11 154.38 66 256 66C357.62 66 440 142.11 440 236C440 329.89 357.62 406 256 406C227.12 406 199.78 399.85 175.46 388.75L102 414L126.88 344.82C92.83 315.68 72 278.08 72 236Z" fill="#10b981" fill-opacity="0.25" stroke="#34d399" stroke-width="16" />
+              <path d="M124 236H180L208 172L244 298L274 212L294 254L316 236H388" stroke="#00ff88" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+
+          <!-- Typography -->
+          <div style="font-size:24px;font-weight:900;letter-spacing:1px;color:#ffffff;margin-bottom:6px;font-family:monospace;">PULSE<span style="color:#34d399;">CHAT</span></div>
+          <div style="font-size:11px;color:#a7f3d0;font-weight:600;margin-bottom:20px;letter-spacing:1.5px;font-family:monospace;">01 GREEN DATA MATRIX // SECURE</div>
+
+          <!-- Animated Progress Tracker -->
+          <div style="width:200px;height:3.5px;background:rgba(255,255,255,0.08);border-radius:999px;overflow:hidden;position:relative;border:1px solid rgba(16,185,129,0.3);">
+            <div class="pc-bar-anim" style="width:50%;height:100%;background:linear-gradient(90deg,#059669,#10b981,#6ee7b7);border-radius:999px;"></div>
+          </div>
+
+          <!-- Status Indicator -->
+          <div style="margin-top:14px;font-size:11px;color:#6ee7b7;font-weight:500;font-family:monospace;letter-spacing:0.5px;">
+            INITIALIZING SECURE PROTOCOL [01]...
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

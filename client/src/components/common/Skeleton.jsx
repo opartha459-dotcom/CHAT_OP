@@ -226,3 +226,91 @@ export const AuthCardSkeleton = () => {
     </div>
   );
 };
+
+/**
+ * Skeleton loader for Admin Dashboard routes and tabs
+ */
+export const AdminDashboardSkeleton = () => {
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
+      {/* Top Header */}
+      <header className="h-16 px-6 border-b border-slate-800 bg-slate-900/60 backdrop-blur-md flex items-center justify-between sticky top-0 z-30">
+        <div className="flex items-center space-x-3">
+          <Skeleton className="w-9 h-9" rounded="rounded-xl" />
+          <div className="space-y-1">
+            <Skeleton className="w-32 h-4" rounded="rounded-md" />
+            <Skeleton className="w-16 h-2.5" rounded="rounded-md" />
+          </div>
+        </div>
+        <div className="flex items-center space-x-3">
+          <Skeleton className="w-20 h-8" rounded="rounded-xl" />
+          <Skeleton className="w-8 h-8" rounded="rounded-full" />
+        </div>
+      </header>
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar Nav Items */}
+        <aside className="w-64 border-r border-slate-800 p-4 space-y-2 hidden md:block">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="flex items-center space-x-3 p-3 rounded-xl bg-slate-900/40">
+              <Skeleton className="w-5 h-5" rounded="rounded-md" />
+              <Skeleton className="w-28 h-3.5" rounded="rounded-md" />
+            </div>
+          ))}
+        </aside>
+
+        {/* Main Content Area */}
+        <main className="flex-1 p-6 space-y-6 overflow-y-auto max-w-7xl">
+          {/* Header & Action Row */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-1.5">
+              <Skeleton className="w-48 h-6" rounded="rounded-lg" />
+              <Skeleton className="w-72 h-3" rounded="rounded-md" />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Skeleton className="w-28 h-9" rounded="rounded-xl" />
+              <Skeleton className="w-28 h-9" rounded="rounded-xl" />
+            </div>
+          </div>
+
+          {/* Metric Cards Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Skeleton className="w-20 h-3" rounded="rounded-md" />
+                  <Skeleton className="w-8 h-8" rounded="rounded-xl" />
+                </div>
+                <Skeleton className="w-16 h-7" rounded="rounded-md" />
+                <Skeleton className="w-28 h-2.5" rounded="rounded-md" />
+              </div>
+            ))}
+          </div>
+
+          {/* Data Card List Skeleton */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-3">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <Skeleton className="w-32 h-4" rounded="rounded-md" />
+              <Skeleton className="w-20 h-3" rounded="rounded-md" />
+            </div>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
+                <div className="flex items-center space-x-3">
+                  <Skeleton className="w-10 h-10" rounded="rounded-full" />
+                  <div className="space-y-1.5">
+                    <Skeleton className="w-36 h-3.5" rounded="rounded-md" />
+                    <Skeleton className="w-48 h-2.5" rounded="rounded-md" />
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Skeleton className="w-16 h-6" rounded="rounded-lg" />
+                  <Skeleton className="w-8 h-8" rounded="rounded-lg" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+};

@@ -57,6 +57,7 @@ import { useSocket } from '../context/SocketContext';
 import { GridListView } from '../components/common/GridListView';
 import { Avatar } from '../components/common/Avatar';
 import { PulseLogo } from '../components/common/PulseLogo';
+import { AdminDashboardSkeleton } from '../components/common/Skeleton';
 
 export const AdminDashboard = () => {
   const auth = useAuth();
@@ -309,7 +310,7 @@ export const AdminDashboard = () => {
     }
   }, [token, user]);
 
-  // Real-time listener for incoming verification requests from users
+  // Real-time listeners for admin events (verification codes, maintenance, feature flags, stats, announcements)
   useEffect(() => {
     if (!socket) return;
     try {
@@ -320,10 +321,68 @@ export const AdminDashboard = () => {
       if (!newCode) return;
       setVerificationCodes((prev) => [newCode, ...prev.filter((c) => c._id !== newCode._id)]);
       showMsg(`New verification request from @${newCode.username || newCode.email}`);
+      loadStats();
     };
+
+    const handleMaintenanceState = (state) => {
+      if (state) {
+        setActiveMaintRecord(state.active || null);
+        setUpcomingMaintRecord(state.upcoming || null);
+      }
+      loadMaintenance();
+      loadStats();
+    };
+
+    const handleFeaturesState = (flags) => {
+      if (flags) {
+        setSystemSettings((prev) => ({
+          ...(prev || {}),
+          featureFlags: { ...(prev?.featureFlags || {}), ...flags }
+        }));
+      }
+    };
+
+    const handleSettingsState = (settings) => {
+      if (settings) {
+        setSystemSettings(settings);
+      }
+    };
+
+    const handleStatsState = () => {
+      loadStats();
+    };
+
+    const handleRecoveriesUpdate = () => {
+      loadRecoveries();
+      loadStats();
+    };
+
+    const handleAnnouncementsUpdate = () => {
+      loadAnnouncements();
+    };
+
+    const handleVerificationCodesUpdate = () => {
+      loadVerificationCodes(true);
+    };
+
     socket.on('admin:new_verification_request', handleNewCodeReq);
+    socket.on('maintenance:updated', handleMaintenanceState);
+    socket.on('system:features_updated', handleFeaturesState);
+    socket.on('admin:settings_updated', handleSettingsState);
+    socket.on('admin:stats_updated', handleStatsState);
+    socket.on('admin:recoveries_updated', handleRecoveriesUpdate);
+    socket.on('admin:announcements_updated', handleAnnouncementsUpdate);
+    socket.on('admin:codes_updated', handleVerificationCodesUpdate);
+
     return () => {
       socket.off('admin:new_verification_request', handleNewCodeReq);
+      socket.off('maintenance:updated', handleMaintenanceState);
+      socket.off('system:features_updated', handleFeaturesState);
+      socket.off('admin:settings_updated', handleSettingsState);
+      socket.off('admin:stats_updated', handleStatsState);
+      socket.off('admin:recoveries_updated', handleRecoveriesUpdate);
+      socket.off('admin:announcements_updated', handleAnnouncementsUpdate);
+      socket.off('admin:codes_updated', handleVerificationCodesUpdate);
     };
   }, [socket, token]);
 
@@ -1212,12 +1271,7 @@ export const AdminDashboard = () => {
   ];
 
   if (auth.loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
-        <RefreshCw className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
-        <p className="text-sm font-medium text-slate-400">Verifying Administrator Permissions...</p>
-      </div>
-    );
+    return <AdminDashboardSkeleton />;
   }
 
   return (

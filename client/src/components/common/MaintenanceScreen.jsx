@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { Wrench, Clock, Shield, RefreshCw } from 'lucide-react';
+import { Wrench, Clock, RefreshCw } from 'lucide-react';
 import { useMaintenance } from '../../context/MaintenanceContext';
 import { useAuth } from '../../context/AuthContext';
 import { PulseLogo } from './PulseLogo';
@@ -8,32 +7,9 @@ import { PulseLogo } from './PulseLogo';
 export const MaintenanceScreen = () => {
   const { activeMaintenance, refreshMaintenance } = useMaintenance();
   const { user } = useAuth();
-  const location = useLocation();
-
-  const [adminBypassed, setAdminBypassed] = useState(() => {
-    try {
-      return sessionStorage.getItem('pulsechat_maint_bypass') === 'true';
-    } catch {
-      return false;
-    }
-  });
 
   const [timeLeft, setTimeLeft] = useState('');
   const [checking, setChecking] = useState(false);
-
-  const handleAdminBypass = () => {
-    try {
-      sessionStorage.setItem('pulsechat_maint_bypass', 'true');
-    } catch {}
-    setAdminBypassed(true);
-  };
-
-  const handleAdminRelock = () => {
-    try {
-      sessionStorage.removeItem('pulsechat_maint_bypass');
-    } catch {}
-    setAdminBypassed(false);
-  };
 
   useEffect(() => {
     if (!activeMaintenance?.endTime) {
@@ -72,25 +48,9 @@ export const MaintenanceScreen = () => {
     return null;
   }
 
-  // Never block the admin dashboard so administrators can always access management tools
-  if (location.pathname.startsWith('/admin')) {
+  // Administrators NEVER get blocked by the maintenance screen anywhere in the application
+  if (user?.role === 'admin') {
     return null;
-  }
-
-  // If user is an admin and chose to bypass, let them browse the app with a reminder pill
-  if (user?.role === 'admin' && adminBypassed) {
-    return (
-      <div className="fixed top-3 right-4 z-50 bg-rose-950/95 text-rose-200 border border-rose-500/50 px-3.5 py-1.5 rounded-full shadow-2xl backdrop-blur-md text-xs font-bold flex items-center space-x-2 animate-fadeIn">
-        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-        <span>Maintenance Active (Admin View)</span>
-        <button
-          onClick={handleAdminRelock}
-          className="ml-2 text-[11px] underline text-rose-300 hover:text-white cursor-pointer"
-        >
-          View Lock Screen
-        </button>
-      </div>
-    );
   }
 
   const handleManualCheck = async () => {
@@ -154,17 +114,6 @@ export const MaintenanceScreen = () => {
             <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
             <span>Check Status Again</span>
           </button>
-
-          {/* Admin bypass shortcut */}
-          {user?.role === 'admin' && (
-            <button
-              onClick={handleAdminBypass}
-              className="inline-flex items-center space-x-1.5 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer pt-2"
-            >
-              <Shield className="w-3.5 h-3.5 text-rose-400" />
-              <span>Administrator Bypass (Enter App & Test)</span>
-            </button>
-          )}
         </div>
       </div>
     </div>
