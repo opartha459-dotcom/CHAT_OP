@@ -1031,6 +1031,146 @@ const deleteRecoveryRequests = async (req, res) => {
   }
 };
 
+// @desc Get all verification code requests for admin manual dispatch
+// @route GET /api/admin/verification-codes
+const getVerificationCodes = async (req, res) => {
+  try {
+    const VerificationCode = require('../models/VerificationCode');
+    const { action, status, search, from, to } = req.query;
+
+    const filter = {};
+    if (action && action !== 'all') filter.action = action;
+    if (status && status !== 'all') filter.status = status;
+
+    if (search) {
+      const q = search.trim();
+      filter.$or = [
+        { code: { $regex: q, $options: 'i' } },
+        { email: { $regex: q, $options: 'i' } },
+        { username: { $regex: q, $options: 'i' } }
+      ];
+    }
+
+    if (from || to) {
+      filter.createdAt = {};
+      if (from) filter.createdAt.$gte = new Date(from);
+      if (to) {
+        const toDate = new Date(to);
+        toDate.setHours(23, 59, 59, 999);
+        filter.createdAt.$lte = toDate;
+      }
+    }
+
+    const codes = await VerificationCode.find(filter)
+      .populate('user', 'username email avatar')
+      .populate('sentBy', 'username')
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+
+    return res.json({
+      success: true,
+      codes
+    });
+  } catch (error) {
+    console.error('[Get Verification Codes Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch verification codes.' });
+  }
+};
+
+// @desc Manually send verification code to user in real-time
+// @route POST /api/admin/verification-codes/:id/send
+const sendVerificationCode = async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const VerificationCode = require('../models/VerificationCode');
+    const { id } = req.params;
+
+    if (!id || id === 'undefined' || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid or missing verification code ID.' });
+    }
+
+    const codeDoc = await VerificationCode.findById(id).populate('user', 'username email');
+    if (!codeDoc) {
+      return res.status(404).json({ success: false, message: 'Verification request not found.' });
+    }
+
+    codeDoc.status = 'sent';
+    codeDoc.sentBy = req.user._id;
+    codeDoc.sentAt = new Date();
+    await codeDoc.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      const cleanEmail = (codeDoc.email || '').toLowerCase().trim();
+      const payload = {
+        code: codeDoc.code,
+        action: codeDoc.action,
+        email: cleanEmail,
+        username: codeDoc.username,
+        message: `Your ${codeDoc.action === 'password_reset' ? 'Password Reset' : codeDoc.action === 'account_deletion' ? 'Account Deletion' : 'Email Verification'} Code is ${codeDoc.code}`,
+        sentAt: codeDoc.sentAt
+      };
+
+      // Emit to email room (for guest / unauthenticated clients on reset/verify page)
+      io.to(`email:${cleanEmail}`).emit('auth:code_received', payload);
+
+      // If user document is linked, emit to their authenticated user room as well
+      if (codeDoc.user) {
+        const targetUserId = (codeDoc.user._id || codeDoc.user).toString();
+        io.to(`user:${targetUserId}`).emit('auth:code_received', payload);
+        io.to(targetUserId).emit('auth:code_received', payload);
+      }
+
+      // If username exists, emit to username room
+      if (codeDoc.username) {
+        io.to(`username:${codeDoc.username.toLowerCase().trim()}`).emit('auth:code_received', payload);
+      }
+    }
+
+    await AuditLog.create({
+      actor: req.user._id,
+      action: 'VERIFICATION_CODE_SENT',
+      targetType: 'VerificationCode',
+      targetId: codeDoc._id,
+      details: { email: codeDoc.email, code: codeDoc.code, action: codeDoc.action },
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: `Code ${codeDoc.code} sent to ${codeDoc.email} successfully!`,
+      code: codeDoc
+    });
+  } catch (error) {
+    console.error('[Send Verification Code Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to send verification code.' });
+  }
+};
+
+// @desc Delete verification codes
+// @route DELETE /api/admin/verification-codes
+const deleteVerificationCodes = async (req, res) => {
+  try {
+    const VerificationCode = require('../models/VerificationCode');
+    const { ids, all } = req.body;
+
+    let result;
+    if (all) {
+      result = await VerificationCode.deleteMany({});
+    } else if (Array.isArray(ids) && ids.length > 0) {
+      result = await VerificationCode.deleteMany({ _id: { $in: ids } });
+    } else {
+      return res.status(400).json({ success: false, message: 'Provide ids array or all=true.' });
+    }
+
+    return res.json({ success: true, deleted: result.deletedCount });
+  } catch (error) {
+    console.error('[Delete Verification Codes Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete verification codes.' });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getUsers,
@@ -1055,5 +1195,8 @@ module.exports = {
   resolveRecoveryRequest,
   resolveDataItem,
   deleteRecoveryRequests,
+  getVerificationCodes,
+  sendVerificationCode,
+  deleteVerificationCodes,
   runManualRetention
 };

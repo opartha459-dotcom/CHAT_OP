@@ -39,6 +39,40 @@ export const StatusProvider = ({ children }) => {
     fetchFeed();
   }, [fetchFeed]);
 
+  // Mark status as viewed locally to instantly update ring indicators and notification badges
+  const markStatusViewed = useCallback((statusId, authorUserId) => {
+    if (!statusId) return;
+    const sIdStr = statusId.toString();
+    const aIdStr = authorUserId?.toString();
+
+    setFeed((prevFeed) =>
+      prevFeed.map((group) => {
+        const groupId = group.user?._id?.toString();
+        if (aIdStr && groupId && groupId !== aIdStr) {
+          return group;
+        }
+
+        const statuses = group.statuses || [];
+        const hasMatchingStatus = statuses.some(
+          (s) => s._id?.toString() === sIdStr
+        );
+        if (!hasMatchingStatus) return group;
+
+        const updatedStatuses = statuses.map((s) =>
+          s._id?.toString() === sIdStr ? { ...s, hasViewed: true } : s
+        );
+
+        const allViewed = updatedStatuses.every((s) => Boolean(s.hasViewed));
+
+        return {
+          ...group,
+          statuses: updatedStatuses,
+          allViewed
+        };
+      })
+    );
+  }, []);
+
   // Real-time socket updates for statuses
   useEffect(() => {
     if (!socket) return;
@@ -47,9 +81,16 @@ export const StatusProvider = ({ children }) => {
       fetchFeed();
     };
 
+    const handleSelfViewed = (payload) => {
+      if (payload?.statusId) {
+        markStatusViewed(payload.statusId, payload.authorId);
+      }
+    };
+
     socket.on('status:new', handleFeedUpdate);
     socket.on('status:deleted', handleFeedUpdate);
     socket.on('status:viewed', handleFeedUpdate);
+    socket.on('status:viewed_by_me', handleSelfViewed);
     socket.on('status:reaction', handleFeedUpdate);
     socket.on('status:poll_voted', handleFeedUpdate);
 
@@ -57,10 +98,11 @@ export const StatusProvider = ({ children }) => {
       socket.off('status:new', handleFeedUpdate);
       socket.off('status:deleted', handleFeedUpdate);
       socket.off('status:viewed', handleFeedUpdate);
+      socket.off('status:viewed_by_me', handleSelfViewed);
       socket.off('status:reaction', handleFeedUpdate);
       socket.off('status:poll_voted', handleFeedUpdate);
     };
-  }, [socket, fetchFeed]);
+  }, [socket, fetchFeed, markStatusViewed]);
 
   const currentUserId = user?._id?.toString();
 
@@ -133,6 +175,7 @@ export const StatusProvider = ({ children }) => {
     hasActiveStatus,
     hasUnviewedStatus,
     hasAnyUnviewed,
+    markStatusViewed,
     createModalOpen,
     setCreateModalOpen
   };
@@ -146,10 +189,14 @@ export const StatusProvider = ({ children }) => {
         <StatusViewerModal
           isOpen={true}
           statusGroup={activeGroup}
-          onClose={() => setActiveUserId(null)}
+          onClose={() => {
+            setActiveUserId(null);
+            fetchFeed();
+          }}
           onNextUser={handleNextUser}
           onPrevUser={handlePrevUser}
           onStatusDeleted={() => fetchFeed()}
+          onStatusViewed={markStatusViewed}
         />
       )}
 

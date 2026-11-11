@@ -9,6 +9,7 @@ const {
   login,
   requestAccountDeletion,
   confirmAccountDeletion,
+  getPendingDispatchedCode,
   submitAccountRecovery,
   createAlternativeAccount,
   requestDataItems,
@@ -29,6 +30,7 @@ router.post('/resend-verification', resendVerificationEmail);
 router.post('/forgot-password', requestPasswordReset);
 router.post('/reset-password', resetPassword);
 router.post('/confirm-deletion', confirmAccountDeletion);
+router.get('/pending-code', getPendingDispatchedCode);
 router.post('/recover-account', submitAccountRecovery);
 router.post('/create-alternative-account', createAlternativeAccount);
 router.post('/deletion-appeal', deletionAppeal);

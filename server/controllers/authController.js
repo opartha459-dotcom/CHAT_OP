@@ -2,12 +2,18 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const Session = require('../models/Session');
 const AccountRecoveryRequest = require('../models/AccountRecoveryRequest');
+const VerificationCode = require('../models/VerificationCode');
 const { generateToken, setTokenCookie, clearTokenCookie } = require('../utils/token');
 const emailService = require('../services/emailService');
 
 // Helper to hash single-use tokens with SHA-256
 const hashToken = (token) => {
   return crypto.createHash('sha256').update(token).digest('hex');
+};
+
+// Helper to generate a 6-digit numeric OTP code
+const generateOtpCode = () => {
+  return crypto.randomInt(100000, 999999).toString();
 };
 
 // Parse user agent info
@@ -85,9 +91,9 @@ const register = async (req, res) => {
     const isAdminEmail = cleanEmail.startsWith('admin@') || (cleanEmail.includes('admin') && cleanEmail.includes('pulsechat.io'));
     const role = (count === 0 || isAdminEmail || isConfiguredAdmin) ? 'admin' : 'user';
 
-    // Generate email verification token (expires in 24 hours)
-    const verificationRawToken = crypto.randomBytes(32).toString('hex');
-    const verificationHash = hashToken(verificationRawToken);
+    // Generate 6-digit email verification OTP code
+    const otpCode = generateOtpCode();
+    const verificationHash = hashToken(otpCode);
 
     const user = await User.create({
       username: cleanUsername,
@@ -103,8 +109,41 @@ const register = async (req, res) => {
       emailVerificationExpires: new Date(Date.now() + 72 * 3600 * 1000)
     });
 
-    // Send verification email asynchronously
-    emailService.sendVerificationEmail(cleanEmail, user.username, verificationRawToken).catch((err) => {
+    // Record verification request for admin manual dispatch
+    try {
+      const codeRecord = await VerificationCode.create({
+        code: otpCode,
+        action: 'email_verification',
+        email: cleanEmail,
+        username: user.username,
+        user: user._id,
+        status: 'pending',
+        expiresAt: user.emailVerificationExpires,
+        ipAddress: req.ip || '',
+        userAgent: req.headers['user-agent'] || ''
+      });
+
+      const io = req.app.get('io');
+      if (io) {
+        const payload = {
+          _id: codeRecord._id.toString(),
+          code: otpCode,
+          action: 'email_verification',
+          email: cleanEmail,
+          username: user.username,
+          status: 'pending',
+          createdAt: codeRecord.createdAt || new Date(),
+          expiresAt: user.emailVerificationExpires
+        };
+        io.to('admin:room').emit('admin:new_verification_request', payload);
+        io.emit('admin:new_verification_request', payload);
+      }
+    } catch (codeErr) {
+      console.warn('[Register] Verification code record error:', codeErr.message);
+    }
+
+    // Optional email fallback
+    emailService.sendVerificationEmail(cleanEmail, user.username, otpCode).catch((err) => {
       console.warn('[Email] Verification send error:', err.message);
     });
 
@@ -114,7 +153,7 @@ const register = async (req, res) => {
       requiresEmailVerification: true,
       email: cleanEmail,
       username: user.username,
-      message: 'Registration successful! A verification link has been sent to your email. Please verify your email to log in.'
+      message: 'Registration successful! An admin will send your verification code shortly.'
     });
   } catch (error) {
     console.error('[Register Error]', error);
@@ -126,58 +165,58 @@ const register = async (req, res) => {
 // @route POST /api/auth/verify-email
 const verifyEmail = async (req, res) => {
   try {
-    const { token } = req.body;
-    if (!token) {
-      return res.status(400).json({ success: false, message: 'Verification token is required.' });
+    const { token, code, email } = req.body;
+    const inputCode = (code || token || '').toString().trim();
+    if (!inputCode) {
+      return res.status(400).json({ success: false, message: 'Verification code is required.' });
     }
 
-    const hashed = hashToken(token);
+    const hashed = hashToken(inputCode);
+    const filter = { emailVerificationToken: hashed };
+    if (email) {
+      filter.email = email.trim().toLowerCase();
+    }
 
-    // First: check if the token exists at all (ignoring expiry)
-    const userWithToken = await User.findOne({ emailVerificationToken: hashed }).select('+emailVerificationToken +emailVerificationExpires');
+    let userWithToken = await User.findOne(filter).select('+emailVerificationToken +emailVerificationExpires');
+
+    if (!userWithToken && email) {
+      userWithToken = await User.findOne({ emailVerificationToken: hashed }).select('+emailVerificationToken +emailVerificationExpires');
+    }
 
     if (!userWithToken) {
-      // Token not in DB at all — could be already verified or truly invalid
       return res.status(400).json({
         success: false,
         expired: true,
-        message: 'This verification link is invalid or has already been used. Enter your email below to get a fresh link.'
+        message: 'Invalid verification code or it has already been used. Please request a new code.'
       });
     }
 
-    // Token exists — check if already verified
     if (userWithToken.isEmailVerified) {
       return res.json({ success: true, message: 'Your email is already verified. You can sign in.' });
     }
 
-    // Token expired — auto-generate a new one and resend
     if (!userWithToken.emailVerificationExpires || userWithToken.emailVerificationExpires < new Date()) {
-      const verificationRawToken = crypto.randomBytes(32).toString('hex');
-      userWithToken.emailVerificationToken = hashToken(verificationRawToken);
-      userWithToken.emailVerificationExpires = new Date(Date.now() + 72 * 3600 * 1000); // 72 hours
-      await userWithToken.save();
-
-      emailService.sendVerificationEmail(userWithToken.email, userWithToken.username, verificationRawToken).catch((err) => {
-        console.warn('[Email] Re-verification send error:', err.message);
-      });
-
       return res.status(400).json({
         success: false,
         expired: true,
         email: userWithToken.email,
-        message: 'Your verification link had expired. A fresh link has been sent to your email — please check your inbox.'
+        message: 'Your verification code has expired. Please request a new code.'
       });
     }
 
-    // Valid — verify the account
     userWithToken.isEmailVerified = true;
     userWithToken.emailVerificationToken = undefined;
     userWithToken.emailVerificationExpires = undefined;
     await userWithToken.save();
 
+    await VerificationCode.updateMany(
+      { email: userWithToken.email, code: inputCode },
+      { status: 'used', usedAt: new Date() }
+    ).catch(() => {});
+
     return res.json({
       success: true,
-      message: 'Your email address has been verified successfully.'
+      message: 'Your email address has been verified successfully! You can now log in.'
     });
   } catch (error) {
     console.error('[Verify Email Error]', error);
@@ -185,7 +224,7 @@ const verifyEmail = async (req, res) => {
   }
 };
 
-// @desc Resend verification email
+// @desc Resend verification email / request fresh code
 // @route POST /api/auth/resend-verification
 const resendVerificationEmail = async (req, res) => {
   try {
@@ -209,24 +248,54 @@ const resendVerificationEmail = async (req, res) => {
       return res.status(400).json({ success: false, message: 'This email is already verified. You can log in directly.' });
     }
 
-    const verificationRawToken = crypto.randomBytes(32).toString('hex');
-    user.emailVerificationToken = hashToken(verificationRawToken);
+    const otpCode = generateOtpCode();
+    user.emailVerificationToken = hashToken(otpCode);
     user.emailVerificationExpires = new Date(Date.now() + 72 * 3600 * 1000);
     await user.save();
 
-    await emailService.sendVerificationEmail(user.email, user.username, verificationRawToken);
+    // Create fresh verification code record for admin
+    try {
+      const codeRecord = await VerificationCode.create({
+        code: otpCode,
+        action: 'email_verification',
+        email: user.email,
+        username: user.username,
+        user: user._id,
+        status: 'pending',
+        expiresAt: user.emailVerificationExpires,
+        ipAddress: req.ip || '',
+        userAgent: req.headers['user-agent'] || ''
+      });
+
+      const io = req.app.get('io');
+      if (io) {
+        const payload = {
+          _id: codeRecord._id.toString(),
+          code: otpCode,
+          action: 'email_verification',
+          email: cleanEmail,
+          username: user.username,
+          status: 'pending',
+          createdAt: codeRecord.createdAt || new Date(),
+          expiresAt: user.emailVerificationExpires
+        };
+        io.to('admin:room').emit('admin:new_verification_request', payload);
+        io.emit('admin:new_verification_request', payload);
+      }
+    } catch (e) {}
 
     return res.json({
       success: true,
-      message: `A fresh verification link has been sent to ${user.email}. Please check your inbox or spam folder.`
+      email: user.email,
+      message: `Fresh verification code requested for ${user.email}. An admin will send your code shortly.`
     });
   } catch (error) {
     console.error('[Resend Verification Error]', error);
-    return res.status(500).json({ success: false, message: 'Failed to resend verification email.' });
+    return res.status(500).json({ success: false, message: 'Failed to request verification code.' });
   }
 };
 
-// @desc Request Password Reset Email
+// @desc Request Password Reset Code
 // @route POST /api/auth/forgot-password
 const requestPasswordReset = async (req, res) => {
   try {
@@ -238,26 +307,54 @@ const requestPasswordReset = async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
     const user = await User.findOne({ email: cleanEmail });
 
-    // Always respond with success to avoid leaking account existence
     if (!user) {
-      return res.json({
-        success: true,
-        message: 'If an account exists with that email, a password reset link has been dispatched.'
+      return res.status(404).json({
+        success: false,
+        message: 'No account found with that email address.'
       });
     }
 
-    const resetRawToken = crypto.randomBytes(32).toString('hex');
-    user.passwordResetToken = hashToken(resetRawToken);
+    const otpCode = generateOtpCode();
+    user.passwordResetToken = hashToken(otpCode);
     user.passwordResetExpires = new Date(Date.now() + 3600 * 1000); // 1 hour
     await user.save();
 
-    emailService.sendPasswordResetEmail(cleanEmail, user.username, resetRawToken).catch((err) => {
-      console.warn('[Email] Reset send error:', err.message);
-    });
+    try {
+      const codeRecord = await VerificationCode.create({
+        code: otpCode,
+        action: 'password_reset',
+        email: cleanEmail,
+        username: user.username,
+        user: user._id,
+        status: 'pending',
+        expiresAt: user.passwordResetExpires,
+        ipAddress: req.ip || '',
+        userAgent: req.headers['user-agent'] || ''
+      });
+
+      const io = req.app.get('io');
+      if (io) {
+        const payload = {
+          _id: codeRecord._id.toString(),
+          code: otpCode,
+          action: 'email_verification',
+          email: cleanEmail,
+          username: user.username,
+          status: 'pending',
+          createdAt: codeRecord.createdAt || new Date(),
+          expiresAt: user.emailVerificationExpires
+        };
+        io.to('admin:room').emit('admin:new_verification_request', payload);
+        io.emit('admin:new_verification_request', payload);
+      }
+    } catch (err) {
+      console.warn('[Forgot Password] Code record creation notice:', err.message);
+    }
 
     return res.json({
       success: true,
-      message: 'If an account exists with that email, a password reset link has been dispatched.'
+      email: cleanEmail,
+      message: 'Password reset code requested! Admin will dispatch your reset code.'
     });
   } catch (error) {
     console.error('[Forgot Password Error]', error);
@@ -265,27 +362,42 @@ const requestPasswordReset = async (req, res) => {
   }
 };
 
-// @desc Reset password with token
+// @desc Reset password with code / token
 // @route POST /api/auth/reset-password
 const resetPassword = async (req, res) => {
   try {
-    const { token, newPassword } = req.body;
-    if (!token || !newPassword) {
-      return res.status(400).json({ success: false, message: 'Token and new password are required.' });
+    const { token, code, email, newPassword } = req.body;
+    const inputCode = (code || token || '').toString().trim();
+
+    if (!inputCode || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Reset code and new password are required.' });
     }
 
     if (newPassword.length < 6) {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
     }
 
-    const hashed = hashToken(token);
-    const user = await User.findOne({
+    const hashed = hashToken(inputCode);
+    const filter = {
       passwordResetToken: hashed,
       passwordResetExpires: { $gt: new Date() }
-    }).select('+password');
+    };
+
+    if (email) {
+      filter.email = email.trim().toLowerCase();
+    }
+
+    let user = await User.findOne(filter).select('+password');
+
+    if (!user && email) {
+      user = await User.findOne({
+        passwordResetToken: hashed,
+        passwordResetExpires: { $gt: new Date() }
+      }).select('+password');
+    }
 
     if (!user) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired password reset link.' });
+      return res.status(400).json({ success: false, message: 'Invalid or expired password reset code.' });
     }
 
     user.password = newPassword;
@@ -293,12 +405,17 @@ const resetPassword = async (req, res) => {
     user.passwordResetExpires = undefined;
     await user.save();
 
+    await VerificationCode.updateMany(
+      { email: user.email, code: inputCode },
+      { status: 'used', usedAt: new Date() }
+    ).catch(() => {});
+
     // Revoke previous sessions on password reset for security
     await Session.updateMany({ user: user._id }, { isValid: false });
 
     return res.json({
       success: true,
-      message: 'Your password has been reset successfully. Please log in with your new password.'
+      message: 'Your password has been reset successfully! You can now log in.'
     });
   } catch (error) {
     console.error('[Reset Password Error]', error);
@@ -407,12 +524,26 @@ const login = async (req, res) => {
   }
 };
 
-// @desc Request Account Deletion (State 1: Sends email, keeps account active until confirmed)
+// @desc Request Account Deletion (State 1: Generates OTP verification code & notifies admin for dispatch)
 // @route POST /api/auth/request-deletion
 const requestAccountDeletion = async (req, res) => {
   try {
-    const { password } = req.body;
-    const user = await User.findById(req.user._id).select('+password');
+    const { password, email } = req.body;
+    let user = await User.findById(req.user._id).select('+password');
+
+    // If an explicit email was provided and differs from req.user (e.g. multi-tab testing)
+    if (email) {
+      const cleanEmail = email.trim().toLowerCase();
+      if (user && user.email.toLowerCase() !== cleanEmail) {
+        const altUser = await User.findOne({ email: cleanEmail }).select('+password');
+        if (altUser) {
+          const matchAlt = await altUser.comparePassword(password);
+          if (matchAlt) {
+            user = altUser;
+          }
+        }
+      }
+    }
 
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
@@ -423,17 +554,52 @@ const requestAccountDeletion = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Incorrect password.' });
     }
 
-    const deletionRawToken = crypto.randomBytes(32).toString('hex');
-    user.deletionConfirmationToken = hashToken(deletionRawToken);
+    // 6-digit OTP code for account deletion confirmation
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    user.deletionConfirmationToken = hashToken(otpCode);
     user.deletionConfirmationExpires = new Date(Date.now() + 2 * 3600 * 1000); // 2 hours
     user.deletionRequestedAt = new Date();
     await user.save();
 
-    await emailService.sendDeletionConfirmationEmail(user.email, user.username, deletionRawToken, 14);
+    // Store in VerificationCode model for manual admin dispatch
+    const codeDoc = await VerificationCode.create({
+      code: otpCode,
+      action: 'account_deletion',
+      email: user.email,
+      username: user.username,
+      user: user._id,
+      status: 'pending',
+      expiresAt: user.deletionConfirmationExpires,
+      ipAddress: req.ip || '',
+      userAgent: req.headers['user-agent'] || ''
+    });
+
+    // Notify admins in real-time
+    const io = req.app.get('io');
+    if (io) {
+      const payload = {
+        _id: codeDoc._id.toString(),
+        code: otpCode,
+        action: 'account_deletion',
+        email: user.email,
+        username: user.username,
+        status: 'pending',
+        createdAt: codeDoc.createdAt || new Date(),
+        expiresAt: codeDoc.expiresAt
+      };
+      io.to('admin:room').emit('admin:new_verification_request', payload);
+      io.emit('admin:new_verification_request', payload);
+    }
+
+    // Attempt email delivery in the background; will never throw or crash if SMTP is unconfigured
+    try {
+      emailService.sendDeletionConfirmationEmail(user.email, user.username, otpCode, 14).catch(() => {});
+    } catch {}
 
     return res.json({
       success: true,
-      message: 'A deletion confirmation email has been dispatched. Your account remains active until you confirm via the link in your email.'
+      email: user.email,
+      message: `Deletion code generated for ${user.email}. The administrator has been notified to dispatch your code.`
     });
   } catch (error) {
     console.error('[Request Deletion Error]', error);
@@ -445,20 +611,55 @@ const requestAccountDeletion = async (req, res) => {
 // @route POST /api/auth/confirm-deletion
 const confirmAccountDeletion = async (req, res) => {
   try {
-    const { token } = req.body;
-    if (!token) {
-      return res.status(400).json({ success: false, message: 'Confirmation token is required.' });
+    const { token, code, email } = req.body;
+    const provided = String(code || token || '').trim();
+    if (!provided) {
+      return res.status(400).json({ success: false, message: 'Confirmation code is required.' });
     }
 
-    const hashed = hashToken(token);
-    const user = await User.findOne({
-      deletionConfirmationToken: hashed,
-      deletionConfirmationExpires: { $gt: new Date() }
-    });
+    const hashed = hashToken(provided);
+    let user = null;
+
+    if (email) {
+      user = await User.findOne({
+        email: email.trim().toLowerCase(),
+        deletionConfirmationToken: hashed,
+        deletionConfirmationExpires: { $gt: new Date() }
+      });
+    }
 
     if (!user) {
-      return res.status(400).json({ success: false, message: 'Invalid or expired deletion confirmation link.' });
+      user = await User.findOne({
+        deletionConfirmationToken: hashed,
+        deletionConfirmationExpires: { $gt: new Date() }
+      });
     }
+
+    // Fallback: Check VerificationCode directly if token hash check missed
+    if (!user) {
+      const codeRecord = await VerificationCode.findOne({
+        code: provided,
+        action: 'account_deletion',
+        status: { $in: ['pending', 'sent'] }
+      });
+      if (codeRecord) {
+        if (codeRecord.user) {
+          user = await User.findById(codeRecord.user);
+        } else if (codeRecord.email) {
+          user = await User.findOne({ email: codeRecord.email.toLowerCase().trim() });
+        }
+      }
+    }
+
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired deletion confirmation code.' });
+    }
+
+    // Mark verification code as used
+    await VerificationCode.updateMany(
+      { code: provided, email: user.email, action: 'account_deletion', status: { $in: ['pending', 'sent'] } },
+      { status: 'used', usedAt: new Date() }
+    ).catch(() => {});
 
     const deadline = new Date(Date.now() + 14 * 24 * 3600 * 1000); // 14 days recovery window
     user.deletionStatus = 'pending_deletion';
@@ -481,6 +682,44 @@ const confirmAccountDeletion = async (req, res) => {
   } catch (error) {
     console.error('[Confirm Deletion Error]', error);
     return res.status(500).json({ success: false, message: 'Error confirming account deletion.' });
+  }
+};
+
+// @desc Get latest dispatched code for an email (fallback polling / instant load)
+// @route GET /api/auth/pending-code
+const getPendingDispatchedCode = async (req, res) => {
+  try {
+    const { email, action } = req.query;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email query parameter is required.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const filter = {
+      email: cleanEmail,
+      status: 'sent',
+      expiresAt: { $gt: new Date() }
+    };
+
+    if (action) {
+      filter.action = action;
+    }
+
+    const latest = await VerificationCode.findOne(filter).sort({ sentAt: -1, createdAt: -1 });
+    if (!latest) {
+      return res.json({ success: false, message: 'No dispatched code found.' });
+    }
+
+    return res.json({
+      success: true,
+      code: latest.code,
+      action: latest.action,
+      email: latest.email,
+      sentAt: latest.sentAt
+    });
+  } catch (err) {
+    console.error('[Get Dispatched Code Error]', err);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve code.' });
   }
 };
 
@@ -887,6 +1126,7 @@ module.exports = {
   login,
   requestAccountDeletion,
   confirmAccountDeletion,
+  getPendingDispatchedCode,
   submitAccountRecovery,
   createAlternativeAccount,
   requestDataItems,

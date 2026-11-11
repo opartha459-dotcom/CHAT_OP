@@ -1,35 +1,263 @@
+
 const Status = require('../models/Status');
 const Block = require('../models/Block');
 
-// @desc Create a new 24h status (with optional poll & styling)
-// @route POST /api/status
+const USER_FIELDS = 'username nickname avatar status';
+const PUBLIC_USER_FIELDS = 'username nickname avatar';
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+const getId = (value) => {
+  if (!value) return null;
+  return (value._id || value).toString();
+};
+
+const isExpired = (status) => {
+  return !status?.expiresAt || new Date(status.expiresAt) <= new Date();
+};
+
+const populateStatus = async (id) => {
+  return Status.findById(id)
+    .populate('user', USER_FIELDS)
+    .populate('viewers.user', PUBLIC_USER_FIELDS)
+    .populate('reactions.user', PUBLIC_USER_FIELDS)
+    .populate('poll.options.votes', PUBLIC_USER_FIELDS)
+    .lean();
+};
+
+const getSocket = (req) => req.app.get('io');
+
+const emitStatusEvent = (req, event, payload) => {
+  const io = getSocket(req);
+
+  if (!io) return;
+
+  // Emit once. Do not also emit to overlapping user rooms:
+  // that can deliver duplicate events to the same socket.
+  io.emit(event, payload);
+};
+
+const emitViewerUpdate = (req, status, viewer, totalViewers) => {
+  const io = getSocket(req);
+  if (!io) return;
+  const authorId = getId(status.user);
+
+  // Send viewer details ONLY to the author's room so only the status creator can view viewers!
+  io.to(`user:${authorId}`).emit('status:viewed', {
+    statusId: getId(status._id),
+    authorId,
+    viewer,
+    totalViewers
+  });
+};
+
+const emitReactionUpdate = (req, status) => {
+  const io = getSocket(req);
+  if (!io) return;
+  const authorId = getId(status.user);
+
+  // Send full reaction details and viewers list ONLY to the author
+  io.to(`user:${authorId}`).emit('status:reaction', {
+    statusId: getId(status._id),
+    authorId,
+    reactions: status.reactions || [],
+    viewers: status.viewers || [],
+    totalViewers: status.viewers?.length || 0
+  });
+
+  // Broadcast lightweight animation event without leaking user details
+  io.emit('status:reaction_anim', {
+    statusId: getId(status._id),
+    authorId,
+    emoji: status.reactions?.[status.reactions.length - 1]?.emoji
+  });
+};
+
+const emitPollUpdate = (req, status) => {
+  const io = getSocket(req);
+  if (!io) return;
+  const authorId = getId(status.user);
+
+  // Send full poll details with voter identities ONLY to the author
+  io.to(`user:${authorId}`).emit('status:poll_voted', {
+    statusId: getId(status._id),
+    authorId,
+    poll: status.poll,
+    viewers: status.viewers || [],
+    totalViewers: status.viewers?.length || 0
+  });
+
+  // Broadcast sanitized poll stats to other participants
+  io.emit('status:poll_voted', {
+    statusId: getId(status._id),
+    authorId,
+    poll: {
+      ...status.poll,
+      options: status.poll?.options?.map(opt => ({
+        text: opt.text,
+        _id: opt._id,
+        voteCount: (opt.votes || []).length
+      }))
+    }
+  });
+};
+
+/*
+ * Checks whether the current user is allowed to access a status.
+ *
+ * Supported audience values:
+ * everyone
+ * custom
+ * only_share_with
+ *
+ * excludedUsers is also respected.
+ *
+ * Contact-based audiences need your application's actual
+ * contact/friend relationship model to be enforced.
+ */
+const canViewStatus = async (status, userId) => {
+  const currentId = userId.toString();
+  const authorId = getId(status.user);
+
+  if (authorId === currentId) return true;
+
+  if (isExpired(status)) return false;
+
+  const blockExists = await Block.exists({
+    $or: [
+      { blocker: userId, blocked: status.user },
+      { blocker: status.user, blocked: userId }
+    ]
+  });
+
+  if (blockExists) return false;
+
+  const privacy = status.privacy || {};
+  const audience = privacy.audience || 'everyone';
+
+  const allowedUsers = (privacy.allowedUsers || []).map(getId);
+  const excludedUsers = (privacy.excludedUsers || []).map(getId);
+
+  if (excludedUsers.includes(currentId)) {
+    return false;
+  }
+
+  if (
+    audience === 'custom' ||
+    audience === 'only_share_with'
+  ) {
+    return allowedUsers.includes(currentId);
+  }
+
+  return true;
+};
+
+const recordViewer = async (status, userId) => {
+  if (!Array.isArray(status.viewers)) {
+    status.viewers = [];
+  }
+
+  const alreadyViewed = status.viewers.some(
+    (viewer) => getId(viewer.user) === userId.toString()
+  );
+
+  if (alreadyViewed) {
+    return null;
+  }
+
+  const viewer = {
+    user: userId,
+    viewedAt: new Date()
+  };
+
+  status.viewers.push(viewer);
+
+  return viewer;
+};
+
+const getViewerPayload = (req, viewer) => ({
+  _id: req.user._id,
+  username: req.user.username,
+  nickname: req.user.nickname,
+  avatar: req.user.avatar,
+  viewedAt: viewer.viewedAt
+});
+
+/* =========================================================
+   CREATE STATUS
+   POST /api/status
+========================================================= */
+
 const createStatus = async (req, res) => {
   try {
-    const { text, type = 'text', mediaUrl, style, privacy, hasPoll, poll } = req.body;
+    const {
+      text,
+      type = 'text',
+      mediaUrl,
+      style,
+      privacy,
+      hasPoll,
+      poll
+    } = req.body;
+
     const currentUserId = req.user._id;
 
-    if (type === 'text' && (!text || !text.trim()) && !hasPoll) {
-      return res.status(400).json({ success: false, message: 'Status text or poll is required.' });
+    if (
+      type === 'text' &&
+      (!text || !text.trim()) &&
+      !hasPoll
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status text or poll is required.'
+      });
     }
 
     if (type === 'media' && !mediaUrl) {
-      return res.status(400).json({ success: false, message: 'Media URL is required.' });
+      return res.status(400).json({
+        success: false,
+        message: 'Media URL is required.'
+      });
     }
 
     let pollData = null;
+
     if (hasPoll && poll && Array.isArray(poll.options)) {
       const validOptions = poll.options
-        .map((opt) => (typeof opt === 'string' ? opt.trim() : opt?.text?.trim() || ''))
+        .map((option) =>
+          typeof option === 'string'
+            ? option.trim()
+            : option?.text?.trim() || ''
+        )
         .filter(Boolean)
-        .map((text) => ({ text, votes: [] }));
+        .map((optionText) => ({
+          text: optionText,
+          votes: []
+        }));
 
-      if (validOptions.length >= 2) {
-        pollData = {
-          question: poll.question ? poll.question.trim() : 'Poll Question',
-          options: validOptions,
-          isClosed: false
-        };
+      const uniqueOptions = [
+        ...new Set(validOptions.map((option) => option.text))
+      ];
+
+      if (uniqueOptions.length < 2 || uniqueOptions.length > 4) {
+        return res.status(400).json({
+          success: false,
+          message: 'A poll must contain between 2 and 4 unique options.'
+        });
       }
+
+      pollData = {
+        question: poll.question?.trim() || 'Poll Question',
+        options: validOptions,
+        isClosed: false
+      };
+    } else if (hasPoll) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid poll options.'
+      });
     }
 
     const status = await Status.create({
@@ -37,31 +265,36 @@ const createStatus = async (req, res) => {
       type,
       text: text ? text.trim() : '',
       mediaUrl: mediaUrl || '',
+
       style: {
-        background: style?.background || 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+        background:
+          style?.background ||
+          'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
         font: style?.font || 'sans',
-        textColor: style?.textColor || '#ffffff'
+        textColor: style?.textColor || '#ffffff',
+        bold: Boolean(style?.bold),
+        italic: Boolean(style?.italic)
       },
+
       privacy: {
         audience: privacy?.audience || 'everyone',
         allowedUsers: privacy?.allowedUsers || [],
         excludedUsers: privacy?.excludedUsers || []
       },
+
       hasPoll: Boolean(pollData),
       poll: pollData || undefined,
+
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
     });
 
-    const populated = await Status.findById(status._id)
-      .populate('user', 'username nickname avatar status')
-      .populate('viewers.user', 'username nickname avatar')
-      .populate('reactions.user', 'username nickname avatar')
-      .populate('poll.options.votes', 'username nickname avatar');
+    const populated = await populateStatus(status._id);
 
-    const io = req.app.get('io');
-    if (io) {
-      io.emit('status:new', populated);
-    }
+    // Clients should refresh their authorized feed after this event.
+    emitStatusEvent(req, 'status:new', {
+      statusId: getId(status._id),
+      userId: getId(currentUserId)
+    });
 
     return res.status(201).json({
       success: true,
@@ -70,89 +303,154 @@ const createStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('[Create Status Error]', error);
-    return res.status(500).json({ success: false, message: 'Error publishing status.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Error publishing status.'
+    });
   }
 };
 
-// @desc Get active statuses grouped by user for the feed
-// @route GET /api/status/feed
+/* =========================================================
+   GET STATUS FEED
+   GET /api/status/feed
+========================================================= */
+
 const getStatusFeed = async (req, res) => {
   try {
     const currentUserId = req.user._id;
     const now = new Date();
 
-    // Find blocks involving current user
     const blocks = await Block.find({
-      $or: [{ blocker: currentUserId }, { blocked: currentUserId }]
-    });
-    const blockedUserIds = blocks.map((b) =>
-      b.blocker.toString() === currentUserId.toString() ? b.blocked.toString() : b.blocker.toString()
+      $or: [
+        { blocker: currentUserId },
+        { blocked: currentUserId }
+      ]
+    }).lean();
+
+    const blockedUserIds = blocks.map((block) =>
+      getId(
+        getId(block.blocker) === currentUserId.toString()
+          ? block.blocked
+          : block.blocker
+      )
     );
 
-    // Fetch all active non-expired statuses
     const activeStatuses = await Status.find({
       expiresAt: { $gt: now },
       user: { $nin: blockedUserIds }
     })
       .sort({ createdAt: 1 })
-      .populate('user', 'username nickname avatar status')
-      .populate('viewers.user', 'username nickname avatar')
-      .populate('reactions.user', 'username nickname avatar')
-      .populate('poll.options.votes', 'username nickname avatar')
+      .populate('user', USER_FIELDS)
+      .populate('viewers.user', PUBLIC_USER_FIELDS)
+      .populate('reactions.user', PUBLIC_USER_FIELDS)
+      .populate('poll.options.votes', PUBLIC_USER_FIELDS)
       .lean();
 
-    // Filter statuses based on privacy rules
-    const visibleStatuses = activeStatuses.filter((s) => {
-      if (s.user._id.toString() === currentUserId.toString()) return true;
+    const visibleStatuses = activeStatuses.filter((status) => {
+      if (!status.user) return false;
 
-      const p = s.privacy || {};
-      if (p.audience === 'custom') {
-        return (p.allowedUsers || []).some((id) => (id?._id || id)?.toString() === currentUserId.toString());
+      const authorId = getId(status.user);
+
+      if (authorId === currentUserId.toString()) {
+        return true;
       }
-      if (p.excludedUsers && p.excludedUsers.some((id) => (id?._id || id)?.toString() === currentUserId.toString())) {
+
+      const privacy = status.privacy || {};
+      const audience = privacy.audience || 'everyone';
+
+      const allowedUsers = (privacy.allowedUsers || []).map(getId);
+      const excludedUsers = (privacy.excludedUsers || []).map(getId);
+
+      if (excludedUsers.includes(currentUserId.toString())) {
         return false;
       }
+
+      if (
+        audience === 'custom' ||
+        audience === 'only_share_with'
+      ) {
+        return allowedUsers.includes(currentUserId.toString());
+      }
+
       return true;
     });
 
-    // Group statuses by user
     const userMap = new Map();
 
-    visibleStatuses.forEach((s) => {
-      const uId = s.user._id.toString();
-      const hasViewed = (s.viewers || []).some(
-        (v) => v.user?._id?.toString() === currentUserId.toString() || v.user?.toString() === currentUserId.toString()
+    visibleStatuses.forEach((status) => {
+      const userId = getId(status.user);
+
+      const hasViewed = (status.viewers || []).some(
+        (viewer) => getId(viewer.user) === currentUserId.toString()
       );
 
-      if (!userMap.has(uId)) {
-        userMap.set(uId, {
-          user: s.user,
+      if (!userMap.has(userId)) {
+        userMap.set(userId, {
+          user: status.user,
           statuses: [],
           allViewed: true,
-          latestCreatedAt: s.createdAt
+          latestCreatedAt: status.createdAt
         });
       }
 
-      const group = userMap.get(uId);
+      const group = userMap.get(userId);
+      const isOwner = userId === currentUserId.toString();
+
       group.statuses.push({
-        ...s,
-        hasViewed
+        ...status,
+        hasViewed,
+        // Privacy rule: Only the creator of the status can view the viewers list and other users' reactions
+        viewers: isOwner ? (status.viewers || []) : [],
+        viewersCount: (status.viewers || []).length,
+        reactions: isOwner
+          ? (status.reactions || [])
+          : (status.reactions || []).filter(
+              (r) => getId(r.user) === currentUserId.toString()
+            ),
+        poll: status.hasPoll && status.poll
+          ? {
+              ...status.poll,
+              options: status.poll.options?.map((opt) => ({
+                ...opt,
+                votes: isOwner
+                  ? opt.votes
+                  : (opt.votes || []).filter(
+                      (v) => getId(v) === currentUserId.toString()
+                    )
+              }))
+            }
+          : status.poll
       });
 
       if (!hasViewed) {
         group.allViewed = false;
       }
-      if (new Date(s.createdAt) > new Date(group.latestCreatedAt)) {
-        group.latestCreatedAt = s.createdAt;
+
+      if (
+        new Date(status.createdAt) >
+        new Date(group.latestCreatedAt)
+      ) {
+        group.latestCreatedAt = status.createdAt;
       }
     });
 
     const feed = Array.from(userMap.values()).sort((a, b) => {
-      if (a.user._id.toString() === currentUserId.toString()) return -1;
-      if (b.user._id.toString() === currentUserId.toString()) return 1;
+      if (
+        getId(a.user) === currentUserId.toString()
+      ) return -1;
+
+      if (
+        getId(b.user) === currentUserId.toString()
+      ) return 1;
+
       if (!a.allViewed && b.allViewed) return -1;
       if (a.allViewed && !b.allViewed) return 1;
-      return new Date(b.latestCreatedAt) - new Date(a.latestCreatedAt);
+
+      return (
+        new Date(b.latestCreatedAt) -
+        new Date(a.latestCreatedAt)
+      );
     });
 
     return res.json({
@@ -161,25 +459,31 @@ const getStatusFeed = async (req, res) => {
     });
   } catch (error) {
     console.error('[Get Status Feed Error]', error);
-    return res.status(500).json({ success: false, message: 'Error retrieving status feed.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Error retrieving status feed.'
+    });
   }
 };
 
-// @desc Get current user's active statuses with viewer & reaction details
-// @route GET /api/status/mine
+/* =========================================================
+   GET MY STATUSES
+   GET /api/status/mine
+========================================================= */
+
 const getMyStatuses = async (req, res) => {
   try {
     const currentUserId = req.user._id;
-    const now = new Date();
 
     const statuses = await Status.find({
       user: currentUserId,
-      expiresAt: { $gt: now }
+      expiresAt: { $gt: new Date() }
     })
       .sort({ createdAt: -1 })
-      .populate('viewers.user', 'username nickname avatar')
-      .populate('reactions.user', 'username nickname avatar')
-      .populate('poll.options.votes', 'username nickname avatar')
+      .populate('viewers.user', PUBLIC_USER_FIELDS)
+      .populate('reactions.user', PUBLIC_USER_FIELDS)
+      .populate('poll.options.votes', PUBLIC_USER_FIELDS)
       .lean();
 
     return res.json({
@@ -188,356 +492,488 @@ const getMyStatuses = async (req, res) => {
     });
   } catch (error) {
     console.error('[Get My Statuses Error]', error);
-    return res.status(500).json({ success: false, message: 'Error retrieving your statuses.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Error retrieving your statuses.'
+    });
   }
 };
 
-// @desc Mark status as viewed and broadcast real-time update
-// @route POST /api/status/:id/view
+/* =========================================================
+   VIEW STATUS
+   POST /api/status/:id/view
+========================================================= */
+
 const viewStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const currentUserId = req.user._id;
 
     const status = await Status.findById(id);
-    if (!status) {
-      return res.status(404).json({ success: false, message: 'Status not found.' });
+
+    if (!status || isExpired(status)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Status not found or expired.'
+      });
     }
 
-    const authorId = (status.user?._id || status.user).toString();
+    const allowed = await canViewStatus(status, currentUserId);
+
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'You cannot view this status.'
+      });
+    }
+
+    const authorId = getId(status.user);
+
+    let newViewer = null;
+
     if (authorId !== currentUserId.toString()) {
-      const alreadyViewed = status.viewers.some(
-        (v) => (v.user?._id || v.user)?.toString() === currentUserId.toString()
-      );
-      if (!alreadyViewed) {
-        const viewItem = { user: currentUserId, viewedAt: new Date() };
-        status.viewers.push(viewItem);
+      newViewer = await recordViewer(status, currentUserId);
+
+      if (newViewer) {
+        status.markModified('viewers');
         await status.save();
 
-        const viewerData = {
-          _id: req.user._id,
-          username: req.user.username,
-          nickname: req.user.nickname,
-          avatar: req.user.avatar,
-          viewedAt: viewItem.viewedAt
-        };
+        const viewerPayload = getViewerPayload(req, newViewer);
 
-        const io = req.app.get('io');
-        if (io) {
-          const payload = {
-            statusId: status._id.toString(),
-            authorId: status.user.toString(),
-            viewer: viewerData,
-            totalViewers: status.viewers.length
-          };
-          // Broadcast to everyone and author rooms for immediate real-time update without reload
-          io.emit('status:viewed', payload);
-          io.to(status.user.toString()).emit('status:viewed', payload);
-          io.to(`user:${status.user.toString()}`).emit('status:viewed', payload);
-        }
+        emitViewerUpdate(
+          req,
+          status,
+          viewerPayload,
+          status.viewers.length
+        );
       }
+    }
+
+    const io = getSocket(req);
+    if (io) {
+      io.to(`user:${currentUserId}`).emit('status:viewed_by_me', {
+        statusId: getId(status._id),
+        authorId
+      });
     }
 
     return res.json({
       success: true,
-      viewersCount: status.viewers.length
+      statusId: getId(status._id),
+      hasViewed: true,
+      viewersCount: status.viewers?.length || 0
     });
   } catch (error) {
     console.error('[View Status Error]', error);
-    return res.status(500).json({ success: false, message: 'Error recording status view.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Error recording status view.'
+    });
   }
 };
 
-// @desc React to a status with an emoji (toggle or replace)
-// @route POST /api/status/:id/react
+/* =========================================================
+   REACT TO STATUS
+   POST /api/status/:id/react
+========================================================= */
+
 const reactToStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { emoji } = req.body;
+    const emoji = req.body.emoji?.trim();
     const currentUserId = req.user._id;
 
-    if (!emoji || !emoji.trim()) {
-      return res.status(400).json({ success: false, message: 'Emoji reaction is required.' });
+    if (!emoji) {
+      return res.status(400).json({
+        success: false,
+        message: 'Emoji reaction is required.'
+      });
     }
 
     const status = await Status.findById(id);
-    if (!status) {
-      return res.status(404).json({ success: false, message: 'Status not found.' });
+
+    if (!status || isExpired(status)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Status not found or expired.'
+      });
     }
 
-    if (!status.reactions) {
+    const allowed = await canViewStatus(status, currentUserId);
+
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'You cannot react to this status.'
+      });
+    }
+
+    if (!Array.isArray(status.reactions)) {
       status.reactions = [];
     }
-    if (!status.viewers) {
+
+    if (!Array.isArray(status.viewers)) {
       status.viewers = [];
     }
 
-    const authorId = (status.user?._id || status.user).toString();
+    const authorId = getId(status.user);
 
-    // Automatically record viewer if not already viewed (reacting implies viewing)
-    let newViewerAdded = false;
-    let viewItem = null;
+    let newViewer = null;
+
+    // Reacting also counts as viewing.
     if (authorId !== currentUserId.toString()) {
-      const alreadyViewed = status.viewers.some(
-        (v) => (v.user?._id || v.user)?.toString() === currentUserId.toString()
-      );
-      if (!alreadyViewed) {
-        viewItem = { user: currentUserId, viewedAt: new Date() };
-        status.viewers.push(viewItem);
-        newViewerAdded = true;
-      }
+      newViewer = await recordViewer(status, currentUserId);
     }
 
-    const existingIdx = status.reactions.findIndex(
-      (r) => (r.user?._id || r.user)?.toString() === currentUserId.toString()
+    const existingIndex = status.reactions.findIndex(
+      (reaction) =>
+        getId(reaction.user) === currentUserId.toString()
     );
 
-    let actionTaken = 'added';
-    if (existingIdx > -1) {
-      if (status.reactions[existingIdx].emoji === emoji.trim()) {
-        // Toggle off reaction
-        status.reactions.splice(existingIdx, 1);
-        actionTaken = 'removed';
+    let action = 'added';
+
+    if (existingIndex !== -1) {
+      const existing = status.reactions[existingIndex];
+
+      if (existing.emoji === emoji) {
+        status.reactions.splice(existingIndex, 1);
+        action = 'removed';
       } else {
-        // Change reaction emoji
-        status.reactions[existingIdx].emoji = emoji.trim();
-        status.reactions[existingIdx].createdAt = new Date();
-        actionTaken = 'updated';
+        existing.emoji = emoji;
+        existing.createdAt = new Date();
+        action = 'updated';
       }
     } else {
       status.reactions.push({
         user: currentUserId,
-        emoji: emoji.trim(),
+        emoji,
         createdAt: new Date()
       });
     }
 
     status.markModified('reactions');
-    if (newViewerAdded) {
-      status.markModified('viewers');
-    }
+    status.markModified('viewers');
+
     await status.save();
 
-    const populated = await Status.findById(id)
-      .populate('user', 'username nickname avatar')
-      .populate('reactions.user', 'username nickname avatar')
-      .populate('viewers.user', 'username nickname avatar')
-      .populate('poll.options.votes', 'username nickname avatar')
-      .lean();
+    const populated = await populateStatus(id);
 
-    const io = req.app.get('io');
+    if (!populated) {
+      return res.status(404).json({
+        success: false,
+        message: 'Status no longer exists.'
+      });
+    }
+
+    const isOwner = authorId === currentUserId.toString();
+    const io = getSocket(req);
+
+    // Send full reaction and viewers details strictly to the status creator!
     if (io) {
-      // Broadcast reaction update
-      const reactionPayload = {
+      io.to(`user:${authorId}`).emit('status:reaction', {
         statusId: id.toString(),
+        authorId,
         reactions: populated.reactions || [],
+        viewers: populated.viewers || [],
+        totalViewers: populated.viewers?.length || 0,
         user: {
-          _id: req.user._id,
+          _id: currentUserId,
           username: req.user.username,
           nickname: req.user.nickname,
           avatar: req.user.avatar
         },
-        emoji: emoji.trim(),
-        action: actionTaken,
-        totalViewers: populated.viewers?.length || 0
-      };
+        emoji,
+        action
+      });
 
-      io.emit('status:reaction', reactionPayload);
-      io.to(authorId).emit('status:reaction', reactionPayload);
-      io.to(`user:${authorId}`).emit('status:reaction', reactionPayload);
+      // Broadcast floating reaction burst for other viewers without exposing full user list
+      io.emit('status:reaction_anim', {
+        statusId: id.toString(),
+        authorId,
+        emoji,
+        action
+      });
+    }
 
-      // If viewing was recorded at the same time, broadcast viewer update immediately
-      if (newViewerAdded) {
-        const viewerData = {
-          _id: req.user._id,
-          username: req.user.username,
-          nickname: req.user.nickname,
-          avatar: req.user.avatar,
-          viewedAt: viewItem?.viewedAt || new Date()
-        };
-        const viewPayload = {
-          statusId: id.toString(),
-          authorId,
-          viewer: viewerData,
-          totalViewers: populated.viewers?.length || 0
-        };
-        io.emit('status:viewed', viewPayload);
-        io.to(authorId).emit('status:viewed', viewPayload);
-        io.to(`user:${authorId}`).emit('status:viewed', viewPayload);
-      }
+    if (newViewer) {
+      emitViewerUpdate(
+        req,
+        status,
+        getViewerPayload(req, newViewer),
+        populated.viewers?.length || 0
+      );
     }
 
     return res.json({
       success: true,
-      action: actionTaken,
-      reactions: populated.reactions || [],
-      viewers: populated.viewers || [],
-      totalViewers: populated.viewers?.length || 0
+      action,
+      reactions: isOwner
+        ? (populated.reactions || [])
+        : (populated.reactions || []).filter((r) => getId(r.user) === currentUserId.toString()),
+      viewers: isOwner ? (populated.viewers || []) : [],
+      totalViewers: isOwner ? (populated.viewers?.length || 0) : undefined
     });
   } catch (error) {
     console.error('[React to Status Error]', error);
-    return res.status(500).json({ success: false, message: 'Failed to react to status.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to react to status.'
+    });
   }
 };
 
-// @desc Vote on a status poll
-// @route POST /api/status/:id/poll/vote
+/* =========================================================
+   VOTE ON STATUS POLL
+   POST /api/status/:id/poll/vote
+========================================================= */
+
 const voteStatusPoll = async (req, res) => {
   try {
     const { id } = req.params;
-    const { optionIndex } = req.body;
     const currentUserId = req.user._id;
 
+    const optionIndex = Number(req.body.optionIndex);
+
+    if (!Number.isInteger(optionIndex)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid poll option.'
+      });
+    }
+
     const status = await Status.findById(id);
-    if (!status || !status.hasPoll || !status.poll || !status.poll.options) {
-      return res.status(404).json({ success: false, message: 'Status poll not found.' });
+
+    if (
+      !status ||
+      isExpired(status) ||
+      !status.hasPoll ||
+      !status.poll ||
+      !Array.isArray(status.poll.options)
+    ) {
+      return res.status(404).json({
+        success: false,
+        message: 'Status poll not found or expired.'
+      });
+    }
+
+    const allowed = await canViewStatus(status, currentUserId);
+
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'You cannot vote on this poll.'
+      });
     }
 
     if (status.poll.isClosed) {
-      return res.status(400).json({ success: false, message: 'Poll has closed.' });
+      return res.status(400).json({
+        success: false,
+        message: 'Poll has closed.'
+      });
     }
 
-    const idx = parseInt(optionIndex, 10);
-    if (isNaN(idx) || idx < 0 || idx >= status.poll.options.length) {
-      return res.status(400).json({ success: false, message: 'Invalid poll option.' });
+    if (
+      optionIndex < 0 ||
+      optionIndex >= status.poll.options.length
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid poll option.'
+      });
     }
 
-    if (!status.viewers) {
+    if (!Array.isArray(status.viewers)) {
       status.viewers = [];
     }
 
-    const authorId = (status.user?._id || status.user).toString();
+    const authorId = getId(status.user);
 
-    // Automatically record viewer if not already viewed (voting implies viewing)
-    let newViewerAdded = false;
-    let viewItem = null;
+    let newViewer = null;
+
+    // Voting also counts as viewing.
     if (authorId !== currentUserId.toString()) {
-      const alreadyViewed = status.viewers.some(
-        (v) => (v.user?._id || v.user)?.toString() === currentUserId.toString()
-      );
-      if (!alreadyViewed) {
-        viewItem = { user: currentUserId, viewedAt: new Date() };
-        status.viewers.push(viewItem);
-        newViewerAdded = true;
-      }
+      newViewer = await recordViewer(status, currentUserId);
     }
 
-    // Toggle vote if already voted on this option, or switch vote
-    status.poll.options.forEach((opt, oIdx) => {
-      if (!Array.isArray(opt.votes)) {
-        opt.votes = [];
+    // Enforce one vote per user.
+    // Clicking the same option again removes the vote.
+    let alreadySelected = false;
+
+    status.poll.options.forEach((option, index) => {
+      if (!Array.isArray(option.votes)) {
+        option.votes = [];
       }
-      const vIdx = opt.votes.findIndex((v) => (v._id || v)?.toString() === currentUserId.toString());
-      if (oIdx === idx) {
-        if (vIdx > -1) {
-          // Toggle off
-          opt.votes.splice(vIdx, 1);
-        } else {
-          opt.votes.push(currentUserId);
-        }
-      } else {
-        // Single vote per status poll
-        if (vIdx > -1) {
-          opt.votes.splice(vIdx, 1);
-        }
+
+      const voteIndex = option.votes.findIndex(
+        (vote) => getId(vote) === currentUserId.toString()
+      );
+
+      if (index === optionIndex && voteIndex !== -1) {
+        alreadySelected = true;
+      }
+
+      if (voteIndex !== -1) {
+        option.votes.splice(voteIndex, 1);
       }
     });
 
-    status.markModified('poll');
-    if (newViewerAdded) {
-      status.markModified('viewers');
+    if (!alreadySelected) {
+      status.poll.options[optionIndex].votes.push(currentUserId);
     }
+
+    status.markModified('poll');
+    status.markModified('viewers');
+
     await status.save();
 
-    const populated = await Status.findById(id)
-      .populate('user', 'username nickname avatar')
-      .populate('reactions.user', 'username nickname avatar')
-      .populate('viewers.user', 'username nickname avatar')
-      .populate('poll.options.votes', 'username nickname avatar')
-      .lean();
+    const populated = await populateStatus(id);
 
-    const io = req.app.get('io');
+    if (!populated) {
+      return res.status(404).json({
+        success: false,
+        message: 'Status no longer exists.'
+      });
+    }
+
+    const isOwner = authorId === currentUserId.toString();
+    const io = getSocket(req);
+
+    // Send full poll with voter identities and viewers ONLY to the status creator
     if (io) {
-      const pollPayload = {
+      io.to(`user:${authorId}`).emit('status:poll_voted', {
         statusId: id.toString(),
+        authorId,
         poll: populated.poll,
+        viewers: populated.viewers || [],
         totalViewers: populated.viewers?.length || 0
-      };
+      });
 
-      io.emit('status:poll_voted', pollPayload);
-      io.to(authorId).emit('status:poll_voted', pollPayload);
-      io.to(`user:${authorId}`).emit('status:poll_voted', pollPayload);
+      // Broadcast sanitized option counts to other viewers
+      io.emit('status:poll_voted', {
+        statusId: id.toString(),
+        authorId,
+        poll: {
+          ...populated.poll,
+          options: populated.poll?.options?.map((opt) => ({
+            text: opt.text,
+            _id: opt._id,
+            voteCount: (opt.votes || []).length
+          }))
+        }
+      });
+    }
 
-      if (newViewerAdded) {
-        const viewerData = {
-          _id: req.user._id,
-          username: req.user.username,
-          nickname: req.user.nickname,
-          avatar: req.user.avatar,
-          viewedAt: viewItem?.viewedAt || new Date()
-        };
-        const viewPayload = {
-          statusId: id.toString(),
-          authorId,
-          viewer: viewerData,
-          totalViewers: populated.viewers?.length || 0
-        };
-        io.emit('status:viewed', viewPayload);
-        io.to(authorId).emit('status:viewed', viewPayload);
-        io.to(`user:${authorId}`).emit('status:viewed', viewPayload);
-      }
+    if (newViewer) {
+      emitViewerUpdate(
+        req,
+        status,
+        getViewerPayload(req, newViewer),
+        populated.viewers?.length || 0
+      );
     }
 
     return res.json({
       success: true,
-      poll: populated.poll,
-      viewers: populated.viewers || [],
-      totalViewers: populated.viewers?.length || 0
+      poll: isOwner
+        ? populated.poll
+        : {
+            ...populated.poll,
+            options: populated.poll?.options?.map((opt) => ({
+              text: opt.text,
+              _id: opt._id,
+              voteCount: (opt.votes || []).length,
+              votes: (opt.votes || []).filter(
+                (v) => getId(v) === currentUserId.toString()
+              )
+            }))
+          },
+      viewers: isOwner ? (populated.viewers || []) : [],
+      totalViewers: isOwner ? (populated.viewers?.length || 0) : undefined
     });
   } catch (error) {
     console.error('[Status Poll Vote Error]', error);
-    return res.status(500).json({ success: false, message: 'Failed to cast vote on status poll.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to cast vote on status poll.'
+    });
   }
 };
 
-// @desc Close a status poll (Creator or admin only)
-// @route POST /api/status/:id/poll/close
+/* =========================================================
+   CLOSE STATUS POLL
+   POST /api/status/:id/poll/close
+========================================================= */
+
 const closeStatusPoll = async (req, res) => {
   try {
     const { id } = req.params;
     const currentUserId = req.user._id;
 
     const status = await Status.findById(id);
-    if (!status || !status.hasPoll || !status.poll) {
-      return res.status(404).json({ success: false, message: 'Status poll not found.' });
+
+    if (
+      !status ||
+      isExpired(status) ||
+      !status.hasPoll ||
+      !status.poll
+    ) {
+      return res.status(404).json({
+        success: false,
+        message: 'Status poll not found or expired.'
+      });
     }
 
-    const authorId = (status.user?._id || status.user).toString();
-    if (authorId !== currentUserId.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Only the creator can end this poll.' });
+    const authorId = getId(status.user);
+
+    if (
+      authorId !== currentUserId.toString() &&
+      req.user.role !== 'admin'
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the creator can end this poll.'
+      });
+    }
+
+    if (status.poll.isClosed) {
+      return res.json({
+        success: true,
+        poll: status.poll,
+        message: 'Poll is already closed.'
+      });
     }
 
     status.poll.isClosed = true;
     status.markModified('poll');
+
     await status.save();
 
-    const populated = await Status.findById(id)
-      .populate('user', 'username nickname avatar')
-      .populate('reactions.user', 'username nickname avatar')
-      .populate('viewers.user', 'username nickname avatar')
-      .populate('poll.options.votes', 'username nickname avatar')
-      .lean();
+    const populated = await populateStatus(id);
 
-    const io = req.app.get('io');
-    if (io) {
-      const pollPayload = {
-        statusId: id.toString(),
-        poll: populated.poll
-      };
-      io.emit('status:poll_voted', pollPayload);
-      io.to(authorId).emit('status:poll_voted', pollPayload);
-      io.to(`user:${authorId}`).emit('status:poll_voted', pollPayload);
+    if (!populated) {
+      return res.status(404).json({
+        success: false,
+        message: 'Status no longer exists.'
+      });
     }
+
+    emitStatusEvent(req, 'status:poll_voted', {
+      statusId: id.toString(),
+      authorId,
+      poll: populated.poll,
+      viewers: populated.viewers || [],
+      totalViewers: populated.viewers?.length || 0
+    });
+
+    emitStatusEvent(req, 'status:updated', {
+      statusId: id.toString(),
+      authorId,
+      status: populated
+    });
 
     return res.json({
       success: true,
@@ -545,33 +981,57 @@ const closeStatusPoll = async (req, res) => {
     });
   } catch (error) {
     console.error('[Close Status Poll Error]', error);
-    return res.status(500).json({ success: false, message: 'Failed to close status poll.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to close status poll.'
+    });
   }
 };
 
-// @desc Delete a status
-// @route DELETE /api/status/:id
+/* =========================================================
+   DELETE STATUS
+   DELETE /api/status/:id
+========================================================= */
+
 const deleteStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const currentUserId = req.user._id;
 
     const status = await Status.findById(id);
+
     if (!status) {
-      return res.status(404).json({ success: false, message: 'Status not found.' });
+      return res.status(404).json({
+        success: false,
+        message: 'Status not found.'
+      });
     }
 
-    const authorId = (status.user?._id || status.user).toString();
-    if (authorId !== currentUserId.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Not authorized to delete this status.' });
+    const authorId = getId(status.user);
+
+    if (
+      authorId !== currentUserId.toString() &&
+      req.user.role !== 'admin'
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to delete this status.'
+      });
     }
 
     await Status.findByIdAndDelete(id);
 
-    const io = req.app.get('io');
-    if (io) {
-      io.emit('status:deleted', { statusId: id, userId: status.user });
-    }
+    emitStatusEvent(req, 'status:deleted', {
+      statusId: id.toString(),
+      userId: authorId
+    });
+
+    emitStatusEvent(req, 'status:updated', {
+      statusId: id.toString(),
+      authorId,
+      deleted: true
+    });
 
     return res.json({
       success: true,
@@ -579,9 +1039,17 @@ const deleteStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('[Delete Status Error]', error);
-    return res.status(500).json({ success: false, message: 'Error deleting status.' });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Error deleting status.'
+    });
   }
 };
+
+/* =========================================================
+   EXPORTS
+========================================================= */
 
 module.exports = {
   createStatus,

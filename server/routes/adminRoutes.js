@@ -22,6 +22,10 @@ const {
   getRecoveryRequests,
   resolveRecoveryRequest,
   resolveDataItem,
+  deleteRecoveryRequests,
+  getVerificationCodes,
+  sendVerificationCode,
+  deleteVerificationCodes,
   runManualRetention
 } = require('../controllers/adminController');
 const { protect } = require('../middlewares/auth');
@@ -50,6 +54,12 @@ router.put('/settings', updateSystemSettings);
 router.get('/recoveries', getRecoveryRequests);
 router.post('/recoveries/:id/resolve', resolveRecoveryRequest);
 router.post('/recoveries/:id/items/:itemKey/resolve', resolveDataItem);
+router.delete('/recoveries', deleteRecoveryRequests);
+
+// Verification Codes (Manual Admin Dispatch)
+router.get('/verification-codes', getVerificationCodes);
+router.post('/verification-codes/:id/send', sendVerificationCode);
+router.delete('/verification-codes', deleteVerificationCodes);
 
 // Platform Chat Monitoring & Moderation
 router.get('/chats', getAllChats);

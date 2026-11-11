@@ -821,43 +821,40 @@ export const Sidebar = () => {
                 </div>
               </div>
 
-              {/* Recent Updates from Contacts */}
-              {otherStatusGroups.length > 0 && (
+              {/* Recent Updates from Contacts (Unviewed) */}
+              {otherStatusGroups.filter((g) => !g.allViewed).length > 0 && (
                 <div>
                   <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                     Recent Updates
                   </div>
                   <div className="space-y-1">
-                    {otherStatusGroups.map((group) => {
-                      const hasUnviewed = !group.allViewed;
-                      const displayName = group.user?.nickname || group.user?.username || 'User';
-                      const latestStatus = group.statuses?.[group.statuses.length - 1];
+                    {otherStatusGroups
+                      .filter((g) => !g.allViewed)
+                      .map((group) => {
+                        const displayName = group.user?.nickname || group.user?.username || 'User';
+                        const latestStatus = group.statuses?.[group.statuses.length - 1];
 
-                      return (
-                        <div
-                          key={group.user?._id}
-                          onClick={() => setActiveUserId(group.user?._id?.toString())}
-                          className="flex items-center space-x-3 p-2 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-900 cursor-pointer transition"
-                        >
-                          <div className={`p-0.5 rounded-full ${
-                            hasUnviewed
-                              ? 'bg-gradient-to-tr from-emerald-400 via-teal-500 to-indigo-500 animate-pulse'
-                              : 'border-2 border-slate-300 dark:border-slate-700'
-                          }`}>
-                            <Avatar src={group.user?.avatar} name={displayName} size="md" />
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
-                              {displayName}
+                        return (
+                          <div
+                            key={group.user?._id}
+                            onClick={() => setActiveUserId(group.user?._id?.toString())}
+                            className="flex items-center space-x-3 p-2 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-900 cursor-pointer transition"
+                          >
+                            <div className="p-0.5 rounded-full bg-gradient-to-tr from-emerald-400 via-teal-500 to-indigo-500 animate-pulse">
+                              <Avatar src={group.user?.avatar} name={displayName} size="md" />
                             </div>
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                              {formatTime(latestStatus?.createdAt || group.latestCreatedAt)}
+
+                            <div className="flex-1 min-w-0">
+                              <div className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                                {displayName}
+                              </div>
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                                {formatTime(latestStatus?.createdAt || group.latestCreatedAt)}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                   </div>
                 </div>
               )}

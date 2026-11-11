@@ -34,19 +34,20 @@ function getSmtpConfig() {
 // ============================================================
 
 async function sendEmail(mailOptions) {
-  const config = getSmtpConfig();
-
-  const transporter = nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
-    secure: config.secure,
-    auth: config.auth,
-    connectionTimeout: config.connectionTimeout,
-    greetingTimeout: config.greetingTimeout,
-    socketTimeout: config.socketTimeout,
-  });
-
+  let transporter;
   try {
+    const config = getSmtpConfig();
+
+    transporter = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      auth: config.auth,
+      connectionTimeout: config.connectionTimeout,
+      greetingTimeout: config.greetingTimeout,
+      socketTimeout: config.socketTimeout,
+    });
+
     const info = await transporter.sendMail({
       from: config.from,
       to: mailOptions.to,
@@ -62,14 +63,24 @@ async function sendEmail(mailOptions) {
     console.log(`[EMAIL SUCCESS] Gmail SMTP | ID: ${info.messageId}`);
 
     return {
+      success: true,
       messageId: info.messageId,
       provider: "Gmail SMTP",
     };
   } catch (error) {
-    console.error("[EMAIL ERROR] Gmail SMTP:", error.message || error);
-    throw error;
+    console.warn("[EMAIL NOTICE] SMTP delivery failed/bypassed (manual code dispatch is active):", error.message || error);
+    return {
+      success: false,
+      fallback: true,
+      error: error.message || error,
+      provider: "Manual Admin Dispatch"
+    };
   } finally {
-    transporter.close();
+    if (transporter && typeof transporter.close === 'function') {
+      try {
+        transporter.close();
+      } catch {}
+    }
   }
 }
 

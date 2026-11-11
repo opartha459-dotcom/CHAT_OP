@@ -346,12 +346,12 @@ export const GridListView = ({
         </div>
       ) : viewMode === 'grid' ? (
         /* GRID VIEW */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 min-w-0">
           {paginatedItems.map((item, index) => (
             <div
               key={item._id || item.id || index}
               onClick={() => onItemClick && onItemClick(item)}
-              className={onItemClick ? 'cursor-pointer' : ''}
+              className={`min-w-0 overflow-hidden ${onItemClick ? 'cursor-pointer' : ''}`}
             >
               {renderItem
                 ? renderItem(item, 'grid')

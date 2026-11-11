@@ -1,151 +1,187 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { CheckCircle2, AlertTriangle, Loader2, ArrowRight, Mail, Send, RefreshCw } from 'lucide-react';
+import {
+  CheckCircle2,
+  AlertTriangle,
+  Loader2,
+  ArrowRight,
+  KeyRound,
+  Copy,
+  Check,
+  ShieldCheck
+} from 'lucide-react';
 import { PulseLogo } from '../components/common/PulseLogo';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 
 export const VerifyEmailPage = () => {
   const [searchParams] = useSearchParams();
-  const token     = searchParams.get('token');
-  const urlEmail  = searchParams.get('email') || '';
-  const isWaiting = searchParams.get('waiting') === 'true' || searchParams.get('sent') === 'true';
+  const token = searchParams.get('token');
+  const urlEmail = searchParams.get('email') || '';
 
   const navigate = useNavigate();
   const { resendVerification } = useAuth();
+  const { incomingCode, watchEmail } = useSocket();
 
-  // ── Core state ──────────────────────────────────────────────────────────────
-  // status: 'verifying' | 'success' | 'waiting' | 'error' | 'prompt'
-  const [status, setStatus]           = useState(token ? 'verifying' : isWaiting ? 'waiting' : 'prompt');
-  const [errorMessage, setErrorMessage] = useState('');
+  const [email, setEmail] = useState(urlEmail);
+  const [code, setCode] = useState('');
+  const [status, setStatus] = useState(token ? 'verifying' : 'ready'); // 'verifying' | 'success' | 'ready'
+  const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState({ text: '', type: '' });
+  const [copied, setCopied] = useState(false);
+  const [redirectIn, setRedirectIn] = useState(4);
 
-  // Track email resend
-  const [resendEmail, setResendEmail]   = useState(urlEmail);
-  const [resendLoading, setResendLoading] = useState(false);
-  const [resendError, setResendError]   = useState('');
-  const [emailSent, setEmailSent]       = useState(false);   // ← the tracking variable
-  const [sentToEmail, setSentToEmail]   = useState('');      // which address was it sent to
+  // Watch socket room for this email
+  useEffect(() => {
+    if (email) {
+      watchEmail(email);
+    }
+  }, [email, watchEmail]);
 
-  // Cooldown timer
-  const [cooldown, setCooldown]         = useState(0);
-  const cooldownRef                     = useRef(null);
+  // If incomingCode matches email or this page is waiting, auto-fill code!
+  useEffect(() => {
+    if (incomingCode?.code && (!incomingCode.action || incomingCode.action === 'email_verification')) {
+      setCode(incomingCode.code);
+      if (incomingCode.email && !email) {
+        setEmail(incomingCode.email);
+      }
+      setFeedback({
+        type: 'success',
+        text: `Admin dispatched your code: ${incomingCode.code}. Click "Verify Account" below!`
+      });
+    }
+  }, [incomingCode]);
 
-  // Auto-redirect countdown after success
-  const [redirectIn, setRedirectIn]     = useState(5);
-
-  // ── Auto-verify when token in URL ──────────────────────────────────────────
+  // Auto-verify if token is present in URL
   useEffect(() => {
     if (!token) return;
 
     const verify = async () => {
+      setStatus('verifying');
       try {
-        const res  = await fetch('/api/auth/verify-email', {
-          method:  'POST',
+        const res = await fetch('/api/auth/verify-email', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ token })
+          body: JSON.stringify({ token })
         });
         const data = await res.json();
 
         if (res.ok && data.success) {
           setStatus('success');
-        } else if (data.expired) {
-          // Backend auto-sent a new email OR token was cleared — tell user
-          setEmailSent(true);
-          setSentToEmail(data.email || urlEmail);
-          setErrorMessage(data.message || 'Link expired. A fresh verification email has been sent.');
-          setStatus('error');
         } else {
-          setStatus('error');
-          setErrorMessage(data.message || 'Verification link is invalid or has expired.');
+          setStatus('ready');
+          setFeedback({
+            type: 'error',
+            text: data.message || 'Verification link is invalid or has expired.'
+          });
         }
       } catch {
-        setStatus('error');
-        setErrorMessage('Network error. Please check your connection and try again.');
+        setStatus('ready');
+        setFeedback({ type: 'error', text: 'Network connection failed. Please try again.' });
       }
     };
 
     verify();
-  }, [token, urlEmail]);
+  }, [token]);
 
-  // ── Auto-redirect to /login after success ──────────────────────────────────
+  // Countdown redirect on success
   useEffect(() => {
     if (status !== 'success') return;
     const interval = setInterval(() => {
-      setRedirectIn(prev => {
-        if (prev <= 1) { clearInterval(interval); navigate('/login', { replace: true }); return 0; }
+      setRedirectIn((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          navigate('/login', { replace: true });
+          return 0;
+        }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(interval);
   }, [status, navigate]);
 
-  // ── Cooldown helper ────────────────────────────────────────────────────────
-  const startCooldown = () => {
-    setCooldown(60);
-    clearInterval(cooldownRef.current);
-    cooldownRef.current = setInterval(() => {
-      setCooldown(prev => {
-        if (prev <= 1) { clearInterval(cooldownRef.current); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  // ── Handle resend ──────────────────────────────────────────────────────────
-  const handleResend = async (e) => {
+  // Submit manual code verification
+  const handleVerifyCode = async (e) => {
     e?.preventDefault();
-    const addr = resendEmail.trim();
-    if (!addr) return;
+    const cleanCode = code.trim();
+    if (!cleanCode) {
+      setFeedback({ type: 'error', text: 'Please enter the verification code.' });
+      return;
+    }
 
-    setResendLoading(true);
-    setResendError('');
+    setLoading(true);
+    setFeedback({ text: '', type: '' });
 
     try {
-      await resendVerification(addr);
-      // ✅ Mark email as sent — this drives the success view
-      setEmailSent(true);
-      setSentToEmail(addr);
-      startCooldown();
-    } catch (err) {
-      setResendError(err.message || 'Failed to send email. Please try again.');
+      const res = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: cleanCode,
+          email: email.trim().toLowerCase()
+        })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setStatus('success');
+      } else {
+        setFeedback({
+          type: 'error',
+          text: data.message || 'Invalid or expired verification code.'
+        });
+      }
+    } catch {
+      setFeedback({ type: 'error', text: 'Network error. Please try again.' });
     } finally {
-      setResendLoading(false);
+      setLoading(false);
     }
   };
 
-  // ── Resend form (shared between error + prompt states) ────────────────────
-  const ResendForm = () => (
-    <form onSubmit={handleResend} className="space-y-2.5 pt-1 text-left">
-      <div>
-        <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-          Email Address
-        </label>
-        <input
-          type="email"
-          required
-          placeholder="your.email@example.com"
-          value={resendEmail}
-          onChange={e => setResendEmail(e.target.value)}
-          className="w-full px-3.5 py-2.5 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-      </div>
+  // Request fresh code from admin
+  const handleRequestCode = async () => {
+    if (!email.trim()) {
+      setFeedback({ type: 'error', text: 'Please enter your registered email address first.' });
+      return;
+    }
 
-      {resendError && (
-        <p className="text-[11px] text-rose-400 font-medium">{resendError}</p>
-      )}
+    setLoading(true);
+    setFeedback({ text: '', type: '' });
 
-      <button
-        type="submit"
-        disabled={resendLoading || cooldown > 0 || !resendEmail}
-        className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer shadow-md"
-      >
-        {resendLoading
-          ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Sending...</span></>
-          : cooldown > 0
-          ? <><RefreshCw className="w-3.5 h-3.5" /><span>Resend in {cooldown}s</span></>
-          : <><Send className="w-3.5 h-3.5" /><span>Send Verification Link</span></>}
-      </button>
-    </form>
-  );
+    try {
+      const res = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        watchEmail(email.trim().toLowerCase());
+        setFeedback({
+          type: 'success',
+          text: 'Request sent to admin! The admin will send your code shortly.'
+        });
+      } else {
+        setFeedback({
+          type: 'error',
+          text: data.message || 'Could not request code. Please check your email.'
+        });
+      }
+    } catch {
+      setFeedback({ type: 'error', text: 'Network error requesting code.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopyCode = () => {
+    if (incomingCode?.code) {
+      navigator.clipboard.writeText(incomingCode.code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-center items-center p-4 font-sans select-none relative overflow-hidden">
@@ -153,28 +189,26 @@ export const VerifyEmailPage = () => {
 
       <div className="w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-3xl p-8 text-center space-y-5 shadow-2xl relative z-10 backdrop-blur-xl">
         <div className="flex justify-center">
-          <PulseLogo size="md" animated={status === 'verifying'} />
+          <PulseLogo size="md" animated={status === 'verifying' || loading} />
         </div>
 
-        {/* ── VERIFYING ──────────────────────────────────────────────────────── */}
         {status === 'verifying' && (
           <div className="space-y-3">
             <Loader2 className="w-8 h-8 text-indigo-400 animate-spin mx-auto" />
-            <h2 className="text-lg font-bold">Verifying Email...</h2>
-            <p className="text-xs text-slate-400">Confirming your link, please wait.</p>
+            <h2 className="text-lg font-bold">Verifying Code...</h2>
+            <p className="text-xs text-slate-400">Confirming your verification code, please wait.</p>
           </div>
         )}
 
-        {/* ── SUCCESS ────────────────────────────────────────────────────────── */}
         {status === 'success' && (
           <div className="space-y-4 animate-in fade-in">
             <div className="w-14 h-14 rounded-full bg-emerald-950/80 border border-emerald-800 flex items-center justify-center text-emerald-400 mx-auto shadow-lg">
               <CheckCircle2 className="w-7 h-7" />
             </div>
             <h2 className="text-xl font-bold text-emerald-300">Email Verified!</h2>
-            <p className="text-xs text-slate-300">Your account is now fully activated. Welcome to PulseChat!</p>
+            <p className="text-xs text-slate-300">Your account is fully activated. Welcome to PulseChat!</p>
             <p className="text-[11px] text-slate-500">
-              Redirecting to Sign In in <span className="font-semibold text-white">{redirectIn}s</span>…
+              Redirecting to Sign In in <span className="font-semibold text-white">{redirectIn}s</span>...
             </p>
             <Link
               to="/login"
@@ -186,116 +220,110 @@ export const VerifyEmailPage = () => {
           </div>
         )}
 
-        {/* ── EMAIL SENT SUCCESS ─────────────────────────────────────────────── */}
-        {/* This shows whenever emailSent === true, regardless of current status */}
-        {emailSent && status !== 'success' && (
-          <div className="space-y-4 animate-in fade-in">
-            <div className="w-14 h-14 rounded-full bg-emerald-950/80 border border-emerald-800 flex items-center justify-center text-emerald-400 mx-auto shadow-lg">
-              <Mail className="w-7 h-7" />
-            </div>
-            <h2 className="text-xl font-bold text-white">Check Your Inbox!</h2>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              A fresh verification link was sent to{' '}
-              <span className="font-bold text-indigo-300">{sentToEmail || 'your email'}</span>.
-              <br />Click the link inside to activate your account.
-            </p>
-
-            <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-[11px] text-emerald-300 font-medium">
-              ✅ Email dispatched successfully
+        {status === 'ready' && (
+          <div className="space-y-5 text-left">
+            <div className="text-center space-y-1">
+              <h2 className="text-xl font-bold text-white tracking-tight">Verify Your Account</h2>
+              <p className="text-xs text-slate-400">
+                Enter your registered email and the verification code sent by the admin.
+              </p>
             </div>
 
-            <p className="text-[11px] text-slate-500">
-              Not in inbox? Check your <span className="text-slate-300">spam / junk</span> folder.
-            </p>
+            {/* Live Incoming Code Box from Admin */}
+            {incomingCode?.code && (
+              <div className="p-4 bg-indigo-950/60 border-2 border-indigo-500/60 rounded-2xl space-y-2 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5 text-indigo-400 text-xs font-bold">
+                    <KeyRound className="w-4 h-4" />
+                    <span>Admin Dispatched Code</span>
+                  </div>
+                  <button
+                    onClick={handleCopyCode}
+                    className="text-[11px] px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg flex items-center space-x-1 font-semibold transition cursor-pointer"
+                  >
+                    {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copied ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+                <div className="text-2xl font-mono font-black text-white tracking-widest text-center py-1 bg-slate-950/80 rounded-xl border border-indigo-500/30">
+                  {incomingCode.code}
+                </div>
+                <p className="text-[10px] text-slate-400 text-center">
+                  Click 'Verify Account' below to complete activation.
+                </p>
+              </div>
+            )}
 
-            <div className="pt-1 space-y-2">
-              {/* Allow resend again after cooldown */}
+            {feedback.text && (
+              <div
+                className={`p-3 rounded-2xl text-xs flex items-center space-x-2 border ${
+                  feedback.type === 'success'
+                    ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300'
+                    : 'bg-rose-950/60 border-rose-800 text-rose-300'
+                }`}
+              >
+                {feedback.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                )}
+                <span>{feedback.text}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleVerifyCode} className="space-y-3.5">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Registered Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="your.email@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    6-Digit Verification Code
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleRequestCode}
+                    disabled={loading}
+                    className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer"
+                  >
+                    Request / Resend Code
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  required
+                  maxLength={10}
+                  placeholder="e.g. 123456"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="w-full px-3.5 py-3 text-center tracking-widest font-mono font-bold text-lg bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
               <button
-                type="button"
-                disabled={cooldown > 0}
-                onClick={() => { setEmailSent(false); setResendError(''); }}
-                className="w-full py-2 px-4 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 font-semibold text-xs rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer"
+                type="submit"
+                disabled={loading || !code.trim()}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-indigo-600/30"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>{cooldown > 0 ? `Resend available in ${cooldown}s` : "Didn't receive it? Resend"}</span>
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                <span>Verify Account</span>
               </button>
-              <Link
-                to="/login"
-                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition flex items-center justify-center text-xs"
-              >
-                Back to Sign In
-              </Link>
-            </div>
-          </div>
-        )}
+            </form>
 
-        {/* ── WAITING (came from register/login resend) ───────────────────── */}
-        {status === 'waiting' && !emailSent && (
-          <div className="space-y-4 animate-in fade-in">
-            <div className="w-14 h-14 rounded-full bg-indigo-950/80 border border-indigo-800 flex items-center justify-center text-indigo-400 mx-auto shadow-lg">
-              <Mail className="w-7 h-7" />
-            </div>
-            <h2 className="text-xl font-bold text-white">Check Your Inbox</h2>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              A verification link was sent to{' '}
-              <span className="font-bold text-white">{urlEmail || 'your email'}</span>.
-            </p>
-            <p className="text-[11px] text-slate-500">Didn't get it? Check spam or resend below.</p>
-
-            <div className="pt-2 space-y-2.5">
-              <button
-                type="button"
-                disabled={resendLoading || cooldown > 0 || !resendEmail}
-                onClick={handleResend}
-                className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-semibold text-xs rounded-xl transition flex items-center justify-center space-x-2"
-              >
-                {resendLoading
-                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Resending...</span></>
-                  : cooldown > 0
-                  ? <><RefreshCw className="w-3.5 h-3.5" /><span>Resend in {cooldown}s</span></>
-                  : <><Send className="w-3.5 h-3.5" /><span>Resend Verification Email</span></>}
-              </button>
-              <Link to="/login" className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition flex items-center justify-center text-xs">
-                Back to Sign In
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {/* ── ERROR (link invalid/expired) — show resend form ────────────── */}
-        {status === 'error' && !emailSent && (
-          <div className="space-y-4 animate-in fade-in">
-            <div className="w-14 h-14 rounded-full bg-rose-950/80 border border-rose-800 flex items-center justify-center text-rose-400 mx-auto shadow-lg">
-              <AlertTriangle className="w-7 h-7" />
-            </div>
-            <h2 className="text-xl font-bold text-rose-300">Link Expired</h2>
-            <p className="text-xs text-slate-400 leading-relaxed">{errorMessage}</p>
-            <p className="text-[11px] text-slate-500">Enter your email to receive a brand-new verification link.</p>
-
-            <ResendForm />
-
-            <div className="pt-1 border-t border-slate-800/80">
+            <div className="pt-2 text-center border-t border-slate-800/80">
               <Link to="/login" className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold hover:underline">
-                Return to Login
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {/* ── PROMPT (no token, no waiting param) ───────────────────────── */}
-        {status === 'prompt' && !emailSent && (
-          <div className="space-y-4 animate-in fade-in">
-            <div className="w-14 h-14 rounded-full bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400 mx-auto">
-              <Mail className="w-7 h-7" />
-            </div>
-            <h2 className="text-xl font-bold text-white">Verify Your Email</h2>
-            <p className="text-xs text-slate-400">Enter your email to receive a verification link.</p>
-
-            <ResendForm />
-
-            <div className="pt-1 border-t border-slate-800/80">
-              <Link to="/login" className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold hover:underline">
-                Return to Login
+                Return to Sign In
               </Link>
             </div>
           </div>

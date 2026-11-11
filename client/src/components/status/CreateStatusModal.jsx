@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   Type,
@@ -17,8 +18,7 @@ import {
   Search,
   Lock,
   UserX,
-  ChevronRight,
-  Shield
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -41,7 +41,7 @@ const FONTS = [
 
 export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
   const { user: currentUser, token } = useAuth();
-  const { conversations, authHeaders } = useChat();
+  const { conversations } = useChat();
 
   const [text, setText] = useState('');
   const [bgIndex, setBgIndex] = useState(0);
@@ -51,97 +51,149 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Status Poll State
   const [hasPoll, setHasPoll] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
 
-  // Privacy / Custom Contact List State
-  // audience: 'everyone' | 'contacts' | 'custom'
-  const [audience, setAudience] = useState('everyone');
-  const [allowedUsers, setAllowedUsers] = useState([]); // Array of user objects for "Only Share With..."
-  const [excludedUsers, setExcludedUsers] = useState([]); // Array of user objects for "My Contacts Except..."
+  const [audience, setAudience] = useState(currentUser?.privacySettings?.statusAudience || 'everyone');
+  const [allowedUsers, setAllowedUsers] = useState([]);
+  const [excludedUsers, setExcludedUsers] = useState([]);
   const [privacySheetOpen, setPrivacySheetOpen] = useState(false);
-  const [contactPickerMode, setContactPickerMode] = useState(null); // 'allowed' | 'excluded' | null
+  const [contactPickerMode, setContactPickerMode] = useState(null);
   const [contactSearchQuery, setContactSearchQuery] = useState('');
   const [searchedUsers, setSearchedUsers] = useState([]);
   const [searchingContacts, setSearchingContacts] = useState(false);
 
-  // Extract known contacts from existing conversations
+  const publishInFlightRef = useRef(false);
+
   const knownContacts = useMemo(() => {
     const map = new Map();
-    (conversations || []).forEach((c) => {
-      if (c.type === 'direct' && c.otherUser) {
-        map.set(c.otherUser._id?.toString(), c.otherUser);
-      } else if (c.type === 'group' && Array.isArray(c.participants)) {
-        c.participants.forEach((p) => {
-          if (p && p._id && p._id.toString() !== currentUser?._id?.toString()) {
-            map.set(p._id.toString(), p);
+
+    (conversations || []).forEach((conversation) => {
+      if (conversation.type === 'direct' && conversation.otherUser?._id) {
+        map.set(conversation.otherUser._id.toString(), conversation.otherUser);
+      } else if (conversation.type === 'group' && Array.isArray(conversation.participants)) {
+        conversation.participants.forEach((participant) => {
+          if (
+            participant?._id &&
+            participant._id.toString() !== currentUser?._id?.toString()
+          ) {
+            map.set(participant._id.toString(), participant);
           }
         });
       }
     });
+
     return Array.from(map.values());
   }, [conversations, currentUser?._id]);
 
-  // Search users remotely if user types in contact search
+  // Debounced contact search with cancellation of outdated requests.
   useEffect(() => {
-    if (!contactPickerMode || !contactSearchQuery.trim() || contactSearchQuery.trim().length < 2) {
+    const query = contactSearchQuery.trim();
+
+    if (!isOpen || !contactPickerMode || query.length < 2) {
       setSearchedUsers([]);
       setSearchingContacts(false);
-      return;
+      return undefined;
     }
+
+    const controller = new AbortController();
 
     const timer = setTimeout(async () => {
       setSearchingContacts(true);
+
       try {
-        const res = await fetch(`/api/users/search?query=${encodeURIComponent(contactSearchQuery.trim())}`, {
-          headers: authHeaders(),
-          credentials: 'include'
-        });
+        const res = await fetch(
+          `/api/users/search?query=${encodeURIComponent(query)}`,
+          {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            credentials: 'include',
+            signal: controller.signal
+          }
+        );
+
         const data = await res.json();
-        if (data.success && Array.isArray(data.users)) {
+
+        if (res.ok && data.success && Array.isArray(data.users)) {
           setSearchedUsers(data.users);
+        } else if (!controller.signal.aborted) {
+          setSearchedUsers([]);
         }
       } catch (err) {
-        console.error('Contact search error:', err);
+        if (err.name !== 'AbortError') {
+          console.error('Contact search error:', err);
+        }
       } finally {
-        setSearchingContacts(false);
+        if (!controller.signal.aborted) {
+          setSearchingContacts(false);
+        }
       }
-    }, 250);
+    }, 300);
 
-    return () => clearTimeout(timer);
-  }, [contactPickerMode, contactSearchQuery, authHeaders]);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [isOpen, contactPickerMode, contactSearchQuery, token]);
 
-  // Contacts list combined with search results
+  // Reset the composer and load the saved default audience when opened.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setAudience(currentUser?.privacySettings?.statusAudience || 'everyone');
+    setText('');
+    setHasPoll(false);
+    setPollQuestion('');
+    setPollOptions(['', '']);
+    setError('');
+    setBgIndex(0);
+    setFontIndex(0);
+    setIsBold(false);
+    setIsItalic(false);
+    setAllowedUsers([]);
+    setExcludedUsers([]);
+    setPrivacySheetOpen(false);
+    setContactPickerMode(null);
+    setContactSearchQuery('');
+    setSearchedUsers([]);
+    publishInFlightRef.current = false;
+  }, [isOpen, currentUser?.privacySettings?.statusAudience]);
+
   const displayedContacts = useMemo(() => {
     const list = [...knownContacts];
-    searchedUsers.forEach((su) => {
-      if (!list.some((k) => (k._id || k).toString() === (su._id || su).toString())) {
-        list.push(su);
+
+    searchedUsers.forEach((searchedUser) => {
+      const searchedId = (searchedUser._id || searchedUser).toString();
+
+      if (!list.some((contact) => (contact._id || contact).toString() === searchedId)) {
+        list.push(searchedUser);
       }
     });
+
     if (!contactSearchQuery.trim()) return list;
-    const q = contactSearchQuery.toLowerCase();
+
+    const query = contactSearchQuery.trim().toLowerCase();
+
     return list.filter(
-      (c) =>
-        c.nickname?.toLowerCase().includes(q) ||
-        c.username?.toLowerCase().includes(q)
+      (contact) =>
+        contact.nickname?.toLowerCase().includes(query) ||
+        contact.username?.toLowerCase().includes(query)
     );
   }, [knownContacts, searchedUsers, contactSearchQuery]);
 
-  // Privacy summary label
   const privacyLabel = useMemo(() => {
     if (audience === 'everyone') return 'Status (24h) · Everyone';
+
     if (audience === 'contacts') {
-      if (excludedUsers.length > 0) {
-        return `Contacts (${excludedUsers.length} excluded)`;
-      }
-      return 'Status (24h) · My Contacts';
+      return excludedUsers.length > 0
+        ? `Contacts (${excludedUsers.length} excluded)`
+        : 'Status (24h) · My Contacts';
     }
+
     if (audience === 'custom') {
       return `Only with (${allowedUsers.length} selected)`;
     }
+
     return 'Status (24h)';
   }, [audience, allowedUsers.length, excludedUsers.length]);
 
@@ -164,40 +216,38 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
     }
   };
 
-  const handleRemovePollOption = (idx) => {
+  const handleRemovePollOption = (index) => {
     if (pollOptions.length > 2) {
-      setPollOptions((prev) => prev.filter((_, i) => i !== idx));
+      setPollOptions((prev) => prev.filter((_, i) => i !== index));
     }
   };
 
-  const handlePollOptionChange = (idx, value) => {
+  const handlePollOptionChange = (index, value) => {
     setPollOptions((prev) => {
-      const copy = [...prev];
-      copy[idx] = value;
-      return copy;
+      const updated = [...prev];
+      updated[index] = value;
+      return updated;
     });
   };
 
-  // Toggle user selection in allowed or excluded list
   const toggleContactSelection = (userObj) => {
     const userId = (userObj._id || userObj).toString();
+
     if (contactPickerMode === 'allowed') {
       setAllowedUsers((prev) => {
-        const exists = prev.some((u) => (u._id || u).toString() === userId);
-        if (exists) {
-          return prev.filter((u) => (u._id || u).toString() !== userId);
-        } else {
-          return [...prev, userObj];
-        }
+        const exists = prev.some((user) => (user._id || user).toString() === userId);
+
+        return exists
+          ? prev.filter((user) => (user._id || user).toString() !== userId)
+          : [...prev, userObj];
       });
     } else if (contactPickerMode === 'excluded') {
       setExcludedUsers((prev) => {
-        const exists = prev.some((u) => (u._id || u).toString() === userId);
-        if (exists) {
-          return prev.filter((u) => (u._id || u).toString() !== userId);
-        } else {
-          return [...prev, userObj];
-        }
+        const exists = prev.some((user) => (user._id || user).toString() === userId);
+
+        return exists
+          ? prev.filter((user) => (user._id || user).toString() !== userId)
+          : [...prev, userObj];
       });
     }
   };
@@ -205,51 +255,77 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
   const handlePublish = async (e) => {
     e.preventDefault();
 
-    if (!hasPoll && !text.trim()) {
+    if (publishInFlightRef.current || loading) return;
+
+    const cleanText = text.trim();
+    const cleanQuestion = pollQuestion.trim();
+    const cleanOptions = pollOptions
+      .map((option) => option.trim())
+      .filter(Boolean);
+
+    if (!hasPoll && !cleanText) {
       setError('Please type your status message.');
       return;
     }
 
-    if (hasPoll) {
-      if (!pollQuestion.trim()) {
-        setError('Please enter your poll question.');
-        return;
-      }
-      const validOpts = pollOptions.map((o) => o.trim()).filter(Boolean);
-      if (validOpts.length < 2) {
-        setError('Please provide at least 2 poll options.');
-        return;
-      }
-    }
-
-    if (audience === 'custom' && allowedUsers.length === 0) {
-      setError('Please select at least 1 contact for "Only Share With".');
+    if (hasPoll && !cleanQuestion) {
+      setError('Please enter your poll question.');
       return;
     }
 
+    if (hasPoll && (cleanOptions.length < 2 || cleanOptions.length > 4)) {
+      setError('A poll must contain between 2 and 4 non-empty options.');
+      return;
+    }
+
+    if (
+      hasPoll &&
+      new Set(cleanOptions.map((option) => option.toLowerCase())).size !== cleanOptions.length
+    ) {
+      setError('Poll options must be unique.');
+      return;
+    }
+
+    if (audience === 'custom' && allowedUsers.length === 0) {
+      setError('Select at least one contact for Only Share With.');
+      return;
+    }
+
+    publishInFlightRef.current = true;
     setLoading(true);
     setError('');
+
     try {
       const payload = {
         type: 'text',
-        text: text.trim(),
+        text: cleanText,
         style: {
           background: currentBg.style,
           font: currentFont.id,
-          textColor: '#ffffff'
+          textColor: '#ffffff',
+          bold: isBold,
+          italic: isItalic
         },
         privacy: {
           audience,
-          allowedUsers: audience === 'custom' ? allowedUsers.map((u) => u._id || u) : [],
-          excludedUsers: audience === 'contacts' ? excludedUsers.map((u) => u._id || u) : []
+          allowedUsers:
+            audience === 'custom'
+              ? allowedUsers.map((user) => (user._id || user).toString())
+              : [],
+          excludedUsers:
+            audience === 'contacts'
+              ? excludedUsers.map((user) => (user._id || user).toString())
+              : []
         },
         hasPoll,
-        poll: hasPoll
+        ...(hasPoll
           ? {
-              question: pollQuestion.trim(),
-              options: pollOptions.map((o) => o.trim()).filter(Boolean)
+            poll: {
+              question: cleanQuestion,
+              options: cleanOptions
             }
-          : undefined
+          }
+          : {})
       };
 
       const res = await fetch('/api/status', {
@@ -262,20 +338,34 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
         body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
-      if (data.success) {
-        setText('');
-        setHasPoll(false);
-        setPollQuestion('');
-        setPollOptions(['', '']);
-        if (onStatusCreated) onStatusCreated(data.status);
-        onClose();
-      } else {
-        setError(data.message || 'Failed to publish status');
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.success) {
+        setError(data.message || `Failed to publish status (${res.status}).`);
+        return;
       }
+
+      if (onStatusCreated) {
+        await onStatusCreated(data.status);
+      }
+
+      setText('');
+      setHasPoll(false);
+      setPollQuestion('');
+      setPollOptions(['', '']);
+      setAllowedUsers([]);
+      setExcludedUsers([]);
+      setPrivacySheetOpen(false);
+      setContactPickerMode(null);
+      setContactSearchQuery('');
+      setSearchedUsers([]);
+
+      onClose();
     } catch (err) {
-      setError('Network error publishing status');
+      console.error('Publish status error:', err);
+      setError('Network error publishing status. Please try again.');
     } finally {
+      publishInFlightRef.current = false;
       setLoading(false);
     }
   };
@@ -286,7 +376,6 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
         className="w-full sm:max-w-md h-full sm:h-[640px] sm:rounded-3xl overflow-hidden shadow-2xl relative flex flex-col justify-between p-5 transition-all duration-300"
         style={{ background: currentBg.style }}
       >
-        {/* Top Controls Bar */}
         <div className="flex items-center justify-between text-white relative z-20">
           <button
             type="button"
@@ -298,7 +387,6 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           </button>
 
           <div className="flex items-center space-x-1.5 bg-black/35 backdrop-blur-md px-2 py-1 rounded-2xl border border-white/20 shadow-md">
-            {/* Background switcher */}
             <button
               type="button"
               onClick={cycleBackground}
@@ -308,7 +396,6 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
               <Palette className="w-4 h-4" />
             </button>
 
-            {/* Font switcher */}
             <button
               type="button"
               onClick={cycleFont}
@@ -318,37 +405,31 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
               <Type className="w-4 h-4" />
             </button>
 
-            {/* Bold Toggle */}
             <button
               type="button"
-              onClick={() => setIsBold(!isBold)}
-              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer ${
-                isBold ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
-              }`}
+              onClick={() => setIsBold((prev) => !prev)}
+              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer ${isBold ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
+                }`}
               title="Toggle Bold"
             >
               <Bold className="w-4 h-4" />
             </button>
 
-            {/* Italic Toggle */}
             <button
               type="button"
-              onClick={() => setIsItalic(!isItalic)}
-              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer ${
-                isItalic ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
-              }`}
+              onClick={() => setIsItalic((prev) => !prev)}
+              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer ${isItalic ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
+                }`}
               title="Toggle Italic"
             >
               <Italic className="w-4 h-4" />
             </button>
 
-            {/* Poll Toggle */}
             <button
               type="button"
-              onClick={() => setHasPoll(!hasPoll)}
-              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer flex items-center space-x-1 ${
-                hasPoll ? 'bg-purple-500 text-white font-bold' : 'hover:bg-white/20 text-white'
-              }`}
+              onClick={() => setHasPoll((prev) => !prev)}
+              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer flex items-center space-x-1 ${hasPoll ? 'bg-purple-500 text-white font-bold' : 'hover:bg-white/20 text-white'
+                }`}
               title={hasPoll ? 'Remove Poll' : 'Add Poll to Status'}
             >
               <Vote className="w-4 h-4" />
@@ -356,7 +437,6 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           </div>
         </div>
 
-        {/* Center Live Editor */}
         <div className="flex-1 flex flex-col items-center justify-center my-3 relative z-10 overflow-y-auto no-scrollbar">
           {error && (
             <div className="mb-2 px-3 py-1.5 bg-rose-900/80 text-rose-200 text-xs rounded-xl flex items-center space-x-1.5 border border-rose-700 shadow-sm animate-in shake">
@@ -365,7 +445,6 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
             </div>
           )}
 
-          {/* Status Message Text */}
           <textarea
             autoFocus={!hasPoll}
             maxLength={700}
@@ -373,14 +452,11 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
             placeholder={hasPoll ? 'Add a caption for your poll...' : 'Type a status update...'}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            className={`w-full bg-transparent text-white placeholder-white/60 text-center ${
-              hasPoll ? 'text-lg' : 'text-xl sm:text-2xl'
-            } outline-none resize-none leading-relaxed transition-all duration-200 ${
-              currentFont.class
-            } ${isBold ? 'font-bold' : 'font-normal'} ${isItalic ? 'italic' : 'not-italic'}`}
+            className={`w-full bg-transparent text-white placeholder-white/60 text-center ${hasPoll ? 'text-lg' : 'text-xl sm:text-2xl'
+              } outline-none resize-none leading-relaxed transition-all duration-200 ${currentFont.class
+              } ${isBold ? 'font-bold' : 'font-normal'} ${isItalic ? 'italic' : 'not-italic'}`}
           />
 
-          {/* Embedded Poll Builder Widget */}
           {hasPoll && (
             <div className="w-full mt-3 p-3.5 bg-black/45 backdrop-blur-md rounded-2xl border border-white/20 space-y-2.5 animate-in fade-in zoom-in-95 shadow-xl">
               <div className="flex items-center space-x-1.5 text-xs font-bold text-white/90">
@@ -397,19 +473,19 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
               />
 
               <div className="space-y-1.5">
-                {pollOptions.map((opt, idx) => (
-                  <div key={idx} className="flex items-center space-x-1.5">
+                {pollOptions.map((option, index) => (
+                  <div key={index} className="flex items-center space-x-1.5">
                     <input
                       type="text"
-                      placeholder={`Option ${idx + 1}`}
-                      value={opt}
-                      onChange={(e) => handlePollOptionChange(idx, e.target.value)}
+                      placeholder={`Option ${index + 1}`}
+                      value={option}
+                      onChange={(e) => handlePollOptionChange(index, e.target.value)}
                       className="flex-1 px-3 py-1.5 bg-white/10 text-white placeholder-white/50 text-xs rounded-xl border border-white/20 outline-none focus:border-white/50"
                     />
                     {pollOptions.length > 2 && (
                       <button
                         type="button"
-                        onClick={() => handleRemovePollOption(idx)}
+                        onClick={() => handleRemovePollOption(index)}
                         className="p-1.5 text-rose-300 hover:text-rose-100 hover:bg-white/10 rounded-lg cursor-pointer"
                         title="Remove option"
                       >
@@ -438,9 +514,7 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           </span>
         </div>
 
-        {/* Bottom Bar: Privacy Selector & Share Button */}
         <div className="flex items-center justify-between pt-3 border-t border-white/15 relative z-20 select-none">
-          {/* Custom Audience Selection Button */}
           <button
             type="button"
             onClick={() => setPrivacySheetOpen(true)}
@@ -456,7 +530,6 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
             <span className="truncate max-w-[170px]">{privacyLabel}</span>
           </button>
 
-          {/* Send / Publish button */}
           <button
             type="button"
             onClick={handlePublish}
@@ -468,7 +541,6 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           </button>
         </div>
 
-        {/* Status Privacy Modal Sheet */}
         {privacySheetOpen && (
           <div
             onClick={(e) => e.stopPropagation()}
@@ -489,16 +561,14 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
                 </button>
               </div>
 
-              {/* Privacy Choices List (WhatsApp Style) */}
               <div className="space-y-2.5 mt-4">
-                {/* 1. Everyone */}
-                <div
+                <button
+                  type="button"
                   onClick={() => setAudience('everyone')}
-                  className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between ${
-                    audience === 'everyone'
-                      ? 'border-indigo-500 bg-indigo-950/40'
-                      : 'border-slate-800 hover:border-slate-700 bg-slate-900/60'
-                  }`}
+                  className={`w-full text-left p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between ${audience === 'everyone'
+                    ? 'border-indigo-500 bg-indigo-950/40'
+                    : 'border-slate-800 hover:border-slate-700 bg-slate-900/60'
+                    }`}
                 >
                   <div className="flex items-center space-x-3">
                     <Globe className="w-5 h-5 text-indigo-400" />
@@ -507,24 +577,22 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
                       <div className="text-[11px] text-slate-400">All registered users can view</div>
                     </div>
                   </div>
-                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                    audience === 'everyone' ? 'border-indigo-400 bg-indigo-500' : 'border-slate-600'
-                  }`}>
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${audience === 'everyone' ? 'border-indigo-400 bg-indigo-500' : 'border-slate-600'
+                    }`}>
                     {audience === 'everyone' && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
                   </div>
-                </div>
+                </button>
 
-                {/* 2. My Contacts */}
-                <div
+                <button
+                  type="button"
                   onClick={() => {
                     setAudience('contacts');
                     setExcludedUsers([]);
                   }}
-                  className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between ${
-                    audience === 'contacts' && excludedUsers.length === 0
-                      ? 'border-emerald-500 bg-emerald-950/40'
-                      : 'border-slate-800 hover:border-slate-700 bg-slate-900/60'
-                  }`}
+                  className={`w-full text-left p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between ${audience === 'contacts' && excludedUsers.length === 0
+                    ? 'border-emerald-500 bg-emerald-950/40'
+                    : 'border-slate-800 hover:border-slate-700 bg-slate-900/60'
+                    }`}
                 >
                   <div className="flex items-center space-x-3">
                     <Users className="w-5 h-5 text-emerald-400" />
@@ -533,24 +601,22 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
                       <div className="text-[11px] text-slate-400">All your chat contacts can view</div>
                     </div>
                   </div>
-                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                    audience === 'contacts' && excludedUsers.length === 0 ? 'border-emerald-400 bg-emerald-500' : 'border-slate-600'
-                  }`}>
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${audience === 'contacts' && excludedUsers.length === 0 ? 'border-emerald-400 bg-emerald-500' : 'border-slate-600'
+                    }`}>
                     {audience === 'contacts' && excludedUsers.length === 0 && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
                   </div>
-                </div>
+                </button>
 
-                {/* 3. My Contacts Except... (Custom Excluded Contacts) */}
-                <div
+                <button
+                  type="button"
                   onClick={() => {
                     setAudience('contacts');
                     setContactPickerMode('excluded');
                   }}
-                  className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between ${
-                    audience === 'contacts' && excludedUsers.length > 0
-                      ? 'border-rose-500 bg-rose-950/40'
-                      : 'border-slate-800 hover:border-slate-700 bg-slate-900/60'
-                  }`}
+                  className={`w-full text-left p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between ${audience === 'contacts' && excludedUsers.length > 0
+                    ? 'border-rose-500 bg-rose-950/40'
+                    : 'border-slate-800 hover:border-slate-700 bg-slate-900/60'
+                    }`}
                 >
                   <div className="flex items-center space-x-3">
                     <UserX className="w-5 h-5 text-rose-400" />
@@ -567,19 +633,18 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
                     <span>{excludedUsers.length > 0 ? `${excludedUsers.length} excluded` : 'Select'}</span>
                     <ChevronRight className="w-4 h-4" />
                   </div>
-                </div>
+                </button>
 
-                {/* 4. Only Share With... (Custom Allowed Contacts) */}
-                <div
+                <button
+                  type="button"
                   onClick={() => {
                     setAudience('custom');
                     setContactPickerMode('allowed');
                   }}
-                  className={`p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between ${
-                    audience === 'custom'
-                      ? 'border-amber-500 bg-amber-950/40'
-                      : 'border-slate-800 hover:border-slate-700 bg-slate-900/60'
-                  }`}
+                  className={`w-full text-left p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between ${audience === 'custom'
+                    ? 'border-amber-500 bg-amber-950/40'
+                    : 'border-slate-800 hover:border-slate-700 bg-slate-900/60'
+                    }`}
                 >
                   <div className="flex items-center space-x-3">
                     <Lock className="w-5 h-5 text-amber-400" />
@@ -596,7 +661,7 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
                     <span>{allowedUsers.length > 0 ? `${allowedUsers.length} selected` : 'Select'}</span>
                     <ChevronRight className="w-4 h-4" />
                   </div>
-                </div>
+                </button>
               </div>
             </div>
 
@@ -610,14 +675,12 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           </div>
         )}
 
-        {/* Custom Contact Multi-Picker Modal Sheet */}
         {contactPickerMode && (
           <div
             onClick={(e) => e.stopPropagation()}
             className="absolute inset-0 z-50 bg-slate-950/98 backdrop-blur-2xl rounded-3xl p-5 flex flex-col justify-between animate-in slide-in-from-right duration-200 text-white"
           >
             <div className="flex flex-col flex-1 min-h-0">
-              {/* Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <div>
                   <h3 className="font-bold text-sm text-white">
@@ -638,7 +701,6 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
                 </button>
               </div>
 
-              {/* Search Bar */}
               <div className="relative mt-3">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -650,7 +712,6 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
                 />
               </div>
 
-              {/* Contacts List */}
               <div className="overflow-y-auto space-y-1 mt-3 flex-1 pr-1 no-scrollbar">
                 {searchingContacts && (
                   <div className="py-2 text-center text-xs text-slate-500 flex items-center justify-center space-x-1.5">
@@ -664,43 +725,45 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
                     No contacts found.
                   </div>
                 ) : (
-                  displayedContacts.map((c) => {
-                    const cId = (c._id || c).toString();
+                  displayedContacts.map((contact) => {
+                    const contactId = (contact._id || contact).toString();
+
                     const isSelected =
                       contactPickerMode === 'allowed'
-                        ? allowedUsers.some((u) => (u._id || u).toString() === cId)
-                        : excludedUsers.some((u) => (u._id || u).toString() === cId);
+                        ? allowedUsers.some((user) => (user._id || user).toString() === contactId)
+                        : excludedUsers.some((user) => (user._id || user).toString() === contactId);
 
                     return (
-                      <div
-                        key={cId}
-                        onClick={() => toggleContactSelection(c)}
-                        className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition ${
-                          isSelected ? 'bg-indigo-950/40 border border-indigo-500/40' : 'hover:bg-slate-900/60'
-                        }`}
+                      <button
+                        key={contactId}
+                        type="button"
+                        onClick={() => toggleContactSelection(contact)}
+                        className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition ${isSelected
+                          ? 'bg-indigo-950/40 border border-indigo-500/40'
+                          : 'hover:bg-slate-900/60'
+                          }`}
                       >
                         <div className="flex items-center space-x-2.5 min-w-0">
-                          <Avatar src={c.avatar} name={c.nickname || c.username} size="sm" />
+                          <Avatar src={contact.avatar} name={contact.nickname || contact.username} size="sm" />
                           <div className="truncate">
                             <div className="text-xs font-semibold text-white truncate">
-                              {c.nickname || c.username}
+                              {contact.nickname || contact.username}
                             </div>
                             <div className="text-[10px] text-slate-400 font-mono truncate">
-                              @{c.username}
+                              @{contact.username}
                             </div>
                           </div>
                         </div>
 
-                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition ${
-                          isSelected
-                            ? contactPickerMode === 'allowed'
-                              ? 'border-indigo-400 bg-indigo-500 text-white'
-                              : 'border-rose-400 bg-rose-500 text-white'
-                            : 'border-slate-600 bg-slate-800'
-                        }`}>
+                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition ${isSelected
+                          ? contactPickerMode === 'allowed'
+                            ? 'border-indigo-400 bg-indigo-500 text-white'
+                            : 'border-rose-400 bg-rose-500 text-white'
+                          : 'border-slate-600 bg-slate-800'
+                          }`}>
                           {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                         </div>
-                      </div>
+                      </button>
                     );
                   })
                 )}

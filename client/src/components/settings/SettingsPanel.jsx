@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -17,7 +18,8 @@ import {
   Smartphone,
   Share2,
   PlusSquare,
-  Lock
+  Lock,
+  Type
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -26,7 +28,7 @@ import { Avatar } from '../common/Avatar';
 
 export const SettingsPanel = ({
   isModal = false,
-  onClose = () => {},
+  onClose = () => { },
   showNavigation = true,
   activeTab: controlledActiveTab,
   setActiveTab: controlledSetActiveTab
@@ -36,40 +38,35 @@ export const SettingsPanel = ({
   const { theme, setTheme, accentColor, setAccentColor, fontSize, setFontSize } = useTheme();
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
 
-  // Active tab defaults to 'appearance' to match screenshot
   const [internalActiveTab, setInternalActiveTab] = useState('appearance');
   const activeTab = controlledActiveTab !== undefined ? controlledActiveTab : internalActiveTab;
   const setActiveTab = controlledSetActiveTab !== undefined ? controlledSetActiveTab : setInternalActiveTab;
 
-  // Profile states
   const [nickname, setNickname] = useState(user?.nickname || '');
   const [bio, setBio] = useState(user?.bio || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
 
-  // Privacy states
   const [profileVisibility, setProfileVisibility] = useState(user?.privacySettings?.profileVisibility || 'everyone');
   const [lastSeenVisibility, setLastSeenVisibility] = useState(user?.privacySettings?.lastSeenVisibility || 'everyone');
+  const [statusAudience, setStatusAudience] = useState(user?.privacySettings?.statusAudience || 'everyone');
   const [readReceipts, setReadReceipts] = useState(user?.privacySettings?.readReceipts ?? true);
   const [typingIndicators, setTypingIndicators] = useState(user?.privacySettings?.typingIndicators ?? true);
   const [blockedUsers, setBlockedUsers] = useState([]);
 
-  // Sessions
   const [sessions, setSessions] = useState([]);
 
-  // Password change
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Status/Feedback
   const [statusMsg, setStatusMsg] = useState({ text: '', type: '' });
   const [loading, setLoading] = useState(false);
 
-  // Account deletion states
   const [showDeletePrompt, setShowDeletePrompt] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteEmailCooldown, setDeleteEmailCooldown] = useState(0);
 
   const authHeaders = () => ({
     'Content-Type': 'application/json',
@@ -83,12 +80,22 @@ export const SettingsPanel = ({
       setAvatar(user.avatar || '');
       setProfileVisibility(user.privacySettings?.profileVisibility || 'everyone');
       setLastSeenVisibility(user.privacySettings?.lastSeenVisibility || 'everyone');
+      setStatusAudience(user.privacySettings?.statusAudience || 'everyone');
       setReadReceipts(user.privacySettings?.readReceipts ?? true);
       setTypingIndicators(user.privacySettings?.typingIndicators ?? true);
     }
   }, [user]);
 
-  // Load blocked users and sessions when those tabs open
+  useEffect(() => {
+    if (deleteEmailCooldown <= 0) return;
+
+    const timer = setTimeout(() => {
+      setDeleteEmailCooldown((previous) => Math.max(0, previous - 1));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [deleteEmailCooldown]);
+
   useEffect(() => {
     if (activeTab === 'privacy') {
       fetch('/api/users/blocked', { headers: authHeaders(), credentials: 'include' })
@@ -110,7 +117,6 @@ export const SettingsPanel = ({
     setTimeout(() => setStatusMsg({ text: '', type: '' }), 3500);
   };
 
-  // Save profile updates
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -135,7 +141,6 @@ export const SettingsPanel = ({
     }
   };
 
-  // Save privacy settings
   const handleSavePrivacy = async () => {
     setLoading(true);
     try {
@@ -146,13 +151,25 @@ export const SettingsPanel = ({
         body: JSON.stringify({
           profileVisibility,
           lastSeenVisibility,
+          statusAudience,
           readReceipts,
           typingIndicators
         })
       });
       const data = await res.json();
       if (data.success) {
-        updateUser({ ...user, privacySettings: data.privacySettings });
+        updateUser({
+          ...user,
+          privacySettings: {
+            ...(user?.privacySettings || {}),
+            ...(data.privacySettings || {}),
+            profileVisibility,
+            lastSeenVisibility,
+            statusAudience,
+            readReceipts,
+            typingIndicators
+          }
+        });
         showFeedback('Privacy preferences saved!');
       } else {
         showFeedback(data.message || 'Error saving settings', 'error');
@@ -164,7 +181,6 @@ export const SettingsPanel = ({
     }
   };
 
-  // Unblock user
   const handleUnblock = async (blockedId) => {
     try {
       const res = await fetch(`/api/users/unblock/${blockedId}`, {
@@ -182,7 +198,6 @@ export const SettingsPanel = ({
     }
   };
 
-  // Revoke single session
   const handleRevokeSession = async (sessionId) => {
     try {
       const res = await fetch(`/api/users/sessions/${sessionId}`, {
@@ -200,7 +215,6 @@ export const SettingsPanel = ({
     }
   };
 
-  // Revoke all other devices
   const handleRevokeAllOtherDevices = async () => {
     if (!window.confirm('Are you sure you want to revoke all other devices?')) return;
     try {
@@ -211,7 +225,6 @@ export const SettingsPanel = ({
     }
   };
 
-  // Change password
   const handleChangePassword = async (e) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
@@ -242,7 +255,6 @@ export const SettingsPanel = ({
     }
   };
 
-  // Export GDPR data
   const handleExportData = async () => {
     try {
       const res = await fetch('/api/export/personal-data', {
@@ -264,27 +276,40 @@ export const SettingsPanel = ({
     }
   };
 
-  // Delete account request
   const handleDeleteAccount = async (e) => {
     e.preventDefault();
+
+    if (deleteEmailCooldown > 0 || deleteLoading) return;
+
     if (!deletePassword) {
       setDeleteError('Please enter your password to confirm.');
       return;
     }
+
     setDeleteLoading(true);
     setDeleteError('');
+
     try {
       const res = await fetch('/api/auth/request-deletion', {
         method: 'POST',
         headers: authHeaders(),
         credentials: 'include',
-        body: JSON.stringify({ password: deletePassword })
+        body: JSON.stringify({ password: deletePassword, email: user?.email })
       });
       const data = await res.json();
-      if (data.success) {
+
+      if (res.ok && data.success) {
         setShowDeletePrompt(false);
         setDeletePassword('');
-        showFeedback('Deletion confirmation link sent to your email.');
+        setDeleteEmailCooldown(60);
+        const targetEmail = data.email || user?.email || '';
+        if (targetEmail) {
+          try {
+            localStorage.setItem('pulsechat_target_deletion_email', targetEmail);
+          } catch {}
+        }
+        showFeedback(data.message || 'Deletion confirmation code generated! Redirecting to confirmation screen...');
+        navigate(`/confirm-deletion?email=${encodeURIComponent(targetEmail)}`);
       } else {
         setDeleteError(data.message || 'Error initiating deletion');
       }
@@ -305,89 +330,77 @@ export const SettingsPanel = ({
   ];
 
   return (
-    <div className={`flex flex-col ${showNavigation ? 'md:flex-row' : ''} w-full h-full bg-[#0B0F19] text-slate-100 overflow-hidden ${
-      isModal ? 'max-h-[85vh]' : ''
-    }`}>
-      {/* ======================================================== */}
-      {/* LEFT NAVIGATION COLUMN (Exact Match to Screenshot)       */}
-      {/* ======================================================== */}
+    <div className={`flex flex-col ${showNavigation ? 'md:flex-row' : ''} w-full h-full bg-[#0B0F19] text-slate-100 overflow-hidden ${isModal ? 'max-h-[85vh]' : ''
+      }`}>
       {showNavigation && (
         <div className="w-full md:w-60 bg-[#080C14] p-4 border-b md:border-b-0 md:border-r border-slate-800/80 flex flex-col justify-between flex-shrink-0">
-        <div>
-          {/* User Profile Card */}
-          <div className="flex items-center space-x-3 pb-3 mb-2 border-b border-slate-800/70">
-            <Avatar src={user?.avatar} name={user?.nickname || user?.username} size="md" />
-            <div className="overflow-hidden min-w-0">
-              <div className="flex items-center space-x-1.5">
-                <span className="text-xs sm:text-sm font-bold text-white truncate">
-                  {user?.nickname || user?.username || 'FATTY'}
-                </span>
-                {user?.role === 'admin' && (
-                  <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-[#311119] text-[#F43F5E] border border-[#881337] rounded-md flex-shrink-0">
-                    ADMIN
+          <div>
+            <div className="flex items-center space-x-3 pb-3 mb-2 border-b border-slate-800/70">
+              <Avatar src={user?.avatar} name={user?.nickname || user?.username} size="md" />
+              <div className="overflow-hidden min-w-0">
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-xs sm:text-sm font-bold text-white truncate">
+                    {user?.nickname || user?.username || 'FATTY'}
                   </span>
-                )}
-              </div>
-              <div className="text-[11px] text-slate-400 font-mono truncate">
-                @{user?.username || 'partha_op'}
+                  {user?.role === 'admin' && (
+                    <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-[#311119] text-[#F43F5E] border border-[#881337] rounded-md flex-shrink-0">
+                      ADMIN
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] text-slate-400 font-mono truncate">
+                  @{user?.username || 'partha_op'}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Navigation Items */}
-          <nav className="flex md:flex-col overflow-x-auto no-scrollbar space-x-1 md:space-x-0 md:space-y-1.5 py-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`flex items-center space-x-3 px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition flex-shrink-0 cursor-pointer ${
-                    isActive
+            <nav className="flex md:flex-col overflow-x-auto no-scrollbar space-x-1 md:space-x-0 md:space-y-1.5 py-1">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className={`flex items-center space-x-3 px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition flex-shrink-0 cursor-pointer ${isActive
                       ? 'bg-[#8B5CF6] text-white shadow-lg shadow-purple-600/30'
                       : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                  }`}
-                >
-                  <Icon className="w-4 h-4 flex-shrink-0" />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
+                      }`}
+                  >
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
 
-        {/* Bottom Actions: Admin Dashboard & Sign Out */}
-        <div className="mt-4 pt-3 border-t border-slate-800/70 space-y-2">
-          {user?.role === 'admin' && (
+          <div className="mt-4 pt-3 border-t border-slate-800/70 space-y-2">
+            {user?.role === 'admin' && (
+              <button
+                onClick={() => {
+                  if (isModal) onClose();
+                  navigate('/admin');
+                }}
+                className="w-full flex items-center space-x-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#F43F5E] bg-[#1F101A] hover:bg-[#2C1424] border border-[#641A2D] rounded-2xl transition cursor-pointer shadow-xs"
+              >
+                <Shield className="w-4 h-4 flex-shrink-0 text-[#F43F5E]" />
+                <span>Admin Dashboard</span>
+              </button>
+            )}
+
             <button
-              onClick={() => {
-                if (isModal) onClose();
-                navigate('/admin');
-              }}
-              className="w-full flex items-center space-x-2.5 px-3.5 py-2.5 text-xs font-semibold text-[#F43F5E] bg-[#1F101A] hover:bg-[#2C1424] border border-[#641A2D] rounded-2xl transition cursor-pointer shadow-xs"
+              onClick={logout}
+              className="w-full flex items-center space-x-2.5 px-3.5 py-2 text-xs font-semibold text-[#F43F5E] hover:text-[#FB7185] hover:bg-rose-950/20 rounded-xl transition cursor-pointer"
             >
-              <Shield className="w-4 h-4 flex-shrink-0 text-[#F43F5E]" />
-              <span>Admin Dashboard</span>
+              <LogOut className="w-4 h-4 flex-shrink-0" />
+              <span>Sign Out</span>
             </button>
-          )}
-
-          <button
-            onClick={logout}
-            className="w-full flex items-center space-x-2.5 px-3.5 py-2 text-xs font-semibold text-[#F43F5E] hover:text-[#FB7185] hover:bg-rose-950/20 rounded-xl transition cursor-pointer"
-          >
-            <LogOut className="w-4 h-4 flex-shrink-0" />
-            <span>Sign Out</span>
-          </button>
+          </div>
         </div>
-      </div>
       )}
 
-      {/* ======================================================== */}
-      {/* RIGHT CONTENT COLUMN                                     */}
-      {/* ======================================================== */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#0B0F19]">
-        {/* Top Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/60 flex-shrink-0">
           <h2 className="text-sm sm:text-base font-bold text-white">
             {navItems.find((n) => n.id === activeTab)?.label}
@@ -403,137 +416,167 @@ export const SettingsPanel = ({
           )}
         </div>
 
-        {/* Feedback message banner */}
         {statusMsg.text && (
           <div
-            className={`mx-6 mt-3 p-2.5 rounded-xl text-xs flex items-center space-x-2 animate-in fade-in ${
-              statusMsg.type === 'error'
-                ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-            }`}
+            className={`mx-6 mt-3 p-2.5 rounded-xl text-xs flex items-center space-x-2 animate-in fade-in ${statusMsg.type === 'error'
+              ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+              : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+              }`}
           >
-            {statusMsg.type === 'error' ? <AlertCircle className="w-4 h-4 flex-shrink-0" /> : <Check className="w-4 h-4 flex-shrink-0" />}
+            {statusMsg.type === 'error'
+              ? <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              : <Check className="w-4 h-4 flex-shrink-0" />}
             <span>{statusMsg.text}</span>
           </div>
         )}
 
-        {/* Tab Content Panes */}
         <div className={`flex-1 overflow-y-auto px-6 py-5 space-y-6 no-scrollbar ${!showNavigation ? 'max-w-3xl mx-auto w-full' : ''}`}>
-          {/* ======================================================== */}
-          {/* TAB 1: APPEARANCE & SOUND (MATCHING USER SCREENSHOT)     */}
-          {/* ======================================================== */}
           {activeTab === 'appearance' && (
-            <div className="space-y-6">
-              {/* COLOR THEME */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
-                  COLOR THEME
-                </label>
-                <div className="grid grid-cols-3 gap-3 max-w-md">
-                  {[
-                    { id: 'light', label: 'Light', icon: Sun },
-                    { id: 'dark', label: 'Dark', icon: Moon },
-                    { id: 'system', label: 'System', icon: Laptop }
-                  ].map((t) => {
-                    const Icon = t.icon;
-                    const isSelected = theme === t.id;
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => {
-                          setTheme(t.id);
-                          showFeedback(`Theme set to ${t.label}!`);
-                        }}
-                        className={`py-3 px-3 sm:px-4 min-w-0 rounded-2xl border text-xs font-semibold flex items-center justify-center space-x-2 transition cursor-pointer ${
-                          isSelected
-                            ? 'border-2 border-[#7C3AED] bg-[#14132B] text-purple-200 ring-1 ring-[#7C3AED]/50 shadow-lg shadow-purple-950/50'
-                            : 'border-slate-800/90 bg-[#0E1422] text-slate-400 hover:border-slate-700 hover:text-white'
-                        }`}
-                      >
-                        <Icon className="w-4 h-4 flex-shrink-0" />
-                        <span className="truncate">{t.label}</span>
-                      </button>
-                    );
-                  })}
+            <div className="space-y-5">
+              <div className="rounded-3xl border border-slate-800/80 bg-gradient-to-br from-[#151329] via-[#101827] to-[#0E1422] p-5 sm:p-6 shadow-xl shadow-black/20">
+                <div className="flex items-start justify-between gap-3 mb-5">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-violet-300">Personalize PulseChat</p>
+                    <h3 className="text-lg font-bold text-white mt-1">Appearance & Sound</h3>
+                    <p className="text-xs text-slate-400 mt-1">Tune the look and reading comfort of your chat experience.</p>
+                  </div>
+                  <div className="w-10 h-10 rounded-2xl bg-violet-500/15 border border-violet-400/20 flex items-center justify-center">
+                    <Palette className="w-5 h-5 text-violet-300" />
+                  </div>
                 </div>
-              </div>
 
-              {/* ACCENT COLOR */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
-                  ACCENT COLOR
-                </label>
-                <div className="flex items-center space-x-4 flex-wrap gap-y-2">
-                  {[
-                    { id: 'indigo', class: 'bg-[#4F46E5]', name: 'Indigo' },
-                    { id: 'emerald', class: 'bg-[#059669]', name: 'Emerald' },
-                    { id: 'violet', class: 'bg-[#8B5CF6]', name: 'Purple' },
-                    { id: 'rose', class: 'bg-[#E11D48]', name: 'Crimson' },
-                    { id: 'cyan', class: 'bg-[#0891B2]', name: 'Cyan' },
-                    { id: 'amber', class: 'bg-[#D97706]', name: 'Orange' }
-                  ].map((col) => {
-                    const isSelected = accentColor === col.id || (accentColor === 'purple' && col.id === 'violet');
-                    return (
-                      <button
-                        key={col.id}
-                        type="button"
-                        onClick={() => {
-                          setAccentColor(col.id);
-                          showFeedback(`Accent color set to ${col.name}!`);
-                        }}
-                        className={`w-9 h-9 flex-shrink-0 rounded-full ${col.class} transition-all flex items-center justify-center cursor-pointer ${
-                          isSelected
-                            ? 'ring-2 ring-slate-300 ring-offset-4 ring-offset-[#0B0F19] scale-110 shadow-lg'
-                            : 'hover:scale-105 opacity-80 hover:opacity-100'
-                        }`}
-                        title={col.name}
-                      >
-                        {isSelected && <Check className="w-4 h-4 text-white stroke-[3]" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+                <section className="rounded-2xl border border-slate-800 bg-[#090F1C]/70 p-4 sm:p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Color theme</h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Choose how PulseChat looks on this device.</p>
+                    </div>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider">Theme</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2.5">
+                    {[
+                      { id: 'light', label: 'Light', icon: Sun },
+                      { id: 'dark', label: 'Dark', icon: Moon },
+                      { id: 'system', label: 'System', icon: Laptop }
+                    ].map((item) => {
+                      const Icon = item.icon;
+                      const selected = theme === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setTheme(item.id);
+                            showFeedback(`Theme set to ${item.label}.`);
+                          }}
+                          aria-pressed={selected}
+                          className={`min-w-0 rounded-xl border px-2 py-3 flex flex-col items-center gap-2 text-xs font-semibold transition ${selected
+                            ? 'border-violet-400 bg-violet-500/15 text-violet-200 ring-1 ring-violet-400/30'
+                            : 'border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-600 hover:text-white'
+                            }`}
+                        >
+                          <Icon className="w-4 h-4" />
+                          <span>{item.label}</span>
+                          {selected && <Check className="w-3.5 h-3.5" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
 
-              {/* MESSAGE FONT SIZE */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
-                  MESSAGE FONT SIZE
-                </label>
-                <div className="grid grid-cols-3 gap-3 max-w-md">
-                  {[
-                    { id: 'small', label: 'Small' },
-                    { id: 'medium', label: 'Medium' },
-                    { id: 'large', label: 'Large' }
-                  ].map((fs) => {
-                    const isSelected = (fontSize || 'medium') === fs.id;
-                    return (
-                      <button
-                        key={fs.id}
-                        type="button"
-                        onClick={() => {
-                          setFontSize(fs.id);
-                          showFeedback(`Font size set to ${fs.label}!`);
-                        }}
-                        className={`py-3 px-3 sm:px-4 min-w-0 rounded-2xl border text-xs font-semibold capitalize transition cursor-pointer ${
-                          isSelected
-                            ? 'border-2 border-[#7C3AED] bg-[#14132B] text-purple-200 ring-1 ring-[#7C3AED]/50 shadow-lg shadow-purple-950/50'
-                            : 'border-slate-800/90 bg-[#0E1422] text-slate-400 hover:border-slate-700 hover:text-white'
-                        }`}
-                      >
-                        <span className="truncate">{fs.label}</span>
-                      </button>
-                    );
-                  })}
+                <section className="rounded-2xl border border-slate-800 bg-[#090F1C]/70 p-4 sm:p-5 mt-3">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Accent color</h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Choose the highlight color used across controls.</p>
+                    </div>
+                    <span className="text-[10px] text-slate-500">{accentColor || 'violet'}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-4">
+                    {[
+                      { id: 'indigo', class: 'bg-[#4F46E5]', name: 'Indigo' },
+                      { id: 'emerald', class: 'bg-[#059669]', name: 'Emerald' },
+                      { id: 'violet', class: 'bg-[#8B5CF6]', name: 'Violet' },
+                      { id: 'rose', class: 'bg-[#E11D48]', name: 'Rose' },
+                      { id: 'cyan', class: 'bg-[#0891B2]', name: 'Cyan' },
+                      { id: 'amber', class: 'bg-[#D97706]', name: 'Amber' }
+                    ].map((color) => {
+                      const selected = accentColor === color.id || (accentColor === 'purple' && color.id === 'violet');
+                      return (
+                        <button
+                          key={color.id}
+                          type="button"
+                          onClick={() => {
+                            setAccentColor(color.id);
+                            showFeedback(`${color.name} accent selected.`);
+                          }}
+                          aria-label={`${color.name} accent color`}
+                          aria-pressed={selected}
+                          className={`w-9 h-9 rounded-full ${color.class} flex items-center justify-center transition ${selected
+                            ? 'ring-2 ring-white ring-offset-4 ring-offset-[#090F1C] scale-110'
+                            : 'opacity-80 hover:opacity-100 hover:scale-110'
+                            }`}
+                        >
+                          {selected && <Check className="w-4 h-4 text-white stroke-[3]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-slate-800 bg-[#090F1C]/70 p-4 sm:p-5 mt-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Type className="w-4 h-4 text-violet-300" />
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Message font size</h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Adjust chat text for comfortable reading.</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'small', label: 'Small', sample: 'text-sm' },
+                      { id: 'medium', label: 'Medium', sample: 'text-base' },
+                      { id: 'large', label: 'Large', sample: 'text-lg' }
+                    ].map((item) => {
+                      const selected = (fontSize || 'medium') === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setFontSize(item.id);
+                            showFeedback(`Message font size set to ${item.label}.`);
+                          }}
+                          aria-pressed={selected}
+                          className={`rounded-xl border px-2 py-3 transition ${selected
+                            ? 'border-violet-400 bg-violet-500/15 text-violet-200'
+                            : 'border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-600 hover:text-white'
+                            }`}
+                        >
+                          <span className={`block font-semibold ${item.sample}`}>Aa</span>
+                          <span className="block text-[10px] mt-1">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-3 rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Live preview</p>
+                    <p className={`${fontSize === 'small' ? 'text-xs' : fontSize === 'large' ? 'text-lg' : 'text-sm'} text-slate-200`}>
+                      The quick brown fox jumps over the lazy dog.
+                    </p>
+                  </div>
+                </section>
+
+                <div className="mt-4 flex items-start gap-2 text-[11px] text-slate-500">
+                  <Lock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <p>
+                    Appearance preferences are applied through your app settings. Sound controls are not shown here because this version does not expose a sound-preference API.
+                  </p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ======================================================== */}
-          {/* TAB 2: PROFILE                                           */}
-          {/* ======================================================== */}
           {activeTab === 'profile' && (
             <form onSubmit={handleSaveProfile} className="space-y-4">
               <div className="flex items-center space-x-4">
@@ -549,6 +592,39 @@ export const SettingsPanel = ({
                     onChange={(e) => setAvatar(e.target.value)}
                     className="w-full px-3.5 py-2 text-xs bg-[#0E1422] border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    value={user?.username ? `@${user.username}` : ''}
+                    disabled
+                    readOnly
+                    className="w-full px-3.5 py-2 text-xs bg-[#0E1422]/70 border border-slate-800 rounded-xl text-slate-400 font-mono cursor-not-allowed select-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Email Address
+                  </label>
+                  <div className="flex items-center space-x-1.5">
+                    <input
+                      type="email"
+                      value={user?.email || ''}
+                      disabled
+                      readOnly
+                      className="w-full px-3.5 py-2 text-xs bg-[#0E1422]/70 border border-slate-800 rounded-xl text-white font-mono cursor-not-allowed select-all truncate"
+                    />
+                    <span className="px-2 py-1 text-[10px] font-bold rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                      Verified
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -590,9 +666,6 @@ export const SettingsPanel = ({
             </form>
           )}
 
-          {/* ======================================================== */}
-          {/* TAB 3: PRIVACY & SAFETY                                  */}
-          {/* ======================================================== */}
           {activeTab === 'privacy' && (
             <div className="space-y-4">
               <div className="space-y-3">
@@ -648,6 +721,27 @@ export const SettingsPanel = ({
                   </label>
                 </div>
 
+                <div className="mt-4 rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-950/30 to-slate-900/70 p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-violet-300" />
+                    <h4 className="text-xs font-bold text-white">Status privacy</h4>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Choose the default audience for new status updates. You can still customize each status before sharing it.
+                  </p>
+                  <select
+                    value={statusAudience}
+                    onChange={(e) => setStatusAudience(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-xs bg-[#0E1422] border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  >
+                    <option value="everyone">Everyone</option>
+                    <option value="contacts">My contacts</option>
+                  </select>
+                  <p className="text-[10px] text-slate-500">
+                    This is a default for the status composer, not a replacement for server-side audience checks.
+                  </p>
+                </div>
+
                 <button
                   onClick={handleSavePrivacy}
                   disabled={loading}
@@ -657,7 +751,6 @@ export const SettingsPanel = ({
                 </button>
               </div>
 
-              {/* Blocked Users */}
               <div className="pt-4 border-t border-slate-800">
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
                   Blocked Users ({blockedUsers.length})
@@ -686,9 +779,6 @@ export const SettingsPanel = ({
             </div>
           )}
 
-          {/* ======================================================== */}
-          {/* TAB 4: INSTALL ON PHONE                                  */}
-          {/* ======================================================== */}
           {activeTab === 'install' && (
             <div className="space-y-5">
               <div className="p-4 rounded-2xl bg-[#0E1422] border border-slate-800 flex items-start space-x-3.5">
@@ -717,7 +807,6 @@ export const SettingsPanel = ({
                 </button>
               )}
 
-              {/* iOS / Safari Guide */}
               <div className="space-y-2.5">
                 <h4 className="text-xs font-bold text-slate-300 flex items-center space-x-1.5">
                   <span className="w-2 h-2 rounded-full bg-purple-500"></span>
@@ -745,7 +834,6 @@ export const SettingsPanel = ({
                 </div>
               </div>
 
-              {/* Android / Chrome Guide */}
               <div className="space-y-2.5">
                 <h4 className="text-xs font-bold text-slate-300 flex items-center space-x-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
@@ -769,9 +857,6 @@ export const SettingsPanel = ({
             </div>
           )}
 
-          {/* ======================================================== */}
-          {/* TAB 5: DEVICES & SESSIONS                                */}
-          {/* ======================================================== */}
           {activeTab === 'sessions' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -824,9 +909,6 @@ export const SettingsPanel = ({
             </div>
           )}
 
-          {/* ======================================================== */}
-          {/* TAB 6: ACCOUNT & SECURITY                                */}
-          {/* ======================================================== */}
           {activeTab === 'account' && (
             <div className="space-y-6">
               <form onSubmit={handleChangePassword} className="space-y-3">
@@ -871,7 +953,6 @@ export const SettingsPanel = ({
                 </button>
               </form>
 
-              {/* GDPR Export */}
               <div className="pt-4 border-t border-slate-800">
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
                   GDPR Data Portability
@@ -889,51 +970,131 @@ export const SettingsPanel = ({
                 </button>
               </div>
 
-              {/* Danger Zone: Delete Account */}
-              <div className="pt-4 border-t border-slate-800">
-                <h4 className="text-xs font-bold text-rose-500 uppercase tracking-wider mb-2">
-                  Danger Zone
-                </h4>
-                {!showDeletePrompt ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowDeletePrompt(true)}
-                    className="px-4 py-2 text-xs font-semibold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-2xl transition cursor-pointer"
-                  >
-                    Delete Account
-                  </button>
-                ) : (
-                  <form onSubmit={handleDeleteAccount} className="space-y-2.5 p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl">
-                    <p className="text-xs text-rose-300">
-                      Enter your password to request account deletion.
-                    </p>
-                    <input
-                      type="password"
-                      placeholder="Password"
-                      value={deletePassword}
-                      onChange={(e) => setDeletePassword(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-[#080C14] border border-rose-500/40 rounded-xl text-white outline-none focus:ring-1 focus:ring-rose-500"
-                    />
-                    {deleteError && <p className="text-xs text-rose-400">{deleteError}</p>}
-                    <div className="flex space-x-2 pt-1">
-                      <button
-                        type="submit"
-                        disabled={deleteLoading}
-                        className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold cursor-pointer transition"
-                      >
-                        Confirm Delete
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowDeletePrompt(false)}
-                        className="px-4 py-1.5 bg-slate-800 text-slate-300 rounded-xl text-xs cursor-pointer transition hover:bg-slate-700"
-                      >
-                        Cancel
-                      </button>
+              <section className="relative overflow-hidden rounded-2xl border border-rose-500/25 bg-gradient-to-br from-rose-950/35 via-[#11121D] to-[#0E1422] shadow-lg shadow-black/10">
+                <div className="absolute -right-10 -top-12 h-36 w-36 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
+
+                <div className="relative flex items-start gap-3.5 border-b border-rose-500/15 px-4 py-4 sm:px-5">
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-rose-500/25 bg-rose-500/10">
+                    <Trash2 className="h-5 w-5 text-rose-400" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="text-sm font-bold tracking-wide text-rose-300">Danger Zone</h4>
+                      <span className="rounded-full border border-rose-500/25 bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-300">
+                        Irreversible action
+                      </span>
                     </div>
-                  </form>
-                )}
-              </div>
+                    <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-slate-400">
+                      Permanently remove your PulseChat account. You will receive a confirmation email before the deletion process can continue.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="relative space-y-3 p-4 sm:p-5">
+                  {!showDeletePrompt ? (
+                    <>
+                      <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/15 bg-amber-500/[0.06] p-3">
+                        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
+                        <p className="text-[11px] leading-relaxed text-slate-400">
+                          Account deletion may remove your profile and associated data. Make sure you have exported anything you want to keep.
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-200">Delete this account</p>
+                          <p className="mt-0.5 text-[11px] text-slate-500">A password check is required to continue.</p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={deleteEmailCooldown > 0}
+                          onClick={() => {
+                            setDeleteError('');
+                            setShowDeletePrompt(true);
+                          }}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-500/35 bg-rose-500/10 px-4 py-2.5 text-xs font-bold text-rose-300 transition hover:border-rose-400/50 hover:bg-rose-500/20 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          {deleteEmailCooldown > 0
+                            ? `Try again in ${deleteEmailCooldown}s`
+                            : 'Delete Account'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <form onSubmit={handleDeleteAccount} className="space-y-3">
+                      <div>
+                        <p className="text-xs font-bold text-rose-200">Confirm account deletion request</p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                          Enter your current password. We will send a confirmation link to your registered email address.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label htmlFor="delete-account-password" className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Current password
+                        </label>
+                        <input
+                          id="delete-account-password"
+                          type="password"
+                          autoComplete="current-password"
+                          placeholder="Enter your password"
+                          value={deletePassword}
+                          onChange={(e) => {
+                            setDeletePassword(e.target.value);
+                            if (deleteError) setDeleteError('');
+                          }}
+                          className="w-full rounded-xl border border-slate-700/80 bg-[#080C14]/90 px-3.5 py-3 text-xs text-white outline-none transition placeholder:text-slate-600 focus:border-rose-500/70 focus:ring-2 focus:ring-rose-500/15"
+                        />
+                      </div>
+
+                      {deleteError && (
+                        <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-300">
+                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                          <span>{deleteError}</span>
+                        </div>
+                      )}
+
+                      <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+                        <button
+                          type="button"
+                          disabled={deleteLoading}
+                          onClick={() => {
+                            setShowDeletePrompt(false);
+                            setDeletePassword('');
+                            setDeleteError('');
+                          }}
+                          className="rounded-xl border border-slate-700 bg-slate-800/70 px-4 py-2.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={deleteLoading || deleteEmailCooldown > 0 || !deletePassword}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-rose-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-rose-950/30 transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {deleteLoading ? (
+                            <>
+                              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                              Sending request...
+                            </>
+                          ) : (
+                            <>
+                              <Lock className="h-3.5 w-3.5" />
+                              Send confirmation email
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {deleteEmailCooldown > 0 && (
+                        <p className="text-center text-[10px] text-slate-500">
+                          You can request another confirmation email in {deleteEmailCooldown} seconds.
+                        </p>
+                      )}
+                    </form>
+                  )}
+                </div>
+              </section>
             </div>
           )}
         </div>

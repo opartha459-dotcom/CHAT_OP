@@ -44,9 +44,15 @@ import {
   Clock,
   Hourglass,
   XCircle,
-  Mail
-} from 'lucide-react';import { useAuth } from '../context/AuthContext';
+  Mail,
+  KeyRound,
+  Send,
+  Copy,
+  Calendar
+} from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
+import { useSocket } from '../context/SocketContext';
 import { GridListView } from '../components/common/GridListView';
 import { Avatar } from '../components/common/Avatar';
 import { PulseLogo } from '../components/common/PulseLogo';
@@ -56,6 +62,7 @@ export const AdminDashboard = () => {
   const user = auth.user;
   const token = auth.token;
   const navigate = useNavigate();
+  const { socket } = useSocket();
 
   // Fail-safe auth headers extractor
   const authHeaders = (isJson = true) => {
@@ -120,6 +127,21 @@ export const AdminDashboard = () => {
   // Recovery request multi-select delete state
   const [selectedRecoveries, setSelectedRecoveries] = useState(new Set());
   const [deletingRecoveries, setDeletingRecoveries] = useState(false);
+  const [recoverySearch, setRecoverySearch] = useState('');
+  const [recoveryStatusFilter, setRecoveryStatusFilter] = useState('all');
+  const [recoveryDateFrom, setRecoveryDateFrom] = useState('');
+  const [recoveryDateTo, setRecoveryDateTo] = useState('');
+
+  // Verification codes state (manual code dispatch)
+  const [verificationCodes, setVerificationCodes] = useState([]);
+  const [verificationCodesLoading, setVerificationCodesLoading] = useState(false);
+  const [selectedCodes, setSelectedCodes] = useState(new Set());
+  const [sendingCodeId, setSendingCodeId] = useState(null);
+  const [codeSearch, setCodeSearch] = useState('');
+  const [codeFilterStatus, setCodeFilterStatus] = useState('all');
+  const [codeFilterAction, setCodeFilterAction] = useState('all');
+  const [codeDateFrom, setCodeDateFrom] = useState('');
+  const [codeDateTo, setCodeDateTo] = useState('');
 
   // Announcement Modal & Edit state
   const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
@@ -257,7 +279,9 @@ export const AdminDashboard = () => {
       loadUsers(),
       loadGroups(),
       loadAnnouncements(),
-      loadAuditLogs()
+      loadAuditLogs(),
+      loadRecoveries(),
+      loadVerificationCodes()
     ]);
     setRefreshing(false);
   };
@@ -268,14 +292,38 @@ export const AdminDashboard = () => {
     }
   }, [token, user]);
 
+  // Real-time listener for incoming verification requests from users
+  useEffect(() => {
+    if (!socket) return;
+    try {
+      socket.emit('admin:join', { token });
+    } catch {}
+
+    const handleNewCodeReq = (newCode) => {
+      if (!newCode) return;
+      setVerificationCodes((prev) => [newCode, ...prev.filter((c) => c._id !== newCode._id)]);
+      showMsg(`New verification request from @${newCode.username || newCode.email}`);
+    };
+    socket.on('admin:new_verification_request', handleNewCodeReq);
+    return () => {
+      socket.off('admin:new_verification_request', handleNewCodeReq);
+    };
+  }, [socket, token]);
+
   useEffect(() => {
     if (activeTab === 'users') loadUsers();
+    else if (activeTab === 'codes') {
+      loadVerificationCodes();
+      const interval = setInterval(() => {
+        loadVerificationCodes(true);
+      }, 4000);
+      return () => clearInterval(interval);
+    }
     else if (activeTab === 'groups') loadGroups();
     else if (activeTab === 'announcements') loadAnnouncements();
     else if (activeTab === 'databases') loadDbStatus();
     else if (activeTab === 'audit') loadAuditLogs();
     else if (activeTab === 'settings') loadSystemSettings();
-    else if (activeTab === 'recoveries') loadRecoveries();
     else if (activeTab === 'recoveries') loadRecoveries();
   }, [activeTab]);
 
@@ -812,8 +860,152 @@ export const AdminDashboard = () => {
     setResolveLoading(false);
   };
 
+  // ----------------------------------------------------
+  // VERIFICATION CODE DISPATCH HANDLERS
+  // ----------------------------------------------------
+  const loadVerificationCodes = async (silent = false) => {
+    if (!silent) setVerificationCodesLoading(true);
+    try {
+      const res = await fetch('/api/admin/verification-codes', { headers: authHeaders(), credentials: 'include' });
+      const d = await res.json();
+      if (d.success) setVerificationCodes(d.codes || []);
+    } catch (e) {
+      console.warn('Failed to load verification codes', e);
+    } finally {
+      if (!silent) setVerificationCodesLoading(false);
+    }
+  };
+
+  const handleSendVerificationCode = async (codeItemOrId) => {
+    const id =
+      typeof codeItemOrId === 'object' && codeItemOrId !== null
+        ? codeItemOrId._id || codeItemOrId.id
+        : codeItemOrId;
+
+    if (!id || id === 'undefined') {
+      showMsg('Invalid verification code record.');
+      return;
+    }
+
+    setSendingCodeId(id);
+    try {
+      const res = await fetch(`/api/admin/verification-codes/${id}/send`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        setVerificationCodes((prev) =>
+          prev.map((c) => (c._id === id ? { ...c, status: 'sent', sentAt: new Date() } : c))
+        );
+        showMsg(d.message || 'Verification code sent to user in real-time!');
+      } else {
+        showMsg(d.message || 'Failed to dispatch code.');
+      }
+    } catch (e) {
+      showMsg('Network error sending verification code.');
+    } finally {
+      setSendingCodeId(null);
+    }
+  };
+
+  const handleDeleteSelectedCodes = async () => {
+    const ids = Array.from(selectedCodes);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} selected verification code records?`)) return;
+    try {
+      const res = await fetch('/api/admin/verification-codes', {
+        method: 'DELETE',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ ids })
+      });
+      const d = await res.json();
+      if (d.success) {
+        setVerificationCodes((prev) => prev.filter((c) => !selectedCodes.has(c._id)));
+        setSelectedCodes(new Set());
+        showMsg(`Deleted ${d.deleted} verification code record(s).`);
+      }
+    } catch {
+      showMsg('Failed to delete verification codes.');
+    }
+  };
+
+  const handleClearAllCodes = async () => {
+    if (!window.confirm('Delete ALL verification code history? This cannot be undone.')) return;
+    try {
+      const res = await fetch('/api/admin/verification-codes', {
+        method: 'DELETE',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ all: true })
+      });
+      const d = await res.json();
+      if (d.success) {
+        setVerificationCodes([]);
+        setSelectedCodes(new Set());
+        showMsg('Cleared all verification codes.');
+      }
+    } catch {
+      showMsg('Failed to clear verification codes.');
+    }
+  };
+
+  // ----------------------------------------------------
+  // ACCOUNT RECOVERY MULTI-DELETE HANDLERS
+  // ----------------------------------------------------
+  const handleDeleteSelectedRecoveries = async () => {
+    const ids = Array.from(selectedRecoveries);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} selected recovery request(s)?`)) return;
+    setDeletingRecoveries(true);
+    try {
+      const res = await fetch('/api/admin/recoveries', {
+        method: 'DELETE',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ ids })
+      });
+      const d = await res.json();
+      if (d.success) {
+        setRecoveries((prev) => prev.filter((r) => !selectedRecoveries.has(r._id)));
+        setSelectedRecoveries(new Set());
+        showMsg(`Deleted ${d.deleted} recovery request(s).`);
+      }
+    } catch {
+      showMsg('Failed to delete recovery requests.');
+    } finally {
+      setDeletingRecoveries(false);
+    }
+  };
+
+  const handleClearAllRecoveries = async () => {
+    if (!window.confirm('Are you sure you want to delete ALL recovery request history?')) return;
+    setDeletingRecoveries(true);
+    try {
+      const res = await fetch('/api/admin/recoveries', {
+        method: 'DELETE',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ all: true })
+      });
+      const d = await res.json();
+      if (d.success) {
+        setRecoveries([]);
+        setSelectedRecoveries(new Set());
+        showMsg('Cleared all recovery requests.');
+      }
+    } catch {
+      showMsg('Failed to clear recovery requests.');
+    } finally {
+      setDeletingRecoveries(false);
+    }
+  };
+
   const navItems = [
     { id: 'overview', label: 'Overview', icon: TrendingUp },
+    { id: 'codes', label: 'Code Dispatch', icon: KeyRound },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'groups', label: 'Chats & Groups', icon: MessageSquare },
     { id: 'announcements', label: 'Announcements', icon: Bell },
@@ -896,18 +1088,32 @@ export const AdminDashboard = () => {
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
+              const pendingBadge =
+                item.id === 'codes'
+                  ? verificationCodes.filter((c) => c.status === 'pending').length
+                  : item.id === 'recoveries'
+                  ? recoveries.filter((r) => r.status === 'pending' || r.status === 'partial').length
+                  : 0;
+
               return (
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
                     isActive
                       ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
-                  <span>{item.label}</span>
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{item.label}</span>
+                  </div>
+                  {pendingBadge > 0 && (
+                    <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/30 font-mono shrink-0">
+                      {pendingBadge}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -938,6 +1144,13 @@ export const AdminDashboard = () => {
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
+              const pendingBadge =
+                item.id === 'codes'
+                  ? verificationCodes.filter((c) => c.status === 'pending').length
+                  : item.id === 'recoveries'
+                  ? recoveries.filter((r) => r.status === 'pending' || r.status === 'partial').length
+                  : 0;
+
               return (
                 <button
                   key={item.id}
@@ -950,6 +1163,11 @@ export const AdminDashboard = () => {
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span>{item.label}</span>
+                  {pendingBadge > 0 && (
+                    <span className="ml-1 text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-500 text-white font-mono">
+                      {pendingBadge}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -1112,6 +1330,435 @@ export const AdminDashboard = () => {
             </div>
           )}
 
+          {/* TAB: CODE DISPATCH (MANUAL VERIFICATION) */}
+          {activeTab === 'codes' && (
+            <div className="max-w-6xl space-y-5">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                    <KeyRound className="w-5 h-5 text-indigo-500" />
+                    <span>Manual Code Dispatch</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Live verification codes for registration and password resets. Review and dispatch directly to users in real-time.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={loadVerificationCodes}
+                    disabled={verificationCodesLoading}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl transition cursor-pointer font-medium"
+                    title="Refresh codes"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${verificationCodesLoading ? 'animate-spin text-indigo-500' : ''}`} />
+                    <span>Refresh</span>
+                  </button>
+
+                  {selectedCodes.size > 0 && (
+                    <button
+                      onClick={handleDeleteSelectedCodes}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 text-xs bg-rose-600 hover:bg-rose-500 text-white rounded-xl transition cursor-pointer font-semibold shadow-xs"
+                      title="Delete selected code records"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Selected ({selectedCodes.size})</span>
+                    </button>
+                  )}
+
+                  {verificationCodes.length > 0 && (
+                    <button
+                      onClick={handleClearAllCodes}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 text-xs border border-rose-500/40 text-rose-500 hover:bg-rose-500/10 rounded-xl transition cursor-pointer font-medium"
+                      title="Clear all code history"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Clear All</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Filters Bar */}
+              {(() => {
+                const filteredCodes = verificationCodes.filter((c) => {
+                  if (codeSearch.trim()) {
+                    const q = codeSearch.toLowerCase();
+                    const match =
+                      (c.code && c.code.toLowerCase().includes(q)) ||
+                      (c.email && c.email.toLowerCase().includes(q)) ||
+                      (c.username && c.username.toLowerCase().includes(q));
+                    if (!match) return false;
+                  }
+                  if (codeFilterAction !== 'all' && c.action !== codeFilterAction) return false;
+                  if (codeFilterStatus !== 'all' && c.status !== codeFilterStatus) return false;
+                  if (codeDateFrom || codeDateTo) {
+                    if (!c.createdAt) return false;
+                    const itemDate = new Date(c.createdAt);
+                    if (codeDateFrom) {
+                      const fromDate = new Date(codeDateFrom);
+                      fromDate.setHours(0, 0, 0, 0);
+                      if (itemDate < fromDate) return false;
+                    }
+                    if (codeDateTo) {
+                      const toDate = new Date(codeDateTo);
+                      toDate.setHours(23, 59, 59, 999);
+                      if (itemDate > toDate) return false;
+                    }
+                  }
+                  return true;
+                });
+
+                const allFilteredSelected =
+                  filteredCodes.length > 0 && filteredCodes.every((c) => selectedCodes.has(c._id));
+
+                const handleToggleSelectAllFiltered = () => {
+                  if (allFilteredSelected) {
+                    setSelectedCodes(new Set());
+                  } else {
+                    setSelectedCodes(new Set(filteredCodes.map((c) => c._id)));
+                  }
+                };
+
+                const hasActiveCodeFilters =
+                  codeSearch.trim() !== '' ||
+                  codeFilterAction !== 'all' ||
+                  codeFilterStatus !== 'all' ||
+                  !!codeDateFrom ||
+                  !!codeDateTo;
+
+                return (
+                  <div className="space-y-4">
+                    <div className="p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs space-y-3">
+                      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                        {/* Search Input */}
+                        <div className="relative flex-1 min-w-[200px]">
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={codeSearch}
+                            onChange={(e) => setCodeSearch(e.target.value)}
+                            placeholder="Search by code, email or username..."
+                            className="w-full text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30"
+                          />
+                        </div>
+
+                        {/* Filters row */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Action Filter */}
+                          <select
+                            value={codeFilterAction}
+                            onChange={(e) => setCodeFilterAction(e.target.value)}
+                            className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer font-medium"
+                          >
+                            <option value="all">Action: All</option>
+                            <option value="email_verification">Verify Email</option>
+                            <option value="password_reset">Password Reset</option>
+                            <option value="account_deletion">Account Deletion</option>
+                          </select>
+
+                          {/* Status Filter */}
+                          <select
+                            value={codeFilterStatus}
+                            onChange={(e) => setCodeFilterStatus(e.target.value)}
+                            className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer font-medium"
+                          >
+                            <option value="all">Status: All</option>
+                            <option value="pending">⏳ Pending Dispatch</option>
+                            <option value="sent">🚀 Sent to User</option>
+                            <option value="used">✅ Verified / Used</option>
+                            <option value="expired">⌛ Expired</option>
+                          </select>
+
+                          {/* Date Range Filter */}
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="date"
+                              value={codeDateFrom}
+                              onChange={(e) => setCodeDateFrom(e.target.value)}
+                              title="From date"
+                              className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer font-medium"
+                            />
+                            <span className="text-slate-400 text-xs">–</span>
+                            <input
+                              type="date"
+                              value={codeDateTo}
+                              min={codeDateFrom || undefined}
+                              onChange={(e) => setCodeDateTo(e.target.value)}
+                              title="To date"
+                              className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer font-medium"
+                            />
+                          </div>
+
+                          {/* Reset filters */}
+                          {hasActiveCodeFilters && (
+                            <button
+                              onClick={() => {
+                                setCodeSearch('');
+                                setCodeFilterAction('all');
+                                setCodeFilterStatus('all');
+                                setCodeDateFrom('');
+                                setCodeDateTo('');
+                              }}
+                              className="text-xs px-2.5 py-1.5 text-slate-500 hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400 font-medium transition cursor-pointer flex items-center space-x-1"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>Reset</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Select all bar */}
+                      {filteredCodes.length > 0 && (
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                          <button
+                            type="button"
+                            onClick={handleToggleSelectAllFiltered}
+                            className="flex items-center space-x-2 font-semibold hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+                          >
+                            {allFilteredSelected ? (
+                              <CheckSquare className="w-4 h-4 text-indigo-500" />
+                            ) : (
+                              <Square className="w-4 h-4 text-slate-400" />
+                            )}
+                            <span>
+                              {allFilteredSelected
+                                ? 'Deselect All'
+                                : `Select All Filtered (${selectedCodes.size}/${filteredCodes.length})`}
+                            </span>
+                          </button>
+
+                          <span className="font-mono text-[11px]">
+                            Showing {filteredCodes.length} of {verificationCodes.length} record(s)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Cards List / Grid */}
+                    {verificationCodesLoading ? (
+                      <div className="py-20 flex flex-col items-center justify-center space-y-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
+                        <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Loading verification codes...</p>
+                      </div>
+                    ) : filteredCodes.length === 0 ? (
+                      <div className="py-16 px-4 flex flex-col items-center justify-center text-center space-y-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-500">
+                          <KeyRound className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-semibold text-slate-800 dark:text-white">No Verification Codes Found</h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
+                            {hasActiveCodeFilters
+                              ? 'No records match your active filters. Try clearing filters.'
+                              : 'When a user registers or requests a password reset, their OTP code will appear here for you to send.'}
+                          </p>
+                        </div>
+                        {hasActiveCodeFilters && (
+                          <button
+                            onClick={() => {
+                              setCodeSearch('');
+                              setCodeFilterAction('all');
+                              setCodeFilterStatus('all');
+                              setCodeDateFrom('');
+                              setCodeDateTo('');
+                            }}
+                            className="mt-2 text-xs font-semibold px-3 py-1.5 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition cursor-pointer"
+                          >
+                            Clear filters
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 min-w-0">
+                        {filteredCodes.map((c) => {
+                          const isSelected = selectedCodes.has(c._id);
+                          const isPending = c.status === 'pending';
+                          const isSent = c.status === 'sent';
+                          const isUsed = c.status === 'used';
+                          const isSending = sendingCodeId === c._id;
+
+                          const actionLabel =
+                            c.action === 'email_verification'
+                              ? 'Email Verification'
+                              : c.action === 'password_reset'
+                              ? 'Password Reset'
+                              : c.action === 'account_deletion'
+                              ? 'Account Deletion'
+                              : c.action;
+
+                          const actionColor =
+                            c.action === 'email_verification'
+                              ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60'
+                              : c.action === 'password_reset'
+                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300 border-amber-200 dark:border-amber-800/60'
+                              : 'bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300 border-rose-200 dark:border-rose-800/60';
+
+                          return (
+                            <div
+                              key={c._id}
+                              className={`p-4 bg-white dark:bg-slate-900 border rounded-2xl shadow-xs transition flex flex-col justify-between min-w-0 overflow-hidden ${
+                                isSelected
+                                  ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+                                  : isPending
+                                  ? 'border-amber-500/50 hover:border-amber-500'
+                                  : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                              }`}
+                            >
+                              <div className="space-y-3 min-w-0 overflow-hidden">
+                                {/* Card top: Select checkbox + Action Badge + Status */}
+                                <div className="flex items-center justify-between gap-2 min-w-0">
+                                  <div className="flex items-center space-x-2 min-w-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedCodes((prev) => {
+                                          const next = new Set(prev);
+                                          if (next.has(c._id)) next.delete(c._id);
+                                          else next.add(c._id);
+                                          return next;
+                                        });
+                                      }}
+                                      className="text-slate-400 hover:text-indigo-500 transition cursor-pointer shrink-0"
+                                      title="Select this code"
+                                    >
+                                      {isSelected ? (
+                                        <CheckSquare className="w-4 h-4 text-indigo-500" />
+                                      ) : (
+                                        <Square className="w-4 h-4" />
+                                      )}
+                                    </button>
+
+                                    <span
+                                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono border truncate ${actionColor}`}
+                                      title={actionLabel}
+                                    >
+                                      {actionLabel}
+                                    </span>
+                                  </div>
+
+                                  <div className="shrink-0">
+                                    {isPending && (
+                                      <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                                        <span>Pending Dispatch</span>
+                                      </span>
+                                    )}
+                                    {isSent && (
+                                      <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                                        <span>🚀 Sent to User</span>
+                                      </span>
+                                    )}
+                                    {isUsed && (
+                                      <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                        <span>✅ Verified</span>
+                                      </span>
+                                    )}
+                                    {c.status === 'expired' && (
+                                      <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                                        <span>⌛ Expired</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* User details */}
+                                <div className="flex items-center space-x-3 min-w-0 overflow-hidden pt-1">
+                                  <Avatar src={c.user?.avatar} name={c.username || c.email} size="md" />
+                                  <div className="min-w-0 flex-1 overflow-hidden">
+                                    <div className="font-bold text-xs text-slate-900 dark:text-white truncate" title={c.username ? `@${c.username}` : c.email}>
+                                      {c.username ? `@${c.username}` : 'Guest User'}
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-full" title={c.email}>
+                                      {c.email}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Monospace Code Box */}
+                                <div className="bg-slate-950/90 dark:bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between shadow-inner">
+                                  <div className="min-w-0">
+                                    <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block font-mono">
+                                      One-Time Passcode (OTP)
+                                    </span>
+                                    <span className="text-2xl font-mono font-black tracking-widest text-indigo-400 select-all">
+                                      {c.code}
+                                    </span>
+                                  </div>
+
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(c.code);
+                                      showMsg(`Copied code ${c.code} to clipboard!`);
+                                    }}
+                                    className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer shrink-0"
+                                    title="Copy 6-digit code"
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                  </button>
+                                </div>
+
+                                {/* Timestamps info */}
+                                <div className="text-[10px] text-slate-400 font-mono space-y-0.5 pt-0.5">
+                                  <div className="flex justify-between">
+                                    <span>Requested:</span>
+                                    <span className="text-slate-300">{new Date(c.createdAt).toLocaleTimeString()}</span>
+                                  </div>
+                                  {c.sentAt && (
+                                    <div className="flex justify-between">
+                                      <span>Sent:</span>
+                                      <span className="text-cyan-400">{new Date(c.sentAt).toLocaleTimeString()} {c.sentBy ? `by @${c.sentBy.username}` : ''}</span>
+                                    </div>
+                                  )}
+                                  {c.expiresAt && (
+                                    <div className="flex justify-between">
+                                      <span>Expires:</span>
+                                      <span className="text-amber-400">{new Date(c.expiresAt).toLocaleTimeString()}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Prominent Send Code Button */}
+                              <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
+                                <button
+                                  onClick={() => handleSendVerificationCode(c)}
+                                  disabled={isSending || isUsed}
+                                  className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition shadow-md cursor-pointer ${
+                                    isUsed
+                                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-60'
+                                      : isPending
+                                      ? 'bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-600/30'
+                                      : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-600/20'
+                                  }`}
+                                  title="Dispatch code immediately to user"
+                                >
+                                  <Send className={`w-3.5 h-3.5 ${isSending ? 'animate-bounce' : ''}`} />
+                                  <span>
+                                    {isSending
+                                      ? 'Sending to User...'
+                                      : isUsed
+                                      ? 'Code Already Used'
+                                      : isSent
+                                      ? 'Resend Code to User'
+                                      : 'Send Code to User'}
+                                  </span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
           {/* TAB 2: USERS */}
           {activeTab === 'users' && (
             <div className="max-w-6xl">
@@ -1149,15 +1796,17 @@ export const AdminDashboard = () => {
                 ]}
                 renderItem={(u, mode) => (
                   <div
-                    className={`p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs ${
-                      mode === 'grid' ? 'flex flex-col gap-3' : 'flex items-center justify-between'
+                    className={`p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs min-w-0 overflow-hidden ${
+                      mode === 'grid' ? 'flex flex-col justify-between h-full space-y-3' : 'flex items-center justify-between'
                     }`}
                   >
-                    <div className="flex items-center space-x-3 min-w-0">
+                    <div className="flex items-center space-x-3 min-w-0 overflow-hidden">
                       <Avatar src={u.avatar} name={u.username} size="md" />
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 flex-1 overflow-hidden">
                         <div className="flex items-center space-x-2 min-w-0">
-                          <span className="font-bold text-xs text-slate-900 dark:text-white truncate">{u.username}</span>
+                          <span className="font-bold text-xs text-slate-900 dark:text-white truncate" title={u.username}>
+                            {u.username}
+                          </span>
                           <span
                             className={`shrink-0 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-semibold uppercase ${
                               u.role === 'admin'
@@ -1168,20 +1817,22 @@ export const AdminDashboard = () => {
                             {u.role}
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{u.email}</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-full" title={u.email}>
+                          {u.email}
+                        </div>
                         {u.isBanned && (
-                          <span className="inline-block mt-1 text-[10px] text-rose-500 font-semibold truncate">
+                          <span className="inline-block mt-1 text-[10px] text-rose-500 font-semibold truncate max-w-full" title={u.banReason || 'Policy violation'}>
                             Banned: {u.banReason || 'Policy violation'}
                           </span>
                         )}
                       </div>
                     </div>
 
-                    <div className={`flex items-center gap-1.5 mt-1 ${mode === 'grid' ? 'flex-wrap' : 'flex-nowrap'}`}>
+                    <div className={`flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 ${mode === 'grid' ? 'flex-wrap' : 'flex-nowrap shrink-0'}`}>
                       {u._id !== user?._id && (
                         <button
                           onClick={() => handleStartDirectChat(u._id)}
-                          className="px-2.5 py-1 text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition cursor-pointer flex items-center space-x-1"
+                          className="px-2 py-1 text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition cursor-pointer flex items-center space-x-1 shrink-0"
                           title="Open direct chat with this user"
                         >
                           <MessageSquare className="w-3 h-3" />
@@ -1191,7 +1842,7 @@ export const AdminDashboard = () => {
 
                       <button
                         onClick={() => handleOpenEditUser(u)}
-                        className="px-2.5 py-1 text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition cursor-pointer flex items-center space-x-1"
+                        className="px-2 py-1 text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition cursor-pointer flex items-center space-x-1 shrink-0"
                         title="Edit user profile"
                       >
                         <Pencil className="w-3 h-3" />
@@ -1200,7 +1851,7 @@ export const AdminDashboard = () => {
 
                       <button
                         onClick={() => handleRoleToggle(u)}
-                        className="px-2.5 py-1 text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+                        className="px-2 py-1 text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer shrink-0"
                         title="Toggle admin / user role"
                       >
                         {u.role === 'admin' ? 'Demote' : 'Make Admin'}
@@ -1208,7 +1859,7 @@ export const AdminDashboard = () => {
 
                       <button
                         onClick={() => handleBanToggle(u)}
-                        className={`px-2.5 py-1 text-[11px] font-semibold rounded-xl transition cursor-pointer ${
+                        className={`px-2 py-1 text-[11px] font-semibold rounded-xl transition cursor-pointer shrink-0 ${
                           u.isBanned
                             ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400 hover:bg-emerald-100'
                             : 'bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-400 hover:bg-rose-100'
@@ -1221,7 +1872,7 @@ export const AdminDashboard = () => {
                       {u.role !== 'admin' && (
                         <button
                           onClick={() => { setDeleteUserModal({ user: u }); setDeleteReason(''); }}
-                          className="px-2.5 py-1 text-[11px] font-semibold bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900 rounded-xl transition cursor-pointer"
+                          className="px-2 py-1 text-[11px] font-semibold bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900 rounded-xl transition cursor-pointer shrink-0"
                           title="Permanently delete user"
                         >
                           Delete
@@ -1302,7 +1953,7 @@ export const AdminDashboard = () => {
 
                   return (
                     <div
-                      className={`p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs transition hover:border-indigo-500/40 hover:shadow-md ${
+                      className={`p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs transition hover:border-indigo-500/40 hover:shadow-md min-w-0 overflow-hidden ${
                         mode === 'grid' ? 'flex flex-col justify-between h-full min-h-[220px]' : 'flex items-center justify-between'
                       }`}
                     >
@@ -1318,9 +1969,9 @@ export const AdminDashboard = () => {
                             {isGroup ? <Layers className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
                           </div>
 
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-1.5">
-                              <h4 className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <div className="flex items-center justify-between gap-1.5 min-w-0">
+                              <h4 className="font-bold text-xs text-slate-900 dark:text-white truncate" title={title}>
                                 {title}
                               </h4>
                               <span
@@ -1433,16 +2084,16 @@ export const AdminDashboard = () => {
 
                   return (
                     <div
-                      className={`p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs transition hover:border-indigo-500/40 hover:shadow-md ${
+                      className={`p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs transition hover:border-indigo-500/40 hover:shadow-md min-w-0 overflow-hidden ${
                         mode === 'grid' ? 'flex flex-col justify-between h-full space-y-3' : 'flex items-start justify-between'
                       }`}
                     >
-                      <div className={`space-y-2.5 ${mode === 'grid' ? 'w-full' : 'flex-1 pr-4'}`}>
-                        <div className="flex flex-wrap items-center gap-1.5">
+                      <div className={`space-y-2.5 min-w-0 overflow-hidden ${mode === 'grid' ? 'w-full' : 'flex-1 pr-4'}`}>
+                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                           <span className="text-base select-none shrink-0" role="img" aria-label="badge">
                             {a.design?.badge || (a.hasPoll ? '🗳️' : '📢')}
                           </span>
-                          <span className="font-bold text-xs text-slate-900 dark:text-white truncate">{a.title}</span>
+                          <span className="font-bold text-xs text-slate-900 dark:text-white truncate max-w-full" title={a.title}>{a.title}</span>
                           <span
                             className={`px-1.5 py-0.5 rounded-md text-[9px] font-mono uppercase font-semibold ${
                               a.type === 'critical'
@@ -1718,29 +2369,226 @@ export const AdminDashboard = () => {
           {/* TAB: ACCOUNT RECOVERIES */}
           {activeTab === 'recoveries' && (
             <div className="max-w-5xl space-y-6">
-              <div className="flex items-center justify-between">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">Account Recovery Requests</h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Review, approve or reject user account restoration requests.</p>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                    <RotateCcw className="w-5 h-5 text-indigo-500" />
+                    <span>Account Recovery Requests</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Review, approve, or reject user account restoration and data migration requests.
+                  </p>
                 </div>
-                <button onClick={loadRecoveries} className="flex items-center space-x-1.5 px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition">
-                  <RefreshCw className="w-3.5 h-3.5" /><span>Refresh</span>
-                </button>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={loadRecoveries}
+                    disabled={recoveriesLoading}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl transition cursor-pointer font-medium"
+                    title="Refresh requests"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${recoveriesLoading ? 'animate-spin text-indigo-500' : ''}`} />
+                    <span>Refresh</span>
+                  </button>
+
+                  {selectedRecoveries.size > 0 && (
+                    <button
+                      onClick={handleDeleteSelectedRecoveries}
+                      disabled={deletingRecoveries}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 text-xs bg-rose-600 hover:bg-rose-500 text-white rounded-xl transition cursor-pointer font-semibold shadow-xs"
+                      title="Delete selected recovery records"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Selected ({selectedRecoveries.size})</span>
+                    </button>
+                  )}
+
+                  {recoveries.length > 0 && (
+                    <button
+                      onClick={handleClearAllRecoveries}
+                      disabled={deletingRecoveries}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 text-xs border border-rose-500/40 text-rose-500 hover:bg-rose-500/10 rounded-xl transition cursor-pointer font-medium"
+                      title="Clear all recovery history"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Clear All</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {recoveriesLoading ? (
-                <div className="flex items-center justify-center py-16 text-slate-400">
-                  <RefreshCw className="w-6 h-6 animate-spin mr-2" /><span className="text-sm">Loading requests...</span>
-                </div>
-              ) : recoveries.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-slate-500 space-y-2">
-                  <RotateCcw className="w-10 h-10 opacity-30" />
-                  <p className="text-sm font-medium">No recovery requests</p>
-                  <p className="text-xs">All clear — no pending account restorations.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {recoveries.map(req => {
+              {/* Filters Bar */}
+              {(() => {
+                const filteredRecoveries = recoveries.filter((r) => {
+                  if (recoverySearch.trim()) {
+                    const q = recoverySearch.toLowerCase();
+                    const match =
+                      (r.email && r.email.toLowerCase().includes(q)) ||
+                      (r.originalUsername && r.originalUsername.toLowerCase().includes(q)) ||
+                      (r.originalEmail && r.originalEmail.toLowerCase().includes(q)) ||
+                      (r.user?.username && r.user.username.toLowerCase().includes(q)) ||
+                      (r.user?.email && r.user.email.toLowerCase().includes(q));
+                    if (!match) return false;
+                  }
+                  if (recoveryStatusFilter !== 'all' && r.status !== recoveryStatusFilter) return false;
+                  if (recoveryDateFrom || recoveryDateTo) {
+                    if (!r.createdAt) return false;
+                    const ts = new Date(r.createdAt).getTime();
+                    if (recoveryDateFrom && ts < new Date(recoveryDateFrom).getTime()) return false;
+                    if (recoveryDateTo) {
+                      const endOfDay = new Date(recoveryDateTo);
+                      endOfDay.setHours(23, 59, 59, 999);
+                      if (ts > endOfDay.getTime()) return false;
+                    }
+                  }
+                  return true;
+                });
+
+                const allFilteredRecoveriesSelected =
+                  filteredRecoveries.length > 0 && filteredRecoveries.every((r) => selectedRecoveries.has(r._id));
+
+                const handleToggleSelectAllFilteredRecoveries = () => {
+                  if (allFilteredRecoveriesSelected) {
+                    setSelectedRecoveries(new Set());
+                  } else {
+                    setSelectedRecoveries(new Set(filteredRecoveries.map((r) => r._id)));
+                  }
+                };
+
+                const hasActiveRecoveryFilters =
+                  recoverySearch.trim() !== '' ||
+                  recoveryStatusFilter !== 'all' ||
+                  !!recoveryDateFrom ||
+                  !!recoveryDateTo;
+
+                return (
+                  <div className="space-y-4">
+                    <div className="p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs space-y-3">
+                      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                        {/* Search Input */}
+                        <div className="relative flex-1 min-w-[200px]">
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={recoverySearch}
+                            onChange={(e) => setRecoverySearch(e.target.value)}
+                            placeholder="Search by username, email..."
+                            className="w-full text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30"
+                          />
+                        </div>
+
+                        {/* Filters row */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Status Filter */}
+                          <select
+                            value={recoveryStatusFilter}
+                            onChange={(e) => setRecoveryStatusFilter(e.target.value)}
+                            className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer font-medium"
+                          >
+                            <option value="all">Status: All</option>
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="partial">Partial</option>
+                          </select>
+
+                          {/* Date Range Filter */}
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="date"
+                              value={recoveryDateFrom}
+                              onChange={(e) => setRecoveryDateFrom(e.target.value)}
+                              title="From date"
+                              className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer font-medium"
+                            />
+                            <span className="text-slate-400 text-xs">–</span>
+                            <input
+                              type="date"
+                              value={recoveryDateTo}
+                              min={recoveryDateFrom || undefined}
+                              onChange={(e) => setRecoveryDateTo(e.target.value)}
+                              title="To date"
+                              className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer font-medium"
+                            />
+                          </div>
+
+                          {/* Reset filters */}
+                          {hasActiveRecoveryFilters && (
+                            <button
+                              onClick={() => {
+                                setRecoverySearch('');
+                                setRecoveryStatusFilter('all');
+                                setRecoveryDateFrom('');
+                                setRecoveryDateTo('');
+                              }}
+                              className="text-xs px-2.5 py-1.5 text-slate-500 hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400 font-medium transition cursor-pointer flex items-center space-x-1"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>Reset</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Select all bar */}
+                      {filteredRecoveries.length > 0 && (
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                          <button
+                            type="button"
+                            onClick={handleToggleSelectAllFilteredRecoveries}
+                            className="flex items-center space-x-2 font-semibold hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
+                          >
+                            {allFilteredRecoveriesSelected ? (
+                              <CheckSquare className="w-4 h-4 text-indigo-500" />
+                            ) : (
+                              <Square className="w-4 h-4 text-slate-400" />
+                            )}
+                            <span>
+                              {allFilteredRecoveriesSelected
+                                ? 'Deselect All'
+                                : `Select All Filtered (${selectedRecoveries.size}/${filteredRecoveries.length})`}
+                            </span>
+                          </button>
+
+                          <span className="font-mono text-[11px]">
+                            Showing {filteredRecoveries.length} of {recoveries.length} request(s)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Content */}
+                    {recoveriesLoading ? (
+                      <div className="flex items-center justify-center py-16 text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
+                        <RefreshCw className="w-6 h-6 animate-spin mr-2" />
+                        <span className="text-sm">Loading requests...</span>
+                      </div>
+                    ) : filteredRecoveries.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-20 text-slate-500 space-y-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
+                        <RotateCcw className="w-10 h-10 opacity-30" />
+                        <p className="text-sm font-medium">No recovery requests found</p>
+                        <p className="text-xs">
+                          {hasActiveRecoveryFilters ? 'No requests match your filters.' : 'All clear — no pending account restorations.'}
+                        </p>
+                        {hasActiveRecoveryFilters && (
+                          <button
+                            onClick={() => {
+                              setRecoverySearch('');
+                              setRecoveryStatusFilter('all');
+                              setRecoveryDateFrom('');
+                              setRecoveryDateTo('');
+                            }}
+                            className="mt-2 text-xs font-semibold px-3 py-1.5 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 transition cursor-pointer"
+                          >
+                            Clear filters
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {filteredRecoveries.map(req => {
                     const isPending    = req.status === 'pending' || req.status === 'partial';
                     const isApproved   = req.status === 'approved';
                     const isPartial    = req.status === 'partial';
@@ -1753,21 +2601,56 @@ export const AdminDashboard = () => {
                       ? 'text-purple-300 bg-purple-950/40 border-purple-700/50'
                       : 'text-blue-300 bg-blue-950/40 border-blue-700/50';
 
+                    const isSelected = selectedRecoveries.has(req._id);
+
                     return (
-                      <div key={req._id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+                      <div
+                        key={req._id}
+                        className={`bg-white dark:bg-slate-900 border rounded-2xl p-5 space-y-4 shadow-xs transition min-w-0 overflow-hidden ${
+                          isSelected
+                            ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+                            : 'border-slate-200 dark:border-slate-800'
+                        }`}
+                      >
                         {/* Header row */}
-                        <div className="flex items-start justify-between gap-3 flex-wrap">
-                          <div className="space-y-0.5">
-                            <div className="flex items-center space-x-2 flex-wrap gap-1">
-                              <span className="text-sm font-bold text-white">@{req.user?.username || req.originalUsername}</span>
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColor}`}>
-                                {req.status.toUpperCase()}
-                              </span>
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${typeColor}`}>
-                                {isMigration ? '📦 DATA MIGRATION' : '🔄 RESTORE'}
-                              </span>
+                        <div className="flex items-start justify-between gap-3 flex-wrap min-w-0">
+                          <div className="flex items-start space-x-3 min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedRecoveries((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(req._id)) next.delete(req._id);
+                                  else next.add(req._id);
+                                  return next;
+                                });
+                              }}
+                              className="mt-0.5 text-slate-400 hover:text-indigo-500 transition cursor-pointer shrink-0"
+                              title="Select this recovery request"
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="w-4 h-4 text-indigo-500" />
+                              ) : (
+                                <Square className="w-4 h-4" />
+                              )}
+                            </button>
+
+                            <div className="space-y-0.5 min-w-0 overflow-hidden">
+                              <div className="flex items-center space-x-2 flex-wrap gap-1 min-w-0">
+                                <span className="text-sm font-bold text-slate-900 dark:text-white truncate" title={req.user?.username || req.originalUsername}>
+                                  @{req.user?.username || req.originalUsername}
+                                </span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${statusColor}`}>
+                                  {req.status.toUpperCase()}
+                                </span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${typeColor}`}>
+                                  {isMigration ? '📦 DATA MIGRATION' : '🔄 RESTORE'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-full" title={req.user?.email || req.email}>
+                                {req.user?.email || req.email}
+                              </p>
                             </div>
-                            <p className="text-xs text-slate-400">{req.user?.email || req.email}</p>
                           </div>
                           <div className="text-right text-[11px] text-slate-500 space-y-0.5">
                             <p>Submitted: {new Date(req.createdAt).toLocaleString()}</p>
@@ -1910,6 +2793,9 @@ export const AdminDashboard = () => {
                   })}
                 </div>
               )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1976,7 +2862,7 @@ export const AdminDashboard = () => {
 
                   return (
                     <div
-                      className={`p-3.5 bg-white dark:bg-slate-900 border rounded-2xl shadow-xs transition ${
+                      className={`p-3.5 bg-white dark:bg-slate-900 border rounded-2xl shadow-xs transition min-w-0 overflow-hidden ${
                         isSelected
                           ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/20 dark:bg-indigo-950/20'
                           : 'border-slate-200 dark:border-slate-800'
@@ -1984,7 +2870,7 @@ export const AdminDashboard = () => {
                         mode === 'grid' ? 'flex flex-col gap-3' : 'flex items-center justify-between'
                       }`}
                     >
-                      <div className="flex items-start space-x-3 flex-1 min-w-0 pr-3">
+                      <div className="flex items-start space-x-3 flex-1 min-w-0 pr-3 overflow-hidden">
                         <button
                           type="button"
                           onClick={() => handleToggleSelectAuditLog(log._id)}

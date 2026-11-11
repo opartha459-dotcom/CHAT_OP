@@ -977,19 +977,32 @@ export const CallProvider = ({ children }) => {
       });
     });
 
+    // Call Ended listener (server ends call when participant leaves 1-on-1 or group has <= 1 participants)
+    socket.on('call:ended', ({ callId }) => {
+      if (!callId || currentCallRef.current?.callId === callId || callStateRef.current !== 'idle') {
+        stopRingtone();
+        playCallEndedSound();
+        cleanupCall();
+      }
+    });
+
     // Peer left call
     socket.on('call:user-left', ({ socketId }) => {
       removePeer(socketId);
-      // If 1-on-1 and peer leaves, end call
-      setRemoteStreams((prev) => {
-        const remaining = Object.keys(prev).filter((id) => id !== socketId);
-        if (remaining.length === 0 && !currentCallRef.current?.isGroup && callState === 'connected') {
-          setTimeout(() => {
-            endCall();
-          }, 300);
-        }
-        return prev;
-      });
+      // For 1-on-1 calls: if the other participant leaves, end the call
+      // For group calls: keep the call alive for the remaining participants until server ends it when <= 1 remain
+      const isGroupCall = currentCallRef.current?.isGroup;
+      if (!isGroupCall) {
+        setRemoteStreams((prev) => {
+          const remaining = Object.keys(prev).filter((id) => id !== socketId);
+          if (remaining.length === 0 && callStateRef.current === 'connected') {
+            setTimeout(() => {
+              endCall();
+            }, 300);
+          }
+          return prev;
+        });
+      }
     });
 
     // Reaction received listener
@@ -1016,6 +1029,7 @@ export const CallProvider = ({ children }) => {
     return () => {
       socket.off('call:incoming');
       socket.off('call:cancelled');
+      socket.off('call:ended');
       socket.off('call:busy');
       socket.off('call:rejected');
       socket.off('call:accepted');

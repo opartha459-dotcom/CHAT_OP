@@ -10,20 +10,23 @@ export const SocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
   const [typingMap, setTypingMap] = useState({}); // conversationId -> array of typing usernames
+  const [incomingCode, setIncomingCode] = useState(null); // { code, action, email, message }
   const socketRef = useRef(null);
   const typingTimeoutsRef = useRef({});
+  const watchedEmailsRef = useRef(new Set());
+
+  // Automatically watch logged-in user email
+  useEffect(() => {
+    if (user?.email) {
+      const clean = user.email.toLowerCase().trim();
+      watchedEmailsRef.current.add(clean);
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit('auth:watch_email', { email: clean });
+      }
+    }
+  }, [user?.email]);
 
   useEffect(() => {
-    if (!user) {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
-        setSocket(null);
-        setIsConnected(false);
-      }
-      return;
-    }
-
     const socketEndpoint =
       (import.meta.env.VITE_SERVER_URL && import.meta.env.VITE_SERVER_URL.startsWith('http'))
         ? import.meta.env.VITE_SERVER_URL
@@ -32,9 +35,10 @@ export const SocketProvider = ({ children }) => {
             : 'http://127.0.0.1:5000');
 
     const authToken = token || localStorage.getItem('pulsechat_token');
+    const authPayload = authToken ? { token: authToken } : { isGuest: true };
 
     const socketInstance = io(socketEndpoint, {
-      auth: { token: authToken },
+      auth: authPayload,
       withCredentials: true,
       transports: ['websocket', 'polling'],
       reconnectionAttempts: Infinity,
@@ -48,6 +52,10 @@ export const SocketProvider = ({ children }) => {
     socketInstance.on('connect', () => {
       console.log('[Socket] Connected with ID:', socketInstance.id);
       setIsConnected(true);
+      // Re-watch all registered emails on connect/reconnect
+      watchedEmailsRef.current.forEach((em) => {
+        socketInstance.emit('auth:watch_email', { email: em });
+      });
     });
 
     socketInstance.on('disconnect', (reason) => {
@@ -132,6 +140,12 @@ export const SocketProvider = ({ children }) => {
       window.location.href = `/login?deleted=1&reason=${msg}`;
     });
 
+    // Verification / Reset code received from admin
+    socketInstance.on('auth:code_received', (data) => {
+      console.log('[Socket] Verification code received:', data);
+      setIncomingCode(data);
+    });
+
     // Clear typing indicator when user sends a message
     socketInstance.on('message:received', (message) => {
       if (message?.conversation && message?.sender?._id) {
@@ -195,6 +209,19 @@ export const SocketProvider = ({ children }) => {
     }
   };
 
+  const watchEmail = (email) => {
+    if (!email) return;
+    const clean = String(email).trim().toLowerCase();
+    watchedEmailsRef.current.add(clean);
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('auth:watch_email', { email: clean });
+    }
+  };
+
+  const clearIncomingCode = () => {
+    setIncomingCode(null);
+  };
+
   return (
     <SocketContext.Provider
       value={{
@@ -202,6 +229,9 @@ export const SocketProvider = ({ children }) => {
         isConnected,
         onlineUsers,
         typingMap,
+        incomingCode,
+        clearIncomingCode,
+        watchEmail,
         joinConversation,
         leaveConversation,
         sendTypingStart,

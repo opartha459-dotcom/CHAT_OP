@@ -22,6 +22,7 @@ import { DashboardSkeleton, AuthCardSkeleton } from './components/common/Skeleto
 import { PulseLogo } from './components/common/PulseLogo';
 import { IncomingCallModal } from './components/call/IncomingCallModal';
 import { ActiveCallModal } from './components/call/ActiveCallModal';
+import { IncomingCodeModal } from './components/common/IncomingCodeModal';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 
@@ -227,6 +228,9 @@ export default function App() {
                       {/* WebRTC Audio/Video Call Modals */}
                       <IncomingCallModal />
                       <ActiveCallModal />
+
+                      {/* Manual Admin Verification Code Delivery Modal */}
+                      <IncomingCodeModal />
                     </BrowserRouter>
                   </StatusProvider>
                 </CallProvider>
