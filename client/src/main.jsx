@@ -3,8 +3,12 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.jsx';
 
-// In production on Vercel / Netlify, automatically route /api and /uploads to VITE_SERVER_URL if provided
-const remoteServer = import.meta.env.VITE_SERVER_URL;
+// In production on Vercel / Netlify, automatically route /api and /uploads to SERVER_URI / VITE_SERVER_URL if provided
+const remoteServer =
+  import.meta.env.VITE_SERVER_URI ||
+  import.meta.env.SERVER_URI ||
+  import.meta.env.VITE_SERVER_URL ||
+  import.meta.env.SERVER_URL;
 if (import.meta.env.PROD && remoteServer && remoteServer.startsWith('http')) {
   const backendBase = remoteServer.replace(/\/$/, '');
   const originalFetch = window.fetch;

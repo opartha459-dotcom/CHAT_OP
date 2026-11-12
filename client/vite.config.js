@@ -5,7 +5,12 @@ import tailwindcss from '@tailwindcss/vite';
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const backendTarget = env.VITE_SERVER_URL || 'http://127.0.0.1:5000';
+  const backendTarget =
+    env.VITE_SERVER_URI ||
+    env.SERVER_URI ||
+    env.VITE_SERVER_URL ||
+    env.SERVER_URL ||
+    'http://127.0.0.1:5000';
 
   // Custom logger to filter out benign TCP socket resets when tabs refresh or close
   const customLogger = createLogger();
@@ -19,6 +24,13 @@ export default defineConfig(({ mode }) => {
 
   return {
     customLogger,
+    envPrefix: ['VITE_', 'SERVER_'],
+    define: {
+      'import.meta.env.VITE_SERVER_URI': JSON.stringify(backendTarget),
+      'import.meta.env.SERVER_URI': JSON.stringify(backendTarget),
+      'import.meta.env.VITE_SERVER_URL': JSON.stringify(backendTarget),
+      'import.meta.env.SERVER_URL': JSON.stringify(backendTarget),
+    },
     plugins: [react(), tailwindcss()],
     server: {
       port: 5173,

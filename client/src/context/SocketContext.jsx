@@ -27,9 +27,15 @@ export const SocketProvider = ({ children }) => {
   }, [user?.email]);
 
   useEffect(() => {
+    const configuredEndpoint =
+      import.meta.env.VITE_SERVER_URI ||
+      import.meta.env.SERVER_URI ||
+      import.meta.env.VITE_SERVER_URL ||
+      import.meta.env.SERVER_URL;
+
     const socketEndpoint =
-      (import.meta.env.VITE_SERVER_URL && import.meta.env.VITE_SERVER_URL.startsWith('http'))
-        ? import.meta.env.VITE_SERVER_URL
+      (configuredEndpoint && configuredEndpoint.startsWith('http'))
+        ? configuredEndpoint
         : (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
             ? `${window.location.protocol}//${window.location.hostname}:5000`
             : 'http://127.0.0.1:5000');
