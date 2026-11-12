@@ -107,7 +107,7 @@ export const LoginPage = () => {
             <p className="text-[11px] text-amber-200/80 leading-relaxed">
               Your account is not verified yet. Please click the verification link sent to your inbox, or click below to receive a new link.
             </p>
-            <div className="pt-1 flex items-center justify-between">
+            <div className="pt-1 flex items-center gap-2 flex-wrap">
               <button
                 type="button"
                 disabled={resendStatus.loading || resendCooldown > 0}
@@ -120,9 +120,16 @@ export const LoginPage = () => {
                     ? 'Sending...'
                     : resendCooldown > 0
                     ? `Resend in ${resendCooldown}s`
-                    : 'Resend Verification Email'}
+                    : 'Resend Email'}
                 </span>
               </button>
+              <Link
+                to={`/verify-email?email=${encodeURIComponent(unverifiedEmail || identifier)}`}
+                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-[11px] transition flex items-center space-x-1.5 shadow-xs"
+              >
+                <KeyRound className="w-3 h-3" />
+                <span>Enter Code</span>
+              </Link>
             </div>
             {resendStatus.msg && (
               <p className={`text-[11px] font-medium ${resendStatus.type === 'success' ? 'text-emerald-400' : 'text-rose-400'}`}>
