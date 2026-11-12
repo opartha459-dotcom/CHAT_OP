@@ -1,16 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
-import { KeyRound, Copy, Check, X, ShieldCheck } from 'lucide-react';
+import { KeyRound, Copy, Check, X } from 'lucide-react';
 
 export const IncomingCodeModal = () => {
   const { incomingCode, clearIncomingCode } = useSocket();
   const { user } = useAuth();
   const location = useLocation();
   const [copied, setCopied] = useState(false);
+  // Track which code+email combos the user has dismissed so the toast
+  // won't reappear even if incomingCode is still set in context.
+  const [dismissed, setDismissed] = useState(null);
+
+  // Reset dismissed state whenever a NEW code arrives (different from the one dismissed).
+  const dismissedRef = useRef(null);
+  useEffect(() => {
+    if (!incomingCode?.code) return;
+    const key = `${incomingCode.code}|${incomingCode.email || ''}`;
+    if (dismissedRef.current !== key) {
+      // New code arrived — allow showing again
+      setDismissed(null);
+    }
+  }, [incomingCode?.code, incomingCode?.email]);
 
   if (!incomingCode || !incomingCode.code) return null;
+
+  // If user dismissed this exact code, stay hidden
+  const currentKey = `${incomingCode.code}|${incomingCode.email || ''}`;
+  if (dismissed === currentKey) return null;
 
   // 1. Never show code modal to ANY admin user or on the /admin route!
   // The admin is the dispatcher, so popping up a code modal on the admin's screen is confusing.
@@ -65,7 +83,11 @@ export const IncomingCodeModal = () => {
             </div>
           </div>
           <button
-            onClick={clearIncomingCode}
+            onClick={() => {
+              dismissedRef.current = currentKey;
+              setDismissed(currentKey);
+              clearIncomingCode();
+            }}
             className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
             title="Dismiss"
           >
