@@ -592,19 +592,31 @@ export const MessageBubble = ({ message, isGroup = false }) => {
             </div>
           </div>
 
-          {/* Reactions Pill Display */}
+          {/* Reactions Pill Display with user active state */}
           {Object.keys(reactionGroups).length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
-              {Object.entries(reactionGroups).map(([emoji, count]) => (
-                <button
-                  key={emoji}
-                  onClick={() => reactToMessage(message._id, emoji)}
-                  className="inline-flex items-center space-x-1 px-1.5 py-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-xs shadow-xs hover:scale-105 transition"
-                >
-                  <span>{emoji}</span>
-                  <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">{count}</span>
-                </button>
-              ))}
+              {Object.entries(reactionGroups).map(([emoji, count]) => {
+                const userReactedThis = (message.reactions || []).some(
+                  (r) => (r.user?._id || r.user)?.toString() === user?._id?.toString() && r.emoji === emoji
+                );
+
+                return (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => reactToMessage(message._id, emoji)}
+                    className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-xs transition cursor-pointer ${
+                      userReactedThis
+                        ? 'bg-indigo-100 dark:bg-indigo-950/70 border border-indigo-400 dark:border-indigo-500 text-indigo-700 dark:text-indigo-300 font-bold shadow-xs'
+                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:scale-105 shadow-xs'
+                    }`}
+                    title={userReactedThis ? `Remove reaction ${emoji}` : `React with ${emoji}`}
+                  >
+                    <span>{emoji}</span>
+                    <span className="text-[10px] font-semibold">{count}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

@@ -754,37 +754,130 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // React to message
+  // React to message with instant optimistic response (0ms)
   const reactToMessage = async (messageId, emoji) => {
-    const res = await fetch(`/api/messages/${messageId}/react`, {
-      method: 'POST',
-      headers: authHeaders(),
-      credentials: 'include',
-      body: JSON.stringify({ emoji })
-    });
+    const curUserId = user?._id?.toString();
+    if (!curUserId || !messageId) return;
 
-    const data = await res.json();
-    if (data.success) {
-      setMessages((prev) =>
-        prev.map((m) => (m._id === messageId ? { ...m, reactions: data.reactions } : m))
-      );
-      if (activeConversation?._id) {
-        updateCacheEntry(activeConversation._id, (prevCache) => ({
-          ...prevCache,
-          messages: (prevCache.messages || []).map((m) =>
-            m._id === messageId ? { ...m, reactions: data.reactions } : m
-          )
-        }));
+    let snapshotReactions = null;
+    const userObj = {
+      _id: curUserId,
+      username: user?.username,
+      nickname: user?.nickname,
+      avatar: user?.avatar
+    };
+
+    // 1. Instant optimistic update
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m._id === messageId) {
+          snapshotReactions = m.reactions || [];
+          const currentReactions = Array.isArray(m.reactions) ? [...m.reactions] : [];
+          const existingIdx = currentReactions.findIndex(
+            (r) => (r.user?._id || r.user)?.toString() === curUserId && r.emoji === emoji
+          );
+
+          let nextReactions;
+          if (existingIdx > -1) {
+            // Remove (toggle off)
+            nextReactions = currentReactions.filter((_, idx) => idx !== existingIdx);
+          } else {
+            // Remove previous reaction from this user if any, and add new one
+            nextReactions = currentReactions.filter(
+              (r) => (r.user?._id || r.user)?.toString() !== curUserId
+            );
+            nextReactions.push({
+              user: userObj,
+              emoji,
+              createdAt: new Date().toISOString()
+            });
+          }
+
+          return { ...m, reactions: nextReactions };
+        }
+        return m;
+      })
+    );
+
+    if (activeConversation?._id) {
+      updateCacheEntry(activeConversation._id, (prevCache) => ({
+        ...prevCache,
+        messages: (prevCache.messages || []).map((m) => {
+          if (m._id === messageId) {
+            const currentReactions = Array.isArray(m.reactions) ? [...m.reactions] : [];
+            const existingIdx = currentReactions.findIndex(
+              (r) => (r.user?._id || r.user)?.toString() === curUserId && r.emoji === emoji
+            );
+
+            let nextReactions;
+            if (existingIdx > -1) {
+              nextReactions = currentReactions.filter((_, idx) => idx !== existingIdx);
+            } else {
+              nextReactions = currentReactions.filter(
+                (r) => (r.user?._id || r.user)?.toString() !== curUserId
+              );
+              nextReactions.push({
+                user: userObj,
+                emoji,
+                createdAt: new Date().toISOString()
+              });
+            }
+
+            return { ...m, reactions: nextReactions };
+          }
+          return m;
+        })
+      }));
+    }
+
+    // 2. Background sync
+    try {
+      const res = await fetch(`/api/messages/${messageId}/react`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ emoji })
+      });
+      const data = await res.json();
+      if (data.success && data.reactions) {
+        setMessages((prev) =>
+          prev.map((m) => (m._id === messageId ? { ...m, reactions: data.reactions } : m))
+        );
+        if (activeConversation?._id) {
+          updateCacheEntry(activeConversation._id, (prevCache) => ({
+            ...prevCache,
+            messages: (prevCache.messages || []).map((m) =>
+              m._id === messageId ? { ...m, reactions: data.reactions } : m
+            )
+          }));
+        }
+      } else if (!data.success && snapshotReactions) {
+        setMessages((prev) =>
+          prev.map((m) => (m._id === messageId ? { ...m, reactions: snapshotReactions } : m))
+        );
+      }
+    } catch (err) {
+      console.error('React error:', err);
+      if (snapshotReactions) {
+        setMessages((prev) =>
+          prev.map((m) => (m._id === messageId ? { ...m, reactions: snapshotReactions } : m))
+        );
       }
     }
   };
 
-  // Vote on chat poll with instant optimistic response (0ms)
+  // Vote on chat poll with instant optimistic response (0ms) and seamless option switching
   const votePoll = async (messageId, optionIndex) => {
     const curUserId = user?._id?.toString();
     if (!curUserId || !messageId) return;
 
     let snapshotMsg = null;
+    const userObj = {
+      _id: curUserId,
+      username: user?.username,
+      nickname: user?.nickname,
+      avatar: user?.avatar
+    };
 
     // 1. Instant optimistic update
     setMessages((prev) =>
@@ -792,7 +885,7 @@ export const ChatProvider = ({ children }) => {
         if (m._id === messageId && m.poll) {
           snapshotMsg = m;
           const poll = m.poll;
-          const allowsMultiple = Boolean(poll.allowsMultiple);
+          const allowsMultiple = Boolean(poll.allowsMultiple || poll.allowMultiple);
           const targetOpt = poll.options?.[optionIndex];
           if (!targetOpt) return m;
 
@@ -806,14 +899,14 @@ export const ChatProvider = ({ children }) => {
               if (idx === optionIndex) {
                 const nextVotes = alreadyVoted
                   ? votes.filter((v) => (v?._id || v)?.toString() !== curUserId)
-                  : [...votes, curUserId];
+                  : [...votes, userObj];
                 return { ...opt, votes: nextVotes };
               }
               return opt;
             } else {
               let nextVotes = votes.filter((v) => (v?._id || v)?.toString() !== curUserId);
               if (idx === optionIndex && !alreadyVoted) {
-                nextVotes.push(curUserId);
+                nextVotes.push(userObj);
               }
               return { ...opt, votes: nextVotes };
             }
@@ -834,7 +927,7 @@ export const ChatProvider = ({ children }) => {
         messages: (prevCache.messages || []).map((m) => {
           if (m._id === messageId && m.poll) {
             const poll = m.poll;
-            const allowsMultiple = Boolean(poll.allowsMultiple);
+            const allowsMultiple = Boolean(poll.allowsMultiple || poll.allowMultiple);
             const targetOpt = poll.options?.[optionIndex];
             if (!targetOpt) return m;
             const alreadyVoted = (targetOpt.votes || []).some(
@@ -846,14 +939,14 @@ export const ChatProvider = ({ children }) => {
                 if (idx === optionIndex) {
                   const nextVotes = alreadyVoted
                     ? votes.filter((v) => (v?._id || v)?.toString() !== curUserId)
-                    : [...votes, curUserId];
+                    : [...votes, userObj];
                   return { ...opt, votes: nextVotes };
                 }
                 return opt;
               } else {
                 let nextVotes = votes.filter((v) => (v?._id || v)?.toString() !== curUserId);
                 if (idx === optionIndex && !alreadyVoted) {
-                  nextVotes.push(curUserId);
+                  nextVotes.push(userObj);
                 }
                 return { ...opt, votes: nextVotes };
               }
@@ -874,7 +967,19 @@ export const ChatProvider = ({ children }) => {
         body: JSON.stringify({ optionIndex })
       });
       const data = await res.json();
-      if (!data.success && snapshotMsg) {
+      if (data.success && data.message?.poll) {
+        setMessages((prev) =>
+          prev.map((m) => (m._id === messageId ? { ...m, poll: data.message.poll } : m))
+        );
+        if (activeConversation?._id) {
+          updateCacheEntry(activeConversation._id, (prevCache) => ({
+            ...prevCache,
+            messages: (prevCache.messages || []).map((m) =>
+              m._id === messageId ? { ...m, poll: data.message.poll } : m
+            )
+          }));
+        }
+      } else if (!data.success && snapshotMsg) {
         setMessages((prev) => prev.map((m) => (m._id === messageId ? snapshotMsg : m)));
         throw new Error(data.message || 'Failed to submit vote');
       }

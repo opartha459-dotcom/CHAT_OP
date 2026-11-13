@@ -23,6 +23,16 @@ export const PollBubble = ({ message }) => {
     0
   );
 
+  // Determine top votes and whether there is a tie / draw
+  const maxVotes = (poll.options || []).reduce(
+    (max, opt) => Math.max(max, opt.votes?.length || 0),
+    0
+  );
+  const topOptions = maxVotes > 0
+    ? (poll.options || []).filter((opt) => (opt.votes?.length || 0) === maxVotes)
+    : [];
+  const isDraw = topOptions.length > 1;
+
   const handleVote = async (optionIndex) => {
     if (isClosed) return;
     setErrorMsg('');
@@ -121,6 +131,17 @@ export const PollBubble = ({ message }) => {
                   <span className="truncate text-slate-900 dark:text-slate-100 font-medium">
                     {option.text}
                   </span>
+                  {maxVotes > 0 && voteCount === maxVotes && (
+                    <span
+                      className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider border shrink-0 ${
+                        isDraw
+                          ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/40'
+                          : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/40'
+                      }`}
+                    >
+                      {isDraw ? 'Draw' : isClosed ? 'Winner' : 'Top'}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center space-x-2 flex-shrink-0 font-mono text-[11px] text-slate-500 dark:text-slate-400">
@@ -162,11 +183,28 @@ export const PollBubble = ({ message }) => {
 
       {/* Footer Info */}
       <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-800/80">
-        <div className="flex items-center space-x-1.5">
+        <div className="flex items-center space-x-1.5 flex-wrap">
           <span>{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}</span>
           <span>·</span>
           {isClosed ? (
-            <span className="text-amber-600 dark:text-amber-400 font-medium">Final results</span>
+            isDraw ? (
+              <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center space-x-1">
+                <span>🤝</span>
+                <span>Draw ({maxVotes} {maxVotes === 1 ? 'vote' : 'votes'} each)</span>
+              </span>
+            ) : topOptions.length === 1 ? (
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center space-x-1">
+                <span>🏆</span>
+                <span>Winner: {topOptions[0].text}</span>
+              </span>
+            ) : (
+              <span className="text-amber-600 dark:text-amber-400 font-medium">Final results</span>
+            )
+          ) : isDraw && maxVotes > 0 ? (
+            <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center space-x-1">
+              <span>🤝</span>
+              <span>Draw ({maxVotes}v each)</span>
+            </span>
           ) : (
             <span className="text-emerald-600 dark:text-emerald-400 font-medium">Active</span>
           )}

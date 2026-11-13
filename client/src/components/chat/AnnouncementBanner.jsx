@@ -374,20 +374,19 @@ export const AnnouncementBanner = () => {
         const content = announcement.content || '';
         const hasLongContent = content.length > 80;
 
-        // Calculate leading / winning option for results
+        // Calculate leading / winning option for results (draw-aware)
         let maxVotes = 0;
-        let leadingOption = null;
+        let topOptions = [];
         if (announcement.hasPoll && poll && Array.isArray(poll.options)) {
-          poll.options.forEach((opt, idx) => {
-            if (!opt) return;
-            const vCount = getVotesCount(opt);
-            if (vCount > maxVotes) {
-              maxVotes = vCount;
-              leadingOption = { ...opt, index: idx, count: vCount };
-            }
-          });
+          const validOptions = poll.options.filter(Boolean);
+          maxVotes = validOptions.reduce((max, opt) => Math.max(max, getVotesCount(opt)), 0);
+          if (maxVotes > 0) {
+            topOptions = validOptions.filter((opt) => getVotesCount(opt) === maxVotes);
+          }
         }
-        const winningPct = totalVotes > 0 && leadingOption ? Math.round((leadingOption.count / totalVotes) * 100) : 0;
+        const isDraw = topOptions.length > 1;
+        const leadingOption = !isDraw && topOptions.length === 1 ? topOptions[0] : null;
+        const winningPct = totalVotes > 0 && maxVotes > 0 ? Math.round((maxVotes / totalVotes) * 100) : 0;
 
         return (
           <div
@@ -429,9 +428,14 @@ export const AnnouncementBanner = () => {
                               <span>Active</span>
                             </span>
                           )}
-                          {leadingOption ? (
+                          {isDraw && maxVotes > 0 ? (
+                            <span className="text-amber-300 font-bold flex items-center space-x-1">
+                              <span>🤝</span>
+                              <span>Draw ({maxVotes}v each)</span>
+                            </span>
+                          ) : leadingOption ? (
                             <span className="text-white/90">
-                              Top: <strong className="text-white">{leadingOption.text}</strong> ({winningPct}% · {leadingOption.count}v)
+                              Top: <strong className="text-white">{leadingOption.text}</strong> ({winningPct}% · {getVotesCount(leadingOption)}v)
                             </span>
                           ) : (
                             <span className="text-white/70">No votes yet</span>
@@ -501,16 +505,24 @@ export const AnnouncementBanner = () => {
                       </div>
                     </div>
 
-                    {/* Leading / Winner Banner */}
-                    {leadingOption && leadingOption.count > 0 && (
+                    {/* Leading / Winner / Draw Banner */}
+                    {maxVotes > 0 && (
                       <div className="p-2 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between text-[11px]">
-                        <span className="flex items-center space-x-1.5 font-medium text-amber-300">
-                          <span>🏆</span>
-                          <span>{poll.isClosed ? 'Winning Choice' : 'Currently Leading'}:</span>
-                          <strong className="text-white">{leadingOption.text}</strong>
-                        </span>
+                        {isDraw ? (
+                          <span className="flex items-center space-x-1.5 font-medium text-amber-300">
+                            <span>🤝</span>
+                            <span>{poll.isClosed ? 'Draw! Multiple winners:' : 'Currently tied:'}</span>
+                            <strong className="text-white">{topOptions.map(o => o.text).join(' & ')}</strong>
+                          </span>
+                        ) : (
+                          <span className="flex items-center space-x-1.5 font-medium text-amber-300">
+                            <span>🏆</span>
+                            <span>{poll.isClosed ? 'Winning Choice' : 'Currently Leading'}:</span>
+                            <strong className="text-white">{leadingOption?.text}</strong>
+                          </span>
+                        )}
                         <span className="font-mono font-bold text-amber-200">
-                          {winningPct}% of votes ({leadingOption.count} / {totalVotes})
+                          {winningPct}% · {maxVotes} {maxVotes === 1 ? 'vote' : 'votes'}
                         </span>
                       </div>
                     )}
@@ -533,16 +545,20 @@ export const AnnouncementBanner = () => {
                             className={`w-full relative overflow-hidden text-left p-3 rounded-xl border transition group cursor-pointer ${
                               hasVoted
                                 ? 'border-indigo-400 bg-indigo-500/20 ring-1 ring-indigo-400/50'
-                                : isWinner && poll.isClosed
+                                : isWinner && poll.isClosed && !isDraw
                                 ? 'border-amber-400/80 bg-amber-500/10'
+                                : isDraw && isWinner && poll.isClosed
+                                ? 'border-amber-400/50 bg-amber-500/5'
                                 : 'border-white/10 hover:border-white/30 bg-white/5'
                             } ${poll.isClosed ? 'cursor-default' : 'active:scale-[0.99]'}`}
                           >
                             {/* Animated Background Progress Bar */}
                             <div
                               className={`absolute inset-y-0 left-0 transition-all duration-500 ${
-                                isWinner && poll.isClosed
+                                isWinner && poll.isClosed && !isDraw
                                   ? 'bg-amber-500/30'
+                                  : isDraw && isWinner && poll.isClosed
+                                  ? 'bg-amber-500/15'
                                   : hasVoted
                                   ? 'bg-indigo-500/35'
                                   : theme.barFill + ' opacity-25'
@@ -564,8 +580,12 @@ export const AnnouncementBanner = () => {
                                 </div>
                                 <span className="truncate font-semibold">{opt.text}</span>
                                 {isWinner && maxVotes > 0 && (
-                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                                    {poll.isClosed ? 'Winner' : 'Top'}
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border shrink-0 ${
+                                    isDraw
+                                      ? 'bg-amber-400/15 text-amber-300 border-amber-400/30'
+                                      : 'bg-amber-400/20 text-amber-300 border-amber-400/30'
+                                  }`}>
+                                    {isDraw ? 'Draw' : poll.isClosed ? 'Winner 🏆' : 'Top'}
                                   </span>
                                 )}
                               </div>

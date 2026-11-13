@@ -694,6 +694,16 @@ export const StatusViewerModal = ({
     0
   );
 
+  // Draw / winner detection for status poll
+  const pollMaxVotes = pollOptions.reduce(
+    (max, opt) => Math.max(max, typeof opt.voteCount === 'number' ? opt.voteCount : (opt.votes?.length || 0)),
+    0
+  );
+  const pollTopOptions = pollMaxVotes > 0
+    ? pollOptions.filter((opt) => (typeof opt.voteCount === 'number' ? opt.voteCount : (opt.votes?.length || 0)) === pollMaxVotes)
+    : [];
+  const isPollDraw = pollTopOptions.length > 1;
+
   const isPollClosed = Boolean(poll?.isClosed);
 
   return (
@@ -870,11 +880,15 @@ export const StatusViewerModal = ({
                       ? Math.round((voteCount / totalPollVotes) * 100)
                       : 0;
 
+                  const isTopOption = pollMaxVotes > 0 && voteCount === pollMaxVotes;
+
                   return (
                     <div
                       key={optIdx}
                       className={`relative overflow-hidden rounded-xl border transition-all ${hasVoted
                         ? 'border-indigo-400 bg-indigo-900/40 text-white font-medium ring-1 ring-indigo-400/60'
+                        : isTopOption && isPollClosed && !isPollDraw
+                        ? 'border-amber-400/60 bg-amber-900/20 text-white/90'
                         : 'border-white/20 bg-white/10 hover:border-white/40 hover:bg-white/15 text-white/90'
                         }`}
                     >
@@ -891,10 +905,13 @@ export const StatusViewerModal = ({
                           }`}
                       >
                         <div
-                          className={`absolute inset-y-0 left-0 rounded-xl transition-all duration-500 pointer-events-none ${hasVoted
-                            ? 'bg-indigo-500/35'
-                            : 'bg-white/15'
-                            }`}
+                          className={`absolute inset-y-0 left-0 rounded-xl transition-all duration-500 pointer-events-none ${
+                            isTopOption && isPollClosed && !isPollDraw
+                              ? 'bg-amber-500/25'
+                              : hasVoted
+                              ? 'bg-indigo-500/35'
+                              : 'bg-white/15'
+                          }`}
                           style={{ width: `${percentage}%` }}
                         />
 
@@ -911,6 +928,16 @@ export const StatusViewerModal = ({
                             <span className="truncate text-white font-medium">
                               {opt.text}
                             </span>
+
+                            {isTopOption && pollMaxVotes > 0 && (
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border shrink-0 ${
+                                isPollDraw
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+                                  : 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+                              }`}>
+                                {isPollDraw ? '🤝 Draw' : isPollClosed ? '🏆 Winner' : '▲ Top'}
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex items-center space-x-1.5 flex-shrink-0 font-mono text-[11px] text-white/80">
@@ -983,8 +1010,29 @@ export const StatusViewerModal = ({
               </div>
 
               {/* Poll Footer */}
-              <div className="flex items-center justify-between text-[11px] text-white/70 pt-1 border-t border-white/10 font-mono">
+              <div className="flex items-center justify-between text-[11px] text-white/70 pt-1 border-t border-white/10 font-mono flex-wrap gap-1">
                 <span>{totalPollVotes} total votes</span>
+
+                {isPollClosed && pollMaxVotes > 0 && (
+                  isPollDraw ? (
+                    <span className="flex items-center space-x-1 text-amber-300 font-sans font-semibold">
+                      <span>🤝</span>
+                      <span>Draw — {pollTopOptions.map(o => o.text).join(' & ')}</span>
+                    </span>
+                  ) : pollTopOptions.length === 1 ? (
+                    <span className="flex items-center space-x-1 text-amber-300 font-sans font-semibold">
+                      <span>🏆</span>
+                      <span>Winner: {pollTopOptions[0].text}</span>
+                    </span>
+                  ) : null
+                )}
+
+                {!isPollClosed && isPollDraw && pollMaxVotes > 0 && (
+                  <span className="flex items-center space-x-1 text-amber-300 font-sans font-medium">
+                    <span>🤝</span>
+                    <span>Tied ({pollMaxVotes}v each)</span>
+                  </span>
+                )}
 
                 {isMine && !isPollClosed && (
                   <button
