@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Info,
   Sparkles,
@@ -26,6 +26,10 @@ export const AnnouncementBanner = () => {
   const [announcements, setAnnouncements] = useState([]);
   const [collapsedIds, setCollapsedIds] = useState(new Set());
   const [votingId, setVotingId] = useState(null);
+
+  // Poll race-condition guard: generation counter per announcementId.
+  const voteGenerationsRef = useRef({}); // announcementId → current generation
+  const pendingAnnVoteIds = useRef(new Set()); // announcementIds with an in-flight vote
 
   // Fetch active announcements
   const fetchAnnouncements = async () => {
@@ -71,6 +75,11 @@ export const AnnouncementBanner = () => {
     socket.on('announcement:poll:voted', (payload) => {
       if (!payload) return;
       const announcementId = payload.announcementId || payload._id;
+
+      // Skip socket update while we have an in-flight vote for this announcement
+      // — our optimistic state is fresher than the broadcast.
+      if (pendingAnnVoteIds.current.has(announcementId)) return;
+
       const incomingPoll = payload.poll || payload.formatted?.poll;
       const pollStats = payload.pollStats || payload.formatted?.pollStats;
       const formatted = payload.formatted || {};
@@ -151,12 +160,19 @@ export const AnnouncementBanner = () => {
     }
   };
 
-  // Vote on an announcement poll (persists open state, instant optimistic UI on tap)
+  // Vote on an announcement poll (persists open state, instant optimistic UI on tap).
+  // Uses a generation counter to discard stale network responses when the user
+  // rapidly switches options before the first request completes.
   const handleVote = async (announcementId, optionIndex) => {
     const curUserId = user?._id?.toString();
     const targetAnnouncement = announcements.find((a) => a._id === announcementId);
     if (!targetAnnouncement || !targetAnnouncement.poll) return;
     if (targetAnnouncement.poll.isClosed) return;
+
+    // --- generation guard ---
+    const myGen = (voteGenerationsRef.current[announcementId] || 0) + 1;
+    voteGenerationsRef.current[announcementId] = myGen;
+    pendingAnnVoteIds.current.add(announcementId);
 
     // Snapshot for rollback on error
     const previousState = targetAnnouncement;
@@ -215,6 +231,10 @@ export const AnnouncementBanner = () => {
         body: JSON.stringify({ optionIndex })
       });
       const data = await res.json();
+
+      // Discard if a newer vote was already issued for this announcement
+      if (voteGenerationsRef.current[announcementId] !== myGen) return;
+
       if (data.success && data.announcement) {
         setAnnouncements((prev) =>
           prev.map((a) => (a._id === announcementId ? { ...a, ...data.announcement } : a))
@@ -227,10 +247,18 @@ export const AnnouncementBanner = () => {
       }
     } catch (err) {
       console.error('[Poll Vote Error]', err);
-      // Rollback
-      setAnnouncements((prev) =>
-        prev.map((a) => (a._id === announcementId ? previousState : a))
-      );
+      if (voteGenerationsRef.current[announcementId] === myGen) {
+        // Rollback
+        setAnnouncements((prev) =>
+          prev.map((a) => (a._id === announcementId ? previousState : a))
+        );
+      }
+    } finally {
+      // Release the lock only if no newer vote has taken over
+      if (voteGenerationsRef.current[announcementId] === myGen) {
+        pendingAnnVoteIds.current.delete(announcementId);
+        delete voteGenerationsRef.current[announcementId];
+      }
     }
   };
 
@@ -554,7 +582,7 @@ export const AnnouncementBanner = () => {
                           >
                             {/* Animated Background Progress Bar */}
                             <div
-                              className={`absolute inset-y-0 left-0 transition-[width] duration-150 ${
+                              className={`absolute inset-y-0 left-0 transition-[width] duration-500 ease-in-out ${
                                 isWinner && poll.isClosed && !isDraw
                                   ? 'bg-amber-500/30'
                                   : isDraw && isWinner && poll.isClosed

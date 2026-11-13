@@ -48,6 +48,10 @@ export const StatusViewerModal = ({
   const [progress, setProgress] = useState(0);
 
   const activeStatusRef = useRef(activeStatus);
+  // Ref mirror of `voting` so socket closures always see the live value.
+  const votingRef = useRef(false);
+  // Incremented on every vote start; lets us discard stale network responses.
+  const voteVersionRef = useRef(0);
 
   useEffect(() => {
     activeStatusRef.current = activeStatus;
@@ -109,6 +113,9 @@ export const StatusViewerModal = ({
         // Merge incoming feed data with local live data (viewers/reactions/poll).
         // Always ensure poll options have a valid votes[] array.
         const mergePoll = () => {
+          // Don't let a stale feed update overwrite our optimistic/confirmed poll
+          // while a vote network request is still in-flight.
+          if (votingRef.current) return prev.poll;
           const src = incoming.poll || prev.poll;
           if (!src) return undefined;
           return {
@@ -320,6 +327,10 @@ export const StatusViewerModal = ({
       const curId = activeStatusRef.current?._id?.toString();
 
       if (payload.statusId?.toString() === curId) {
+        // Skip socket broadcast while we have an in-flight vote — our optimistic
+        // state is fresher than a potentially stale server broadcast.
+        if (votingRef.current) return;
+
         setActiveStatus((prev) => {
           if (!prev || prev._id?.toString() !== payload.statusId?.toString()) {
             return prev;
@@ -520,6 +531,10 @@ export const StatusViewerModal = ({
     if (!token || voting || activeStatus?.poll?.isClosed) return;
 
     setVoting(true);
+    votingRef.current = true;
+    // Bump version so stale network responses can be detected and discarded.
+    voteVersionRef.current += 1;
+    const myVersion = voteVersionRef.current;
     setPollError('');
 
     const curUserId = currentUserId?.toString();
@@ -584,6 +599,9 @@ export const StatusViewerModal = ({
 
       const data = await res.json();
 
+      // Discard if a newer vote was already issued (user changed option quickly)
+      if (voteVersionRef.current !== myVersion) return;
+
       if (data.success && data.poll) {
         setActiveStatus((prev) => {
           if (!prev) return prev;
@@ -606,10 +624,15 @@ export const StatusViewerModal = ({
     } catch (err) {
       console.error('Vote poll error:', err);
       // Rollback on network failure
-      setActiveStatus(prevStatusState);
-      setPollError('Network error voting on poll');
+      if (voteVersionRef.current === myVersion) {
+        setActiveStatus(prevStatusState);
+        setPollError('Network error voting on poll');
+      }
     } finally {
-      setVoting(false);
+      if (voteVersionRef.current === myVersion) {
+        setVoting(false);
+        votingRef.current = false;
+      }
     }
   };
 
@@ -905,7 +928,7 @@ export const StatusViewerModal = ({
                           }`}
                       >
                         <div
-                          className={`absolute inset-y-0 left-0 rounded-xl transition-[width] duration-150 pointer-events-none ${
+                          className={`absolute inset-y-0 left-0 rounded-xl transition-[width] duration-500 ease-in-out pointer-events-none ${
                             isTopOption && isPollClosed && !isPollDraw
                               ? 'bg-amber-500/25'
                               : hasVoted

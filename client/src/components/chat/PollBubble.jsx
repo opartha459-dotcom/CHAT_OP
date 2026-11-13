@@ -102,7 +102,7 @@ export const PollBubble = ({ message }) => {
               type="button"
               disabled={isClosed}
               onClick={() => handleVote(idx)}
-              className={`w-full relative text-left p-3 rounded-2xl border transition-[border-color,background-color] duration-100 overflow-hidden ${
+              className={`w-full relative text-left p-3 rounded-2xl border transition-[border-color,background-color] duration-300 overflow-hidden ${
                 hasVoted
                   ? 'border-indigo-500/80 bg-indigo-50/70 dark:bg-indigo-950/40 font-medium'
                   : 'border-slate-200/80 dark:border-slate-700/60 hover:bg-slate-50 dark:hover:bg-slate-800/50'
@@ -110,7 +110,7 @@ export const PollBubble = ({ message }) => {
             >
               {/* Progress Bar Fill */}
               <div
-                className={`absolute left-0 top-0 bottom-0 transition-[width] duration-150 ease-out pointer-events-none ${
+                className={`absolute left-0 top-0 bottom-0 transition-[width] duration-500 ease-in-out pointer-events-none ${
                   hasVoted
                     ? 'bg-indigo-500/20 dark:bg-indigo-500/30'
                     : 'bg-slate-200/60 dark:bg-slate-700/40'

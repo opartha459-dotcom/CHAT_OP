@@ -31,6 +31,11 @@ export const ChatProvider = ({ children }) => {
   const MAX_CACHED_CHATS = 20;
   const messageCacheRef = useRef(new Map());
 
+  // Poll race-condition guard: generation counter per messageId.
+  // Incremented on each vote; stale network responses are discarded.
+  const voteGenerationsRef = useRef({}); // messageId → current generation number
+  const pendingPollVoteIds = useRef(new Set()); // messageIds with an in-flight vote
+
   const getCachedEntry = useCallback((conversationId) => {
     if (!conversationId) return null;
     const id = conversationId.toString();
@@ -498,6 +503,10 @@ export const ChatProvider = ({ children }) => {
     };
 
     const handlePollUpdated = ({ messageId, poll, conversationId }) => {
+      // Skip if we have a pending in-flight vote for this message — our
+      // optimistic state is newer than the broadcast and must not be overwritten.
+      if (pendingPollVoteIds.current.has(messageId)) return;
+
       setMessages((prev) =>
         prev.map((m) => (m._id === messageId ? { ...m, poll } : m))
       );
@@ -866,10 +875,17 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // Vote on chat poll with instant optimistic response (0ms) and seamless option switching
+  // Vote on chat poll with instant optimistic response (0ms) and seamless option switching.
+  // Uses a generation counter to discard stale network responses when the user
+  // rapidly switches options before the first request completes.
   const votePoll = async (messageId, optionIndex) => {
     const curUserId = user?._id?.toString();
     if (!curUserId || !messageId) return;
+
+    // --- generation guard ---
+    const myGen = (voteGenerationsRef.current[messageId] || 0) + 1;
+    voteGenerationsRef.current[messageId] = myGen;
+    pendingPollVoteIds.current.add(messageId);
 
     let snapshotMsg = null;
     const userObj = {
@@ -879,43 +895,42 @@ export const ChatProvider = ({ children }) => {
       avatar: user?.avatar
     };
 
+    // Helper: build optimistic options array
+    const buildOptimisticOptions = (poll) => {
+      const allowsMultiple = Boolean(poll.allowsMultiple || poll.allowMultiple);
+      const targetOpt = poll.options?.[optionIndex];
+      if (!targetOpt) return null;
+
+      const alreadyVoted = (targetOpt.votes || []).some(
+        (v) => (v?._id || v)?.toString() === curUserId
+      );
+
+      return (poll.options || []).map((opt, idx) => {
+        const votes = Array.isArray(opt.votes) ? [...opt.votes] : [];
+        if (allowsMultiple) {
+          if (idx === optionIndex) {
+            const nextVotes = alreadyVoted
+              ? votes.filter((v) => (v?._id || v)?.toString() !== curUserId)
+              : [...votes, userObj];
+            return { ...opt, votes: nextVotes };
+          }
+          return opt;
+        } else {
+          let nextVotes = votes.filter((v) => (v?._id || v)?.toString() !== curUserId);
+          if (idx === optionIndex && !alreadyVoted) nextVotes.push(userObj);
+          return { ...opt, votes: nextVotes };
+        }
+      });
+    };
+
     // 1. Instant optimistic update
     setMessages((prev) =>
       prev.map((m) => {
         if (m._id === messageId && m.poll) {
           snapshotMsg = m;
-          const poll = m.poll;
-          const allowsMultiple = Boolean(poll.allowsMultiple || poll.allowMultiple);
-          const targetOpt = poll.options?.[optionIndex];
-          if (!targetOpt) return m;
-
-          const alreadyVoted = (targetOpt.votes || []).some(
-            (v) => (v?._id || v)?.toString() === curUserId
-          );
-
-          const newOptions = (poll.options || []).map((opt, idx) => {
-            const votes = Array.isArray(opt.votes) ? [...opt.votes] : [];
-            if (allowsMultiple) {
-              if (idx === optionIndex) {
-                const nextVotes = alreadyVoted
-                  ? votes.filter((v) => (v?._id || v)?.toString() !== curUserId)
-                  : [...votes, userObj];
-                return { ...opt, votes: nextVotes };
-              }
-              return opt;
-            } else {
-              let nextVotes = votes.filter((v) => (v?._id || v)?.toString() !== curUserId);
-              if (idx === optionIndex && !alreadyVoted) {
-                nextVotes.push(userObj);
-              }
-              return { ...opt, votes: nextVotes };
-            }
-          });
-
-          return {
-            ...m,
-            poll: { ...poll, options: newOptions }
-          };
+          const newOptions = buildOptimisticOptions(m.poll);
+          if (!newOptions) return m;
+          return { ...m, poll: { ...m.poll, options: newOptions } };
         }
         return m;
       })
@@ -926,32 +941,9 @@ export const ChatProvider = ({ children }) => {
         ...prevCache,
         messages: (prevCache.messages || []).map((m) => {
           if (m._id === messageId && m.poll) {
-            const poll = m.poll;
-            const allowsMultiple = Boolean(poll.allowsMultiple || poll.allowMultiple);
-            const targetOpt = poll.options?.[optionIndex];
-            if (!targetOpt) return m;
-            const alreadyVoted = (targetOpt.votes || []).some(
-              (v) => (v?._id || v)?.toString() === curUserId
-            );
-            const newOptions = (poll.options || []).map((opt, idx) => {
-              const votes = Array.isArray(opt.votes) ? [...opt.votes] : [];
-              if (allowsMultiple) {
-                if (idx === optionIndex) {
-                  const nextVotes = alreadyVoted
-                    ? votes.filter((v) => (v?._id || v)?.toString() !== curUserId)
-                    : [...votes, userObj];
-                  return { ...opt, votes: nextVotes };
-                }
-                return opt;
-              } else {
-                let nextVotes = votes.filter((v) => (v?._id || v)?.toString() !== curUserId);
-                if (idx === optionIndex && !alreadyVoted) {
-                  nextVotes.push(userObj);
-                }
-                return { ...opt, votes: nextVotes };
-              }
-            });
-            return { ...m, poll: { ...poll, options: newOptions } };
+            const newOptions = buildOptimisticOptions(m.poll);
+            if (!newOptions) return m;
+            return { ...m, poll: { ...m.poll, options: newOptions } };
           }
           return m;
         })
@@ -967,6 +959,10 @@ export const ChatProvider = ({ children }) => {
         body: JSON.stringify({ optionIndex })
       });
       const data = await res.json();
+
+      // Discard if a newer vote was already issued for this message
+      if (voteGenerationsRef.current[messageId] !== myGen) return;
+
       if (data.success && data.message?.poll) {
         setMessages((prev) =>
           prev.map((m) => (m._id === messageId ? { ...m, poll: data.message.poll } : m))
@@ -984,10 +980,16 @@ export const ChatProvider = ({ children }) => {
         throw new Error(data.message || 'Failed to submit vote');
       }
     } catch (err) {
-      if (snapshotMsg) {
+      if (voteGenerationsRef.current[messageId] === myGen && snapshotMsg) {
         setMessages((prev) => prev.map((m) => (m._id === messageId ? snapshotMsg : m)));
       }
       throw err;
+    } finally {
+      // Release the lock only if no newer vote has taken over
+      if (voteGenerationsRef.current[messageId] === myGen) {
+        pendingPollVoteIds.current.delete(messageId);
+        delete voteGenerationsRef.current[messageId];
+      }
     }
   };
 
