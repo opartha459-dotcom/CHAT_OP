@@ -197,16 +197,13 @@ const uploadMiddleware = require('./middlewares/upload');
 
 const defaultUploadDir = path.join(__dirname, 'uploads');
 
-app.use('/uploads', express.static(defaultUploadDir));
+// Serve files from the default uploads dir
+app.use('/uploads', express.static(defaultUploadDir, { maxAge: '7d' }));
 
-if (
-  uploadMiddleware.uploadDir &&
-  uploadMiddleware.uploadDir !== defaultUploadDir
-) {
-  app.use(
-    '/uploads',
-    express.static(uploadMiddleware.uploadDir)
-  );
+// Also serve from the actual dir the middleware resolved to (may be os.tmpdir())
+// This handles the case where the server runs in a read-only env and fell back to /tmp
+if (uploadMiddleware.uploadDir) {
+  app.use('/uploads', express.static(uploadMiddleware.uploadDir, { maxAge: '7d' }));
 }
 
 // ============================================

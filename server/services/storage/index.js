@@ -20,13 +20,23 @@ class StorageService {
 
   async upload(file) {
     const adapter = this.getAdapter();
+    const isCloudinary = adapter === this.cloudinaryAdapter;
+
     try {
       return await adapter.upload(file);
     } catch (err) {
-      console.warn(
-        `[StorageService] Upload using ${adapter.constructor.name} failed: ${err.message}. Falling back to LocalStorageAdapter.`
-      );
-      return await this.localAdapter.upload(file);
+      // When Cloudinary is configured and fails, do NOT silently fall back to
+      // local storage — a local /uploads/ URL will be unreachable in production
+      // (ephemeral filesystem). Surface the error so the client gets a clean
+      // failure message instead of storing a permanently broken URL.
+      if (isCloudinary) {
+        console.error('[StorageService] Cloudinary upload failed:', err.message);
+        throw new Error(`File upload failed: ${err.message}`);
+      }
+
+      // Local adapter failed (should be rare) — nothing else to fall back to
+      console.error('[StorageService] Local upload failed:', err.message);
+      throw err;
     }
   }
 

@@ -1,14 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send,
   Paperclip,
   Smile,
   X,
   File,
-  Image as ImageIcon,
   AlertCircle,
   BarChart2,
-  Mic
+  Mic,
+  Loader2,
+  ImageIcon
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -24,6 +25,89 @@ const EMOJI_LIST = [
   '💡', '⚡', '🌟', '💪', '🙌', '🤩', '🎯', '🌈'
 ];
 
+// ─── Image compression via Canvas ───────────────────────────────────────────
+// Resizes to max 1600px on the longest side and re-encodes as JPEG at 82%
+// quality. Falls back to the original File if anything goes wrong.
+const MAX_IMG_PX = 1600;
+const IMG_QUALITY = 0.82;
+
+async function compressImage(file) {
+  return new Promise((resolve) => {
+    const blobUrl = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(blobUrl);
+
+      let { naturalWidth: w, naturalHeight: h } = img;
+      const max = MAX_IMG_PX;
+
+      if (w <= max && h <= max) {
+        // Already small enough — skip re-encoding to avoid quality loss
+        return resolve(file);
+      }
+
+      const scale = Math.min(max / w, max / h);
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return resolve(file); // fallback
+          const compressed = new File(
+            [blob],
+            file.name.replace(/\.[^.]+$/, '.jpg'),
+            { type: 'image/jpeg', lastModified: Date.now() }
+          );
+          // Only use compressed version if it's actually smaller
+          resolve(compressed.size < file.size ? compressed : file);
+        },
+        'image/jpeg',
+        IMG_QUALITY
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(blobUrl);
+      resolve(file); // fallback: original
+    };
+
+    img.src = blobUrl;
+  });
+}
+
+// ─── Upload a File to the server ─────────────────────────────────────────────
+async function uploadFile(file, token) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetch('/api/users/upload', {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'include',
+    body: formData
+  });
+
+  const data = await res.json();
+  if (!data.success) throw new Error(data.message || 'Upload failed');
+  return data; // { fileUrl, fileName, fileSize, fileMimeType }
+}
+
+// ─── Derive messageType from MIME ────────────────────────────────────────────
+function mimeToType(mime = '') {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  return 'file';
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 export const MessageInput = () => {
   const { user, token } = useAuth();
   const { activeConversation, replyMessage, setReplyMessage, sendMessage } = useChat();
@@ -32,8 +116,13 @@ export const MessageInput = () => {
   const { isFeatureInMaintenance } = useMaintenance();
 
   const [text, setText] = useState('');
-  const [fileAttachment, setFileAttachment] = useState(null);
-  const [uploading, setUploading] = useState(false);
+
+  // pendingFile: local File object + object-URL preview — NOT yet uploaded
+  const [pendingFile, setPendingFile] = useState(null);
+  // { file: File, previewUrl: string, name: string, type: string (image|video|audio|file) }
+
+  const [sending, setSending] = useState(false);  // upload + send in progress
+  const [sendError, setSendError] = useState('');
   const [showEmojis, setShowEmojis] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [pollModalOpen, setPollModalOpen] = useState(false);
@@ -43,6 +132,64 @@ export const MessageInput = () => {
   const textareaRef = useRef(null);
   const typingTimeoutRef = useRef(null);
 
+  // Clean up object-URLs to avoid memory leaks
+  const revokePending = useCallback(() => {
+    if (pendingFile?.previewUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(pendingFile.previewUrl);
+    }
+  }, [pendingFile]);
+
+  // Reset everything when conversation changes
+  useEffect(() => {
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    setIsTyping(false);
+    setText('');
+    revokePending();
+    setPendingFile(null);
+    setSendError('');
+    setIsRecordingVoice(false);
+  }, [activeConversation?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Group permission check
+  const isGroup = activeConversation?.type === 'group';
+  const onlyAdminsCanMessage = isGroup && activeConversation?.groupDetails?.onlyAdminsCanMessage;
+  const isOwner = isGroup && activeConversation?.groupDetails?.owner?.toString() === user?._id?.toString();
+  const isAdmin = isGroup && activeConversation?.groupDetails?.admins?.some((a) => a.toString() === user?._id?.toString());
+  const canSend = !onlyAdminsCanMessage || isOwner || isAdmin;
+
+  const isChatInMaintenance = isFeatureInMaintenance('chat') && user?.role !== 'admin';
+  const isChatDisabled = (featureFlags.chatEnabled === false || isChatInMaintenance) && user?.role !== 'admin';
+
+  // ── Typing indicator ───────────────────────────────────────────────────────
+  const handleInputChange = (e) => {
+    setText(e.target.value);
+    if (activeConversation && !isTyping) {
+      setIsTyping(true);
+      sendTypingStart(activeConversation._id);
+    }
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+      if (activeConversation) sendTypingStop(activeConversation._id);
+    }, 2000);
+  };
+
+  // ── File selected → local preview only (no upload yet) ────────────────────
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // allow re-selecting same file
+    if (!file) return;
+
+    revokePending(); // discard previous blob URL
+    setSendError('');
+
+    const previewUrl = URL.createObjectURL(file);
+    const type = mimeToType(file.type);
+
+    setPendingFile({ file, previewUrl, name: file.name, type });
+  };
+
+  // ── Voice sent callback (VoiceRecorder already uploaded) ──────────────────
   const handleVoiceSent = async ({ url, name, size, mimeType }) => {
     setIsRecordingVoice(false);
     await sendMessage({
@@ -55,16 +202,77 @@ export const MessageInput = () => {
     });
   };
 
-  // Group permission check: if onlyAdminsCanMessage is true, verify user is owner or admin
-  const isGroup = activeConversation?.type === 'group';
-  const onlyAdminsCanMessage = isGroup && activeConversation?.groupDetails?.onlyAdminsCanMessage;
-  const isOwner = isGroup && activeConversation?.groupDetails?.owner?.toString() === user?._id?.toString();
-  const isAdmin = isGroup && activeConversation?.groupDetails?.admins?.some((a) => a.toString() === user?._id?.toString());
-  const canSend = !onlyAdminsCanMessage || isOwner || isAdmin;
+  // ── Send: compress → upload → sendMessage ─────────────────────────────────
+  const handleSend = async (e) => {
+    e?.preventDefault();
+    if (!canSend || sending) return;
 
-  const isChatInMaintenance = isFeatureInMaintenance('chat') && user?.role !== 'admin';
-  const isChatDisabled = (featureFlags.chatEnabled === false || isChatInMaintenance) && user?.role !== 'admin';
+    const trimmedText = text.trim();
+    if (!trimmedText && !pendingFile) return;
 
+    // Capture and immediately clear the input so the UI feels instant
+    const capturedText = trimmedText;
+    const capturedFile = pendingFile;
+
+    setText('');
+    revokePending();
+    setPendingFile(null);
+    setShowEmojis(false);
+    setSendError('');
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    setIsTyping(false);
+    if (activeConversation) sendTypingStop(activeConversation._id);
+
+    if (!capturedFile) {
+      // Text-only: instant path (no upload needed)
+      try {
+        await sendMessage({ content: capturedText, messageType: 'text' });
+      } catch (err) {
+        console.error('Send error:', err);
+        setSendError('Failed to send message.');
+      }
+      return;
+    }
+
+    // File path: compress → upload → send
+    setSending(true);
+    try {
+      let fileToUpload = capturedFile.file;
+
+      // Compress images client-side before upload
+      if (capturedFile.type === 'image') {
+        fileToUpload = await compressImage(capturedFile.file);
+        console.log(
+          `[Compress] ${capturedFile.file.name}: ${Math.round(capturedFile.file.size / 1024)}KB → ${Math.round(fileToUpload.size / 1024)}KB`
+        );
+      }
+
+      const uploadResult = await uploadFile(fileToUpload, token);
+
+      await sendMessage({
+        content: capturedText,
+        fileUrl: uploadResult.fileUrl,
+        fileName: uploadResult.fileName,
+        fileSize: uploadResult.fileSize,
+        fileMimeType: uploadResult.fileMimeType,
+        messageType: mimeToType(uploadResult.fileMimeType)
+      });
+    } catch (err) {
+      console.error('Upload/send error:', err);
+      setSendError(err.message || 'Failed to send. Please try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  // ── Guards ─────────────────────────────────────────────────────────────────
   if (isChatDisabled) {
     return (
       <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-center text-xs text-slate-400 select-none">
@@ -80,112 +288,6 @@ export const MessageInput = () => {
     );
   }
 
-  // Handle typing indicator
-  const handleInputChange = (e) => {
-    setText(e.target.value);
-
-    if (activeConversation && !isTyping) {
-      setIsTyping(true);
-      sendTypingStart(activeConversation._id);
-    }
-
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => {
-      setIsTyping(false);
-      if (activeConversation) {
-        sendTypingStop(activeConversation._id);
-      }
-    }, 2000);
-  };
-
-  // Handle file select
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await fetch('/api/users/upload', {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        credentials: 'include',
-        body: formData
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        setFileAttachment({
-          url: data.fileUrl,
-          name: data.fileName,
-          size: data.fileSize,
-          mimeType: data.fileMimeType,
-          messageType: data.fileMimeType?.startsWith('image/')
-            ? 'image'
-            : data.fileMimeType?.startsWith('video/')
-            ? 'video'
-            : data.fileMimeType?.startsWith('audio/')
-            ? 'audio'
-            : 'file'
-        });
-      }
-    } catch (err) {
-      console.error('File upload error', err);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  // Reset state when switching conversations
-  useEffect(() => {
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    setIsTyping(false);
-    setText('');
-    setFileAttachment(null);
-  }, [activeConversation?._id]);
-
-  const handleSend = async (e) => {
-    e?.preventDefault();
-    if (!canSend) return;
-
-    const trimmedText = text.trim();
-    if (!trimmedText && !fileAttachment) return;
-
-    const pendingAttachment = fileAttachment;
-
-    // Instantly reset input fields so user experiences zero latency
-    setText('');
-    setFileAttachment(null);
-    setShowEmojis(false);
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    setIsTyping(false);
-    if (activeConversation) {
-      sendTypingStop(activeConversation._id);
-    }
-
-    try {
-      await sendMessage({
-        content: trimmedText,
-        fileUrl: pendingAttachment?.url,
-        fileName: pendingAttachment?.name,
-        fileSize: pendingAttachment?.size,
-        fileMimeType: pendingAttachment?.mimeType,
-        messageType: pendingAttachment?.messageType || 'text'
-      });
-    } catch (err) {
-      console.error('Error sending message:', err);
-    }
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
   if (!canSend) {
     return (
       <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 text-center text-xs text-slate-500 flex items-center justify-center space-x-2">
@@ -195,9 +297,12 @@ export const MessageInput = () => {
     );
   }
 
+  const hasPendingContent = text.trim() || pendingFile;
+
   return (
     <div className="p-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 select-none">
-      {/* Replying Banner */}
+
+      {/* Reply banner */}
       {replyMessage && (
         <div className="flex items-center justify-between p-2 mb-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs animate-in slide-in-from-bottom-2">
           <div className="truncate">
@@ -208,36 +313,71 @@ export const MessageInput = () => {
               {replyMessage.content || 'Attachment'}
             </span>
           </div>
-          <button
-            onClick={() => setReplyMessage(null)}
-            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-          >
+          <button onClick={() => setReplyMessage(null)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* Attachment Preview Chip */}
-      {fileAttachment && (
-        <div className="flex items-center space-x-2 p-2 mb-2 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-900 text-xs w-max max-w-sm">
-          {fileAttachment.messageType === 'image' ? (
-            <img src={fileAttachment.url} alt="upload preview" className="w-8 h-8 rounded object-cover" />
+      {/* Send error banner */}
+      {sendError && (
+        <div className="flex items-center justify-between p-2 mb-2 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900 text-xs animate-in slide-in-from-bottom-2">
+          <div className="flex items-center space-x-1.5 text-rose-600 dark:text-rose-400">
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{sendError}</span>
+          </div>
+          <button type="button" onClick={() => setSendError('')} className="p-0.5 text-rose-400 hover:text-rose-600">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Uploading / compressing indicator */}
+      {sending && (
+        <div className="flex items-center space-x-2 p-2 mb-2 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-900/60 text-xs text-indigo-600 dark:text-indigo-400 animate-in slide-in-from-bottom-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+          <span>Compressing &amp; uploading…</span>
+        </div>
+      )}
+
+      {/* File preview chip (local blob — not yet uploaded) */}
+      {pendingFile && (
+        <div className="flex items-center space-x-2 p-2 mb-2 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-900 text-xs w-max max-w-sm animate-in slide-in-from-bottom-2">
+          {pendingFile.type === 'image' ? (
+            <img
+              src={pendingFile.previewUrl}
+              alt="preview"
+              className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+            />
+          ) : pendingFile.type === 'video' ? (
+            <video
+              src={pendingFile.previewUrl}
+              className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+              muted
+            />
           ) : (
-            <File className="w-5 h-5 text-indigo-500" />
+            <File className="w-5 h-5 text-indigo-500 flex-shrink-0" />
           )}
-          <span className="truncate max-w-[180px] font-medium text-slate-800 dark:text-slate-200">
-            {fileAttachment.name}
-          </span>
+          <div className="flex flex-col min-w-0">
+            <span className="truncate max-w-[160px] font-medium text-slate-800 dark:text-slate-200">
+              {pendingFile.name}
+            </span>
+            <span className="text-[10px] text-slate-400">
+              {Math.round(pendingFile.file.size / 1024)} KB
+              {pendingFile.type === 'image' && ' · will be compressed'}
+            </span>
+          </div>
           <button
-            onClick={() => setFileAttachment(null)}
-            className="p-1 hover:bg-indigo-100 dark:hover:bg-indigo-900 rounded-full"
+            type="button"
+            onClick={() => { revokePending(); setPendingFile(null); }}
+            className="p-1 hover:bg-indigo-100 dark:hover:bg-indigo-900 rounded-full flex-shrink-0"
           >
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
-      {/* Main Input Row or Voice Recorder */}
+      {/* Main input row or voice recorder */}
       {isRecordingVoice ? (
         <VoiceRecorder
           onSendVoice={handleVoiceSent}
@@ -245,7 +385,8 @@ export const MessageInput = () => {
         />
       ) : (
         <div className="flex items-end space-x-2">
-          {/* Attachment button */}
+
+          {/* Attach button */}
           {featureFlags.fileSharingEnabled !== false && (
             <>
               <input
@@ -253,12 +394,13 @@ export const MessageInput = () => {
                 ref={fileInputRef}
                 onChange={handleFileChange}
                 className="hidden"
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
               />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="p-2.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
+                disabled={sending}
+                className="p-2.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer disabled:opacity-50"
                 title="Attach file or photo"
               >
                 <Paperclip className="w-5 h-5" />
@@ -266,7 +408,7 @@ export const MessageInput = () => {
             </>
           )}
 
-          {/* Emoji picker toggle */}
+          {/* Emoji picker */}
           <div className="relative">
             <button
               type="button"
@@ -293,7 +435,7 @@ export const MessageInput = () => {
             )}
           </div>
 
-          {/* Poll creator button */}
+          {/* Poll button */}
           {featureFlags.pollsEnabled !== false && (
             <button
               type="button"
@@ -305,7 +447,7 @@ export const MessageInput = () => {
             </button>
           )}
 
-          {/* Text Area */}
+          {/* Textarea */}
           <textarea
             ref={textareaRef}
             rows={1}
@@ -316,8 +458,8 @@ export const MessageInput = () => {
             className="flex-1 max-h-32 min-h-[42px] px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-2xl text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none leading-relaxed"
           />
 
-          {/* Send OR Voice Record button */}
-          {!text.trim() && !fileAttachment && featureFlags.voiceMessagesEnabled !== false ? (
+          {/* Send / Voice button */}
+          {!hasPendingContent && featureFlags.voiceMessagesEnabled !== false ? (
             <button
               type="button"
               onClick={() => setIsRecordingVoice(true)}
@@ -330,11 +472,15 @@ export const MessageInput = () => {
             <button
               type="button"
               onClick={handleSend}
-              disabled={uploading || (!text.trim() && !fileAttachment)}
-              className="p-2.5 bg-accent bg-accent-hover disabled:opacity-40 text-white rounded-2xl shadow-md transition hover:scale-105 active:scale-95 cursor-pointer"
+              disabled={sending || !hasPendingContent}
+              className="p-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-2xl shadow-md transition hover:scale-105 active:scale-95"
               title="Send"
             >
-              <Send className="w-5 h-5" />
+              {sending ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
             </button>
           )}
         </div>

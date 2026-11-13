@@ -678,64 +678,74 @@ const votePoll = async (req, res) => {
     const { optionIndex } = req.body;
     const currentUserId = req.user._id;
 
-    const message = await Message.findById(messageId);
-    if (!message || message.messageType !== 'poll' || !message.poll) {
+    // --- Pre-flight checks (non-atomic read is fine here) ---
+    const preCheck = await Message.findById(messageId).select('messageType poll conversation');
+    if (!preCheck || preCheck.messageType !== 'poll' || !preCheck.poll) {
       return res.status(404).json({ success: false, message: 'Poll message not found.' });
     }
 
     const conversation = await Conversation.findOne({
-      _id: message.conversation,
+      _id: preCheck.conversation,
       participants: currentUserId
     });
     if (!conversation) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
-    if (message.poll.isClosed) {
+    if (preCheck.poll.isClosed) {
       return res.status(400).json({ success: false, message: 'This poll is closed.' });
     }
 
-    if (message.poll.expiresAt && new Date() > new Date(message.poll.expiresAt)) {
-      message.poll.isClosed = true;
-      await message.save();
+    if (preCheck.poll.expiresAt && new Date() > new Date(preCheck.poll.expiresAt)) {
+      await Message.findByIdAndUpdate(messageId, { 'poll.isClosed': true });
       return res.status(400).json({ success: false, message: 'This poll has expired.' });
     }
 
-    if (optionIndex === undefined || optionIndex < 0 || optionIndex >= message.poll.options.length) {
+    if (optionIndex === undefined || optionIndex < 0 || optionIndex >= preCheck.poll.options.length) {
       return res.status(400).json({ success: false, message: 'Invalid poll option.' });
     }
 
-    const targetOption = message.poll.options[optionIndex];
-    const alreadyVotedTarget = targetOption.votes.some(v => v.toString() === currentUserId.toString());
+    // --- Atomic update to prevent race conditions ---
+    const wasOnTarget = preCheck.poll.options[optionIndex].votes.some(
+      v => v.toString() === currentUserId.toString()
+    );
 
-    if (message.poll.allowsMultiple) {
-      if (alreadyVotedTarget) {
-        targetOption.votes = targetOption.votes.filter(v => v.toString() !== currentUserId.toString());
+    if (preCheck.poll.allowsMultiple) {
+      // Multiple choice: toggle only the clicked option
+      if (wasOnTarget) {
+        await Message.findByIdAndUpdate(messageId, {
+          $pull: { [`poll.options.${optionIndex}.votes`]: currentUserId }
+        });
       } else {
-        targetOption.votes.push(currentUserId);
+        await Message.findByIdAndUpdate(messageId, {
+          $push: { [`poll.options.${optionIndex}.votes`]: currentUserId }
+        });
       }
     } else {
-      if (alreadyVotedTarget) {
-        targetOption.votes = targetOption.votes.filter(v => v.toString() !== currentUserId.toString());
-      } else {
-        message.poll.options.forEach(opt => {
-          opt.votes = opt.votes.filter(v => v.toString() !== currentUserId.toString());
+      // Single vote: atomically pull from ALL options, then push to target (unless toggling off)
+      const pullUpdate = {};
+      preCheck.poll.options.forEach((_, idx) => {
+        pullUpdate[`poll.options.${idx}.votes`] = currentUserId;
+      });
+      await Message.findByIdAndUpdate(messageId, { $pull: pullUpdate });
+
+      if (!wasOnTarget) {
+        await Message.findByIdAndUpdate(messageId, {
+          $push: { [`poll.options.${optionIndex}.votes`]: currentUserId }
         });
-        targetOption.votes.push(currentUserId);
       }
     }
 
-    await message.save();
-
-    const populated = await Message.findById(message._id)
+    // Step 4: Fetch the final (atomic) state and populate
+    const populated = await Message.findById(messageId)
       .populate('sender', 'username nickname avatar status')
       .populate('poll.options.votes', 'username nickname avatar');
 
     const io = req.app.get('io');
     if (io) {
-      io.to(message.conversation.toString()).emit('poll:updated', {
-        messageId: message._id,
-        conversationId: message.conversation,
+      io.to(preCheck.conversation.toString()).emit('poll:updated', {
+        messageId: populated._id,
+        conversationId: preCheck.conversation,
         poll: populated.poll
       });
     }

@@ -151,6 +151,7 @@ export const MessageBubble = ({ message, isGroup = false }) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [imgBroken, setImgBroken] = useState(false);
   const [joinModalCode, setJoinModalCode] = useState(null);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
 
@@ -505,12 +506,29 @@ export const MessageBubble = ({ message, isGroup = false }) => {
                   <div className="mb-2">
                     {message.fileMimeType?.startsWith('image/') || message.messageType === 'image' ? (
                       <>
-                        <img
-                          src={message.fileUrl}
-                          alt="Shared media"
-                          onClick={() => setLightboxOpen(true)}
-                          className="max-h-60 rounded-xl object-cover cursor-pointer hover:opacity-95 transition"
-                        />
+                        {!imgBroken ? (
+                          <img
+                            src={message.fileUrl}
+                            alt="Shared media"
+                            onClick={() => setLightboxOpen(true)}
+                            className="max-h-60 rounded-xl object-cover cursor-pointer hover:opacity-95 transition"
+                            onError={() => setImgBroken(true)}
+                          />
+                        ) : (
+                          <a
+                            href={message.fileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`flex items-center space-x-2 p-2.5 rounded-xl transition ${
+                              isMe
+                                ? 'bg-indigo-700/80 hover:bg-indigo-700 text-white'
+                                : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-800 dark:text-white'
+                            }`}
+                          >
+                            <File className="w-5 h-5 flex-shrink-0" />
+                            <span className="text-xs font-medium truncate">{message.fileName || 'Image'}</span>
+                          </a>
+                        )}
                         {lightboxOpen && (
                           <div
                             onClick={() => setLightboxOpen(false)}
