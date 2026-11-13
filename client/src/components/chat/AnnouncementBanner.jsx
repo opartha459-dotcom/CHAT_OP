@@ -68,16 +68,36 @@ export const AnnouncementBanner = () => {
       setAnnouncements((prev) => prev.filter((a) => a._id !== announcementId));
     });
 
-    socket.on('announcement:poll:voted', ({ announcementId, formatted }) => {
+    socket.on('announcement:poll:voted', (payload) => {
+      if (!payload) return;
+      const announcementId = payload.announcementId || payload._id;
+      const incomingPoll = payload.poll || payload.formatted?.poll;
+      const pollStats = payload.pollStats || payload.formatted?.pollStats;
+      const formatted = payload.formatted || {};
+
       setAnnouncements((prev) =>
         prev.map((a) => {
           if (a._id === announcementId) {
+            const nextPoll = incomingPoll || a.poll;
+            const currentUserId = user?._id?.toString();
+            let userVotedIndices = formatted.userVotedIndices || a.userVotedIndices || [];
+            if (currentUserId && nextPoll && Array.isArray(nextPoll.options)) {
+              userVotedIndices = [];
+              nextPoll.options.forEach((opt, idx) => {
+                if (!opt) return;
+                const votes = Array.isArray(opt.votes) ? opt.votes : [];
+                if (votes.some((v) => (v?._id || v)?.toString() === currentUserId)) {
+                  userVotedIndices.push(idx);
+                }
+              });
+            }
+
             return {
               ...a,
               ...formatted,
-              poll: formatted.poll,
-              userVotedIndices: formatted.userVotedIndices,
-              totalPollVotes: formatted.totalPollVotes
+              poll: nextPoll,
+              userVotedIndices,
+              totalPollVotes: pollStats?.totalPollVotes ?? formatted.totalPollVotes ?? a.totalPollVotes ?? 0
             };
           }
           return a;
@@ -85,14 +105,22 @@ export const AnnouncementBanner = () => {
       );
     });
 
-    socket.on('announcement:poll:closed', ({ announcementId, isClosed, formatted }) => {
+    socket.on('announcement:poll:closed', (payload) => {
+      if (!payload) return;
+      const announcementId = payload.announcementId || payload._id;
+      const isClosed = payload.isClosed ?? payload.poll?.isClosed ?? true;
+      const incomingPoll = payload.poll || payload.formatted?.poll;
+
       setAnnouncements((prev) =>
         prev.map((a) => {
           if (a._id === announcementId) {
             return {
               ...a,
-              ...formatted,
-              poll: { ...a.poll, isClosed }
+              ...(payload.formatted || {}),
+              poll: {
+                ...(incomingPoll || a.poll),
+                isClosed
+              }
             };
           }
           return a;
@@ -260,13 +288,21 @@ export const AnnouncementBanner = () => {
     glow: 'animate-[pulse_3s_ease-in-out_infinite]'
   };
 
-  if (featureFlags.announcementsEnabled === false || announcements.length === 0) {
+  const getVotesCount = (opt) => {
+    if (!opt) return 0;
+    if (Array.isArray(opt.votes)) return opt.votes.length;
+    if (typeof opt.voteCount === 'number') return opt.voteCount;
+    if (typeof opt.votes === 'number') return opt.votes;
+    return 0;
+  };
+
+  if (featureFlags.announcementsEnabled === false || !Array.isArray(announcements) || announcements.length === 0) {
     return null;
   }
 
   return (
     <div className="w-full flex flex-col space-y-1 z-30 select-none">
-      {announcements.map((announcement) => {
+      {announcements.filter(Boolean).map((announcement) => {
         const design = announcement.design || {};
         const theme = themeStyles[design.theme] || themeStyles.default;
         const fontClass = fontClasses[design.font] || fontClasses.sans;
@@ -275,15 +311,18 @@ export const AnnouncementBanner = () => {
 
         const isExpanded = !collapsedIds.has(announcement._id);
         const poll = announcement.poll;
-        const userVotedIndices = announcement.userVotedIndices || [];
+        const userVotedIndices = Array.isArray(announcement.userVotedIndices) ? announcement.userVotedIndices : [];
         const totalVotes = announcement.totalPollVotes || 0;
+        const content = announcement.content || '';
+        const hasLongContent = content.length > 80;
 
         // Calculate leading / winning option for results
         let maxVotes = 0;
         let leadingOption = null;
         if (announcement.hasPoll && poll && Array.isArray(poll.options)) {
           poll.options.forEach((opt, idx) => {
-            const vCount = opt.votes ? opt.votes.length : 0;
+            if (!opt) return;
+            const vCount = getVotesCount(opt);
             if (vCount > maxVotes) {
               maxVotes = vCount;
               leadingOption = { ...opt, index: idx, count: vCount };
@@ -306,7 +345,7 @@ export const AnnouncementBanner = () => {
 
                 <div className="flex items-center space-x-2 min-w-0 flex-1">
                   <span className="font-bold text-xs shrink-0 tracking-wide">
-                    {announcement.title}
+                    {announcement.title || 'Announcement'}
                   </span>
                   {announcement.hasPoll && (
                     <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-white/15 dark:bg-white/10 uppercase tracking-wider shrink-0">
@@ -317,7 +356,7 @@ export const AnnouncementBanner = () => {
                   {!isExpanded && (
                     <div className="flex items-center space-x-2 min-w-0 flex-1">
                       <span className={`text-xs truncate opacity-85 ${theme.subtext}`}>
-                        {announcement.content}
+                        {content}
                       </span>
                       {announcement.hasPoll && poll && (
                         <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-lg bg-black/25 dark:bg-white/10 shrink-0 text-[11px] font-mono border border-white/10">
@@ -348,7 +387,7 @@ export const AnnouncementBanner = () => {
 
               {/* Action Buttons */}
               <div className="flex items-center space-x-1.5 shrink-0">
-                {(announcement.hasPoll || announcement.content.length > 80) && (
+                {(announcement.hasPoll || hasLongContent) && (
                   <button
                     onClick={() => toggleExpand(announcement._id)}
                     className="p-1 hover:bg-white/15 dark:hover:bg-white/10 rounded-lg transition text-xs flex items-center space-x-1 cursor-pointer"
@@ -374,9 +413,11 @@ export const AnnouncementBanner = () => {
             {/* Expanded Content View */}
             {isExpanded && (
               <div className="mt-2.5 pt-2 border-t border-white/10 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                <p className={`text-xs leading-relaxed whitespace-pre-wrap ${theme.subtext}`}>
-                  {announcement.content}
-                </p>
+                {content && (
+                  <p className={`text-xs leading-relaxed whitespace-pre-wrap ${theme.subtext}`}>
+                    {content}
+                  </p>
+                )}
 
                 {/* Embedded Interactive Poll */}
                 {announcement.hasPoll && poll && Array.isArray(poll.options) && (
@@ -418,8 +459,8 @@ export const AnnouncementBanner = () => {
 
                     {/* Poll Options with Live Progress Bars */}
                     <div className="space-y-2">
-                      {poll.options.map((opt, optIdx) => {
-                        const optVotes = opt.votes ? opt.votes.length : 0;
+                      {(poll.options || []).filter(Boolean).map((opt, optIdx) => {
+                        const optVotes = getVotesCount(opt);
                         const pct = totalVotes > 0 ? Math.round((optVotes / totalVotes) * 100) : 0;
                         const hasVoted = userVotedIndices.includes(optIdx);
                         const isWinner = maxVotes > 0 && optVotes === maxVotes;

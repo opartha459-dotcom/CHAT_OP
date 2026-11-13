@@ -496,6 +496,7 @@ const voteAnnouncementPoll = async (req, res) => {
       announcementId: id,
       poll: populated.poll,
       pollStats,
+      formatted,
       updatedBy: userId.toString(),
       action: alreadySelected ? 'removed' : 'voted'
     });
@@ -552,7 +553,8 @@ const toggleAnnouncementPollClosed = async (req, res) => {
       announcementId: id,
       isClosed: populated.poll.isClosed,
       poll: populated.poll,
-      pollStats: getPollStats(populated.poll)
+      pollStats: getPollStats(populated.poll),
+      formatted
     });
 
     return res.json({
