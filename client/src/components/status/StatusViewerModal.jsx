@@ -885,7 +885,7 @@ export const StatusViewerModal = ({
                   return (
                     <div
                       key={optIdx}
-                      className={`relative overflow-hidden rounded-xl border transition-all ${hasVoted
+                      className={`relative overflow-hidden rounded-xl border transition-[border-color,background-color,box-shadow] duration-100 ${hasVoted
                         ? 'border-indigo-400 bg-indigo-900/40 text-white font-medium ring-1 ring-indigo-400/60'
                         : isTopOption && isPollClosed && !isPollDraw
                         ? 'border-amber-400/60 bg-amber-900/20 text-white/90'
@@ -905,7 +905,7 @@ export const StatusViewerModal = ({
                           }`}
                       >
                         <div
-                          className={`absolute inset-y-0 left-0 rounded-xl transition-all duration-500 pointer-events-none ${
+                          className={`absolute inset-y-0 left-0 rounded-xl transition-[width] duration-150 pointer-events-none ${
                             isTopOption && isPollClosed && !isPollDraw
                               ? 'bg-amber-500/25'
                               : hasVoted

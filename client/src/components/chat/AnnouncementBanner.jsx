@@ -554,7 +554,7 @@ export const AnnouncementBanner = () => {
                           >
                             {/* Animated Background Progress Bar */}
                             <div
-                              className={`absolute inset-y-0 left-0 transition-all duration-500 ${
+                              className={`absolute inset-y-0 left-0 transition-[width] duration-150 ${
                                 isWinner && poll.isClosed && !isDraw
                                   ? 'bg-amber-500/30'
                                   : isDraw && isWinner && poll.isClosed
