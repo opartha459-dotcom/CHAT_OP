@@ -525,15 +525,15 @@ export const Sidebar = () => {
         </div>
 
         {/* ============================================================ */}
-        {/* 2. SEARCH BAR (Meta AI style matching Image 2)                */}
+        {/* 2. SEARCH BAR (only shown on chats + communities tabs)        */}
         {/* ============================================================ */}
-        {mainTab !== 'settings' && (
+        {mainTab !== 'settings' && mainTab !== 'updates' && mainTab !== 'calls' && (
           <div className="px-4 py-2 flex-shrink-0">
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Ask Meta AI or Search"
+                placeholder="Search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-8 py-2 text-xs bg-slate-100 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/80 rounded-2xl text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition"
@@ -784,139 +784,160 @@ export const Sidebar = () => {
 
           {/* TAB: UPDATES (WHATSAPP STATUS TAB) */}
           {mainTab === 'updates' && (
-            <div className="p-4 space-y-5">
-              {/* Status Section */}
-              <div>
-                <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
-                  <span>Status</span>
-                  <button
-                    onClick={() => openSettingsTo('privacy')}
-                    className="text-emerald-600 dark:text-emerald-400 text-xs font-semibold hover:underline cursor-pointer"
-                  >
-                    Privacy
-                  </button>
-                </div>
+            <div className="flex flex-col h-full overflow-y-auto">
+              <div className="p-4 space-y-4">
 
-                {/* My Status Card */}
-                <div
-                  onClick={() => {
-                    if (myStatusGroup) {
-                      setActiveUserId(user?._id?.toString());
-                    } else {
-                      setCreateModalOpen(true);
-                    }
-                  }}
-                  className="flex items-center space-x-3 p-2 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-900 cursor-pointer transition"
-                >
-                  <div className="relative">
-                    <div className={`p-0.5 rounded-full ${
-                      myStatusGroup ? 'bg-gradient-to-tr from-emerald-400 to-indigo-500' : ''
-                    }`}>
-                      <Avatar src={user?.avatar} name={user?.nickname || user?.username} size="md" />
-                    </div>
-                    {/* Add (+) badge */}
+                {/* ── My Status ── */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">My Status</span>
                     <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCreateModalOpen(true);
-                      }}
-                      className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center border-2 border-white dark:border-slate-900 shadow-xs cursor-pointer"
+                      onClick={() => openSettingsTo('privacy')}
+                      className="text-emerald-500 dark:text-emerald-400 text-[11px] font-semibold hover:underline cursor-pointer"
                     >
-                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                      Privacy
                     </button>
                   </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-                      My Status
-                    </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                      {myStatusGroup ? `${myStatusGroup.statuses?.length} active story · Tap to view` : 'Tap to add status update'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Recent Updates from Contacts (Unviewed) */}
-              {otherStatusGroups.filter((g) => !g.allViewed).length > 0 && (
-                <div>
-                  <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Recent Updates
-                  </div>
-                  <div className="space-y-1">
-                    {otherStatusGroups
-                      .filter((g) => !g.allViewed)
-                      .map((group) => {
-                        const displayName = group.user?.nickname || group.user?.username || 'User';
-                        const latestStatus = group.statuses?.[group.statuses.length - 1];
-
-                        return (
-                          <div
-                            key={group.user?._id}
-                            onClick={() => setActiveUserId(group.user?._id?.toString())}
-                            className="flex items-center space-x-3 p-2 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-900 cursor-pointer transition"
-                          >
-                            <div className="p-0.5 rounded-full bg-gradient-to-tr from-emerald-400 via-teal-500 to-indigo-500 animate-pulse">
-                              <Avatar src={group.user?.avatar} name={displayName} size="md" />
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                              <div className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
-                                {displayName}
-                              </div>
-                              <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                                {formatTime(latestStatus?.createdAt || group.latestCreatedAt)}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-              )}
-
-              {/* Viewed Updates */}
-              {otherStatusGroups.filter((g) => g.allViewed).length > 0 && (
-                <div>
-                  <button
-                    onClick={() => setViewedStatusesExpanded(!viewedStatusesExpanded)}
-                    className="flex items-center justify-between w-full text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider py-1 cursor-pointer"
+                  <div
+                    onClick={() => {
+                      if (myStatusGroup) {
+                        setActiveUserId(user?._id?.toString());
+                      } else {
+                        setCreateModalOpen(true);
+                      }
+                    }}
+                    className="flex items-center space-x-3 p-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-900/70 cursor-pointer transition-colors active:scale-[0.98]"
                   >
-                    <span>Viewed Updates</span>
-                    <ChevronRight className={`w-4 h-4 transition-transform ${viewedStatusesExpanded ? 'rotate-90' : ''}`} />
-                  </button>
+                    <div className="relative flex-shrink-0">
+                      <div className={`p-0.5 rounded-full ${myStatusGroup ? 'bg-gradient-to-tr from-emerald-400 to-indigo-500' : 'bg-slate-200 dark:bg-slate-800'}`}>
+                        <div className="bg-white dark:bg-slate-950 p-0.5 rounded-full">
+                          <Avatar src={user?.avatar} name={user?.nickname || user?.username} size="md" />
+                        </div>
+                      </div>
+                      {/* Add (+) badge */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCreateModalOpen(true);
+                        }}
+                        className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center border-2 border-white dark:border-slate-950 shadow cursor-pointer transition-transform active:scale-90"
+                      >
+                        <Plus className="w-3 h-3 stroke-[3]" />
+                      </button>
+                    </div>
 
-                  {viewedStatusesExpanded && (
-                    <div className="space-y-1 mt-1">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm text-slate-900 dark:text-white">My Status</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        {myStatusGroup
+                          ? `${myStatusGroup.statuses?.length} active ${myStatusGroup.statuses?.length === 1 ? 'story' : 'stories'} · Tap to view`
+                          : 'Tap to add a status update'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Recent Updates (Unviewed) ── */}
+                {otherStatusGroups.filter((g) => !g.allViewed).length > 0 && (
+                  <div>
+                    <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
+                      Recent Updates
+                    </div>
+                    <div className="space-y-0.5">
                       {otherStatusGroups
-                        .filter((g) => g.allViewed)
+                        .filter((g) => !g.allViewed)
                         .map((group) => {
                           const displayName = group.user?.nickname || group.user?.username || 'User';
+                          const latestStatus = group.statuses?.[group.statuses.length - 1];
+
                           return (
                             <div
                               key={group.user?._id}
                               onClick={() => setActiveUserId(group.user?._id?.toString())}
-                              className="flex items-center space-x-3 p-2 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-900 cursor-pointer transition opacity-80 hover:opacity-100"
+                              className="flex items-center space-x-3 p-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-900/70 cursor-pointer transition-colors active:scale-[0.98]"
                             >
-                              <div className="p-0.5 rounded-full border-2 border-slate-300 dark:border-slate-700">
-                                <Avatar src={group.user?.avatar} name={displayName} size="md" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
-                                  {displayName}
+                              <div className="relative flex-shrink-0">
+                                <div className="p-0.5 rounded-full bg-gradient-to-tr from-emerald-400 via-teal-500 to-indigo-500">
+                                  <div className="bg-white dark:bg-slate-950 p-0.5 rounded-full">
+                                    <Avatar src={group.user?.avatar} name={displayName} size="md" />
+                                  </div>
                                 </div>
-                                <div className="text-[11px] text-slate-400">
-                                  {formatTime(group.latestCreatedAt)}
+                                {/* Unread dot */}
+                                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-950" />
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm text-slate-900 dark:text-white truncate">{displayName}</div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                                  {formatTime(latestStatus?.createdAt || group.latestCreatedAt)}
                                 </div>
                               </div>
                             </div>
                           );
                         })}
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+
+                {/* ── Viewed Updates ── */}
+                {otherStatusGroups.filter((g) => g.allViewed).length > 0 && (
+                  <div>
+                    <button
+                      onClick={() => setViewedStatusesExpanded(!viewedStatusesExpanded)}
+                      className="flex items-center justify-between w-full text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest py-1 cursor-pointer hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                    >
+                      <span>Viewed Updates</span>
+                      <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${viewedStatusesExpanded ? 'rotate-90' : ''}`} />
+                    </button>
+
+                    {viewedStatusesExpanded && (
+                      <div className="space-y-0.5 mt-1">
+                        {otherStatusGroups
+                          .filter((g) => g.allViewed)
+                          .map((group) => {
+                            const displayName = group.user?.nickname || group.user?.username || 'User';
+                            return (
+                              <div
+                                key={group.user?._id}
+                                onClick={() => setActiveUserId(group.user?._id?.toString())}
+                                className="flex items-center space-x-3 p-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-900/70 cursor-pointer transition-colors opacity-70 hover:opacity-100 active:scale-[0.98]"
+                              >
+                                <div className="p-0.5 rounded-full border-2 border-dashed border-slate-300 dark:border-slate-700 flex-shrink-0">
+                                  <Avatar src={group.user?.avatar} name={displayName} size="md" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm text-slate-700 dark:text-slate-300 truncate">{displayName}</div>
+                                  <div className="text-[11px] text-slate-400">
+                                    {formatTime(group.latestCreatedAt)}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Empty state when no contacts have statuses ── */}
+                {otherStatusGroups.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-12 text-center px-4 select-none">
+                    <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center mb-3">
+                      <svg className="w-8 h-8 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <circle cx="12" cy="12" r="10" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">No updates yet</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-[200px]">
+                      When your contacts post status updates, they'll appear here.
+                    </p>
+                  </div>
+                )}
+
+              </div>
             </div>
           )}
 
