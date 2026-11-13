@@ -89,8 +89,10 @@ const emitPollUpdate = (req, status) => {
     totalViewers: status.viewers?.length || 0
   });
 
-  // Broadcast sanitized poll stats to other participants
-  io.emit('status:poll_voted', {
+  // Broadcast sanitized poll stats to everyone EXCEPT the author
+  // (votes[] must remain an array – even if empty – so the client's
+  //  .some() / .length calls never crash on undefined)
+  io.except(`user:${authorId}`).emit('status:poll_voted', {
     statusId: getId(status._id),
     authorId,
     poll: {
@@ -98,6 +100,7 @@ const emitPollUpdate = (req, status) => {
       options: status.poll?.options?.map(opt => ({
         text: opt.text,
         _id: opt._id,
+        votes: [], // non-authors don't see voter identities
         voteCount: (opt.votes || []).length
       }))
     }
@@ -880,17 +883,27 @@ const voteStatusPoll = async (req, res) => {
         totalViewers: populated.viewers?.length || 0
       });
 
-      // Broadcast sanitized option counts to other viewers
-      io.emit('status:poll_voted', {
+      // Broadcast sanitized option counts to everyone EXCEPT the author
+      // (author already received full data above; sending the sanitized
+      // version to them too would race-overwrite their votes[] arrays with
+      // voteCount-only objects, causing .length crashes on the client).
+      const sanitizedOptions = populated.poll?.options?.map((opt) => ({
+        text: opt.text,
+        _id: opt._id,
+        // Preserve a minimal votes array so non-owners can check hasVoted.
+        // Filter to only include the voter's own ID to avoid privacy leaks.
+        votes: (opt.votes || []).filter(
+          (v) => getId(v) === currentUserId.toString()
+        ),
+        voteCount: (opt.votes || []).length
+      }));
+
+      io.except(`user:${authorId}`).emit('status:poll_voted', {
         statusId: id.toString(),
         authorId,
         poll: {
           ...populated.poll,
-          options: populated.poll?.options?.map((opt) => ({
-            text: opt.text,
-            _id: opt._id,
-            voteCount: (opt.votes || []).length
-          }))
+          options: sanitizedOptions
         }
       });
     }

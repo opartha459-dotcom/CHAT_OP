@@ -310,9 +310,26 @@ export const StatusViewerModal = ({
             return prev;
           }
 
+          // Normalise options so opt.votes is always an array.
+          // The server sends voteCount (number) for non-owners to avoid
+          // leaking voter identities; we still need a valid votes[] so
+          // .some() / .length never throw on undefined.
+          const incomingPoll = payload.poll;
+          if (!incomingPoll) return prev;
+
+          const normalizedOptions = (incomingPoll.options || []).map((opt, idx) => {
+            const prevOpt = prev.poll?.options?.[idx];
+            const votes = Array.isArray(opt.votes)
+              ? opt.votes
+              : Array.isArray(prevOpt?.votes)
+                ? prevOpt.votes // keep previous voter array when server omitted it
+                : [];
+            return { ...opt, votes };
+          });
+
           return {
             ...prev,
-            poll: payload.poll
+            poll: { ...incomingPoll, options: normalizedOptions }
           };
         });
       }
@@ -590,8 +607,14 @@ export const StatusViewerModal = ({
   const poll = activeStatus.poll;
   const pollOptions = poll?.options || [];
 
+  // For non-owners the server sends voteCount (number) instead of a full votes[]
+  // to protect voter privacy. Use voteCount if present, else fall back to array length.
   const totalPollVotes = pollOptions.reduce(
-    (sum, opt) => sum + (opt.votes?.length || 0),
+    (sum, opt) => sum + (
+      typeof opt.voteCount === 'number'
+        ? opt.voteCount
+        : (Array.isArray(opt.votes) ? opt.votes.length : 0)
+    ),
     0
   );
 
@@ -755,11 +778,15 @@ export const StatusViewerModal = ({
               {/* Poll Options */}
               <div className="space-y-2">
                 {pollOptions.map((opt, optIdx) => {
-                  const votes = opt.votes || [];
-                  const voteCount = votes.length;
+                  // Guard: opt.votes must always be an array – the socket
+                  // broadcast for non-owners may omit it or send voteCount only.
+                  const votes = Array.isArray(opt.votes) ? opt.votes : [];
+                  const voteCount = typeof opt.voteCount === 'number'
+                    ? opt.voteCount  // use server-provided count when votes[] was stripped
+                    : votes.length;
 
                   const hasVoted = votes.some(
-                    (v) => (v._id || v)?.toString() === currentUserId
+                    (v) => (v?._id || v)?.toString() === currentUserId
                   );
 
                   const percentage =
