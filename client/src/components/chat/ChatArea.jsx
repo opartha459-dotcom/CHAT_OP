@@ -29,11 +29,19 @@ export const ChatArea = ({ onBackToSidebar }) => {
 
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
+  const activeConvIdRef = useRef(activeConversation?._id);
 
-  // Auto scroll to bottom when messages update
+  // Auto scroll to bottom: instant jump when switching chats for max performance, smooth scroll for live messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const isNewConv = activeConvIdRef.current !== activeConversation?._id;
+    activeConvIdRef.current = activeConversation?._id;
+
+    if (isNewConv) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, activeConversation?._id]);
 
   // Handle scroll listener to show scroll-to-bottom button
   const handleScroll = (e) => {
