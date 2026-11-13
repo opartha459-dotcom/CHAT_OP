@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 
@@ -179,54 +179,55 @@ export const SocketProvider = ({ children }) => {
     };
   }, [user, token]);
 
-  const joinConversation = (conversationId) => {
+  const joinConversation = useCallback((conversationId) => {
     if (socketRef.current) {
       socketRef.current.emit('conversation:join', { conversationId });
     }
-  };
+  }, []);
 
-  const leaveConversation = (conversationId) => {
+  const leaveConversation = useCallback((conversationId) => {
     if (socketRef.current) {
       socketRef.current.emit('conversation:leave', { conversationId });
     }
-  };
+  }, []);
 
-  const sendTypingStart = (conversationId) => {
+  const sendTypingStart = useCallback((conversationId) => {
     if (socketRef.current) {
       socketRef.current.emit('typing:start', { conversationId });
     }
-  };
+  }, []);
 
-  const sendTypingStop = (conversationId) => {
+  const sendTypingStop = useCallback((conversationId) => {
     if (socketRef.current) {
       socketRef.current.emit('typing:stop', { conversationId });
     }
-  };
+  }, []);
 
-  const markMessageDelivered = (messageId, conversationId) => {
+  const markMessageDelivered = useCallback((messageId, conversationId) => {
     if (socketRef.current) {
       socketRef.current.emit('message:delivered', { messageId, conversationId });
     }
-  };
+  }, []);
 
-  const markMessageRead = (messageId, conversationId) => {
+  const markMessageRead = useCallback((messageId, conversationId) => {
     if (socketRef.current) {
       socketRef.current.emit('message:read', { messageId, conversationId });
     }
-  };
+  }, []);
 
-  const watchEmail = (email) => {
+  const watchEmail = useCallback((email) => {
     if (!email) return;
     const clean = String(email).trim().toLowerCase();
+    const alreadyWatching = watchedEmailsRef.current.has(clean);
     watchedEmailsRef.current.add(clean);
-    if (socketRef.current && socketRef.current.connected) {
+    if (!alreadyWatching && socketRef.current && socketRef.current.connected) {
       socketRef.current.emit('auth:watch_email', { email: clean });
     }
-  };
+  }, []);
 
-  const clearIncomingCode = () => {
+  const clearIncomingCode = useCallback(() => {
     setIncomingCode(null);
-  };
+  }, []);
 
   return (
     <SocketContext.Provider

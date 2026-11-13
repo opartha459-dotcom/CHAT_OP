@@ -779,6 +779,113 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
+  // Vote on chat poll with instant optimistic response (0ms)
+  const votePoll = async (messageId, optionIndex) => {
+    const curUserId = user?._id?.toString();
+    if (!curUserId || !messageId) return;
+
+    let snapshotMsg = null;
+
+    // 1. Instant optimistic update
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m._id === messageId && m.poll) {
+          snapshotMsg = m;
+          const poll = m.poll;
+          const allowsMultiple = Boolean(poll.allowsMultiple);
+          const targetOpt = poll.options?.[optionIndex];
+          if (!targetOpt) return m;
+
+          const alreadyVoted = (targetOpt.votes || []).some(
+            (v) => (v?._id || v)?.toString() === curUserId
+          );
+
+          const newOptions = (poll.options || []).map((opt, idx) => {
+            const votes = Array.isArray(opt.votes) ? [...opt.votes] : [];
+            if (allowsMultiple) {
+              if (idx === optionIndex) {
+                const nextVotes = alreadyVoted
+                  ? votes.filter((v) => (v?._id || v)?.toString() !== curUserId)
+                  : [...votes, curUserId];
+                return { ...opt, votes: nextVotes };
+              }
+              return opt;
+            } else {
+              let nextVotes = votes.filter((v) => (v?._id || v)?.toString() !== curUserId);
+              if (idx === optionIndex && !alreadyVoted) {
+                nextVotes.push(curUserId);
+              }
+              return { ...opt, votes: nextVotes };
+            }
+          });
+
+          return {
+            ...m,
+            poll: { ...poll, options: newOptions }
+          };
+        }
+        return m;
+      })
+    );
+
+    if (activeConversation?._id) {
+      updateCacheEntry(activeConversation._id, (prevCache) => ({
+        ...prevCache,
+        messages: (prevCache.messages || []).map((m) => {
+          if (m._id === messageId && m.poll) {
+            const poll = m.poll;
+            const allowsMultiple = Boolean(poll.allowsMultiple);
+            const targetOpt = poll.options?.[optionIndex];
+            if (!targetOpt) return m;
+            const alreadyVoted = (targetOpt.votes || []).some(
+              (v) => (v?._id || v)?.toString() === curUserId
+            );
+            const newOptions = (poll.options || []).map((opt, idx) => {
+              const votes = Array.isArray(opt.votes) ? [...opt.votes] : [];
+              if (allowsMultiple) {
+                if (idx === optionIndex) {
+                  const nextVotes = alreadyVoted
+                    ? votes.filter((v) => (v?._id || v)?.toString() !== curUserId)
+                    : [...votes, curUserId];
+                  return { ...opt, votes: nextVotes };
+                }
+                return opt;
+              } else {
+                let nextVotes = votes.filter((v) => (v?._id || v)?.toString() !== curUserId);
+                if (idx === optionIndex && !alreadyVoted) {
+                  nextVotes.push(curUserId);
+                }
+                return { ...opt, votes: nextVotes };
+              }
+            });
+            return { ...m, poll: { ...poll, options: newOptions } };
+          }
+          return m;
+        })
+      }));
+    }
+
+    // 2. Background sync
+    try {
+      const res = await fetch(`/api/messages/${messageId}/poll/vote`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ optionIndex })
+      });
+      const data = await res.json();
+      if (!data.success && snapshotMsg) {
+        setMessages((prev) => prev.map((m) => (m._id === messageId ? snapshotMsg : m)));
+        throw new Error(data.message || 'Failed to submit vote');
+      }
+    } catch (err) {
+      if (snapshotMsg) {
+        setMessages((prev) => prev.map((m) => (m._id === messageId ? snapshotMsg : m)));
+      }
+      throw err;
+    }
+  };
+
   // Toggle Pin
   const togglePin = async (conversationId) => {
     const res = await fetch(`/api/chats/${conversationId}/pin`, {
@@ -866,6 +973,7 @@ export const ChatProvider = ({ children }) => {
         editMessage,
         deleteMessage,
         reactToMessage,
+        votePoll,
         togglePin,
         toggleArchive,
         toggleMute,

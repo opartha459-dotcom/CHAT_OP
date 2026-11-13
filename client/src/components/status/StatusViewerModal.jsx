@@ -522,6 +522,55 @@ export const StatusViewerModal = ({
     setVoting(true);
     setPollError('');
 
+    const curUserId = currentUserId?.toString();
+    const prevStatusState = activeStatus;
+    const prevPollState = activeStatus.poll;
+    if (!prevPollState) {
+      setVoting(false);
+      return;
+    }
+
+    // 1. INSTANT OPTIMISTIC UPDATE (0ms on tap)
+    const options = Array.isArray(prevPollState.options) ? prevPollState.options : [];
+    const targetOpt = options[optionIndex];
+    if (!targetOpt) {
+      setVoting(false);
+      return;
+    }
+
+    const alreadyVotedTarget = (targetOpt.votes || []).some(
+      (v) => (v?._id || v)?.toString() === curUserId
+    );
+
+    const optimisticOptions = options.map((opt, idx) => {
+      const votes = Array.isArray(opt.votes) ? [...opt.votes] : [];
+      // Status polls enforce one vote per user; clicking again removes vote
+      let nextVotes = votes.filter((v) => (v?._id || v)?.toString() !== curUserId);
+
+      if (idx === optionIndex && !alreadyVotedTarget) {
+        nextVotes.push({
+          _id: curUserId,
+          username: currentUser?.username,
+          nickname: currentUser?.nickname,
+          avatar: currentUser?.avatar
+        });
+      }
+
+      return {
+        ...opt,
+        votes: nextVotes,
+        voteCount: nextVotes.length
+      };
+    });
+
+    const optimisticPoll = {
+      ...prevPollState,
+      options: optimisticOptions
+    };
+
+    setActiveStatus((prev) => (prev ? { ...prev, poll: optimisticPoll } : prev));
+
+    // 2. Background server synchronization
     try {
       const res = await fetch(`/api/status/${activeStatus._id}/poll/vote`, {
         method: 'POST',
@@ -536,20 +585,28 @@ export const StatusViewerModal = ({
       const data = await res.json();
 
       if (data.success && data.poll) {
-        setActiveStatus((prev) =>
-          prev
-            ? {
-              ...prev,
-              poll: data.poll,
-              viewers: data.viewers || prev.viewers
-            }
-            : prev
-        );
+        setActiveStatus((prev) => {
+          if (!prev) return prev;
+          const sPoll = data.poll;
+          const normOpts = (sPoll.options || []).map((opt) => ({
+            ...opt,
+            votes: Array.isArray(opt.votes) ? opt.votes : []
+          }));
+          return {
+            ...prev,
+            poll: { ...sPoll, options: normOpts },
+            viewers: data.viewers || prev.viewers
+          };
+        });
       } else {
+        // Rollback on server error
+        setActiveStatus(prevStatusState);
         setPollError(data.message || 'Failed to submit vote');
       }
     } catch (err) {
       console.error('Vote poll error:', err);
+      // Rollback on network failure
+      setActiveStatus(prevStatusState);
       setPollError('Network error voting on poll');
     } finally {
       setVoting(false);

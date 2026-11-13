@@ -1,37 +1,26 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 import { KeyRound, Copy, Check, X } from 'lucide-react';
+
+const getDismissedCodes = () => {
+  try {
+    const stored = sessionStorage.getItem('pulsechat_dismissed_incoming_codes');
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+};
 
 export const IncomingCodeModal = () => {
   const { incomingCode, clearIncomingCode } = useSocket();
   const { user } = useAuth();
   const location = useLocation();
   const [copied, setCopied] = useState(false);
-  // Track which code+email combos the user has dismissed so the toast
-  // won't reappear even if incomingCode is still set in context.
-  const [dismissed, setDismissed] = useState(null);
+  const [dismissedCodes, setDismissedCodes] = useState(() => new Set(getDismissedCodes()));
 
-  // Reset dismissed state whenever a NEW code arrives (different from the one dismissed).
-  const dismissedRef = useRef(null);
-  useEffect(() => {
-    if (!incomingCode?.code) return;
-    const key = `${incomingCode.code}|${incomingCode.email || ''}`;
-    if (dismissedRef.current !== key) {
-      // New code arrived — allow showing again
-      setDismissed(null);
-    }
-  }, [incomingCode?.code, incomingCode?.email]);
-
-  if (!incomingCode || !incomingCode.code) return null;
-
-  // If user dismissed this exact code, stay hidden
-  const currentKey = `${incomingCode.code}|${incomingCode.email || ''}`;
-  if (dismissed === currentKey) return null;
-
-  // 1. Never show code modal to ANY admin user or on the /admin route!
-  // The admin is the dispatcher, so popping up a code modal on the admin's screen is confusing.
+  // 1. Never show code modal to ANY admin user or on the /admin route
   if (user && user.role === 'admin') {
     return null;
   }
@@ -39,7 +28,27 @@ export const IncomingCodeModal = () => {
     return null;
   }
 
-  // 2. If a non-admin user is logged in, only show if code matches their account email
+  // 2. Never show floating popup modal on dedicated verification/reset pages
+  // (These pages already display the code and auto-fill it in their own form)
+  if (
+    location.pathname === '/verify-email' ||
+    location.pathname === '/reset-password' ||
+    location.pathname === '/confirm-deletion'
+  ) {
+    return null;
+  }
+
+  if (!incomingCode || !incomingCode.code) return null;
+
+  const currentCode = String(incomingCode.code).trim();
+  const currentKey = `${currentCode}|${(incomingCode.email || '').toLowerCase().trim()}`;
+
+  // If user dismissed this exact code or code+email key, stay hidden
+  if (dismissedCodes.has(currentKey) || dismissedCodes.has(currentCode)) {
+    return null;
+  }
+
+  // 3. If a non-admin user is logged in, only show if code matches their account email
   if (
     user &&
     user.email &&
@@ -48,6 +57,22 @@ export const IncomingCodeModal = () => {
   ) {
     return null;
   }
+
+  const handleDismiss = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    try {
+      const stored = getDismissedCodes();
+      const updated = Array.from(new Set([...stored, currentKey, currentCode]));
+      sessionStorage.setItem('pulsechat_dismissed_incoming_codes', JSON.stringify(updated));
+    } catch (err) {
+      console.warn('Failed to save dismissed code', err);
+    }
+    setDismissedCodes((prev) => new Set([...prev, currentKey, currentCode]));
+    clearIncomingCode();
+  };
 
   const handleCopy = () => {
     try {
@@ -67,7 +92,7 @@ export const IncomingCodeModal = () => {
       : 'Email Verification';
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full animate-in slide-in-from-bottom-5 duration-300">
+    <div className="fixed bottom-6 right-4 sm:right-6 z-50 max-w-sm w-[calc(100%-2rem)] sm:w-full animate-in slide-in-from-bottom-5 duration-300">
       <div className="bg-slate-900/95 border-2 border-indigo-500/80 rounded-3xl p-5 shadow-2xl backdrop-blur-md text-white space-y-3.5 relative overflow-hidden ring-4 ring-indigo-500/20">
         {/* Glow accent */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
@@ -83,13 +108,11 @@ export const IncomingCodeModal = () => {
             </div>
           </div>
           <button
-            onClick={() => {
-              dismissedRef.current = currentKey;
-              setDismissed(currentKey);
-              clearIncomingCode();
-            }}
-            className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+            type="button"
+            onClick={handleDismiss}
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
             title="Dismiss"
+            aria-label="Dismiss"
           >
             <X className="w-4 h-4" />
           </button>
@@ -105,6 +128,7 @@ export const IncomingCodeModal = () => {
             {incomingCode.code}
           </div>
           <button
+            type="button"
             onClick={handleCopy}
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer ${
               copied

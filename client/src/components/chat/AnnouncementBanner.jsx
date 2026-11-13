@@ -151,11 +151,62 @@ export const AnnouncementBanner = () => {
     }
   };
 
-  // Vote on an announcement poll (persists open state, never auto-closes)
+  // Vote on an announcement poll (persists open state, instant optimistic UI on tap)
   const handleVote = async (announcementId, optionIndex) => {
-    if (votingId) return;
-    setVotingId(`${announcementId}_${optionIndex}`);
+    const curUserId = user?._id?.toString();
+    const targetAnnouncement = announcements.find((a) => a._id === announcementId);
+    if (!targetAnnouncement || !targetAnnouncement.poll) return;
+    if (targetAnnouncement.poll.isClosed) return;
 
+    // Snapshot for rollback on error
+    const previousState = targetAnnouncement;
+
+    // 1. INSTANT OPTIMISTIC UPDATE (0ms)
+    const poll = targetAnnouncement.poll;
+    const allowsMultiple = Boolean(poll.allowMultiple);
+    const prevVotedIndices = Array.isArray(targetAnnouncement.userVotedIndices)
+      ? targetAnnouncement.userVotedIndices
+      : [];
+    const alreadyVotedThis = prevVotedIndices.includes(optionIndex);
+
+    let nextVotedIndices = [];
+    if (allowsMultiple) {
+      nextVotedIndices = alreadyVotedThis
+        ? prevVotedIndices.filter((i) => i !== optionIndex)
+        : [...prevVotedIndices, optionIndex];
+    } else {
+      nextVotedIndices = alreadyVotedThis ? [] : [optionIndex];
+    }
+
+    const nextOptions = (poll.options || []).map((opt, idx) => {
+      const curVotes = Array.isArray(opt.votes) ? [...opt.votes] : [];
+      let newVotes = curVotes.filter((v) => (v?._id || v)?.toString() !== curUserId);
+      if (nextVotedIndices.includes(idx)) {
+        newVotes.push(curUserId);
+      }
+      return {
+        ...opt,
+        votes: newVotes,
+        voteCount: newVotes.length
+      };
+    });
+
+    const nextTotalVotes = nextOptions.reduce((sum, o) => sum + (o.votes?.length || 0), 0);
+
+    setAnnouncements((prev) =>
+      prev.map((a) =>
+        a._id === announcementId
+          ? {
+              ...a,
+              poll: { ...poll, options: nextOptions },
+              userVotedIndices: nextVotedIndices,
+              totalPollVotes: nextTotalVotes
+            }
+          : a
+      )
+    );
+
+    // 2. Server sync in background
     try {
       const res = await fetch(`/api/announcements/${announcementId}/poll/vote`, {
         method: 'POST',
@@ -168,11 +219,18 @@ export const AnnouncementBanner = () => {
         setAnnouncements((prev) =>
           prev.map((a) => (a._id === announcementId ? { ...a, ...data.announcement } : a))
         );
+      } else if (!data.success) {
+        // Rollback
+        setAnnouncements((prev) =>
+          prev.map((a) => (a._id === announcementId ? previousState : a))
+        );
       }
     } catch (err) {
       console.error('[Poll Vote Error]', err);
-    } finally {
-      setVotingId(null);
+      // Rollback
+      setAnnouncements((prev) =>
+        prev.map((a) => (a._id === announcementId ? previousState : a))
+      );
     }
   };
 

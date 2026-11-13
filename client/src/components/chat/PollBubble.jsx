@@ -5,7 +5,7 @@ import { useChat } from '../../context/ChatContext';
 
 export const PollBubble = ({ message }) => {
   const { user } = useAuth();
-  const { authHeaders } = useChat();
+  const { authHeaders, votePoll } = useChat();
   const [loadingIndex, setLoadingIndex] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -25,24 +25,12 @@ export const PollBubble = ({ message }) => {
 
   const handleVote = async (optionIndex) => {
     if (isClosed) return;
-    setLoadingIndex(optionIndex);
     setErrorMsg('');
     try {
-      const res = await fetch(`/api/messages/${message._id}/poll/vote`, {
-        method: 'POST',
-        headers: authHeaders(),
-        credentials: 'include',
-        body: JSON.stringify({ optionIndex })
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setErrorMsg(data.message || 'Failed to submit vote');
-      }
+      await votePoll(message._id, optionIndex);
     } catch (err) {
       console.error('Vote error:', err);
-      setErrorMsg('Network error voting on poll');
-    } finally {
-      setLoadingIndex(null);
+      setErrorMsg(err.message || 'Network error voting on poll');
     }
   };
 
