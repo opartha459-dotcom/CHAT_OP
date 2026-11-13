@@ -80,30 +80,31 @@ const emitPollUpdate = (req, status) => {
   if (!io) return;
   const authorId = getId(status.user);
 
-  // Send full poll details with voter identities ONLY to the author
+  // Convert Mongoose subdocument to plain object to avoid DocumentArray quirks
+  const pollObj = status.poll?.toObject ? status.poll.toObject() : status.poll;
+  if (!pollObj) return;
+
+  const sanitizedOptions = (pollObj.options || []).map(opt => ({
+    text: opt.text,
+    _id: opt._id,
+    votes: [],       // non-authors never see voter identities
+    voteCount: (opt.votes || []).length
+  }));
+
+  // Send full poll details (with voter identities) ONLY to the author
   io.to(`user:${authorId}`).emit('status:poll_voted', {
     statusId: getId(status._id),
     authorId,
-    poll: status.poll,
+    poll: pollObj,
     viewers: status.viewers || [],
     totalViewers: status.viewers?.length || 0
   });
 
-  // Broadcast sanitized poll stats to everyone EXCEPT the author
-  // (votes[] must remain an array – even if empty – so the client's
-  //  .some() / .length calls never crash on undefined)
+  // Broadcast sanitized counts to everyone EXCEPT the author
   io.except(`user:${authorId}`).emit('status:poll_voted', {
     statusId: getId(status._id),
     authorId,
-    poll: {
-      ...status.poll,
-      options: status.poll?.options?.map(opt => ({
-        text: opt.text,
-        _id: opt._id,
-        votes: [], // non-authors don't see voter identities
-        voteCount: (opt.votes || []).length
-      }))
-    }
+    poll: { ...pollObj, options: sanitizedOptions }
   });
 };
 
@@ -873,38 +874,35 @@ const voteStatusPoll = async (req, res) => {
     const isOwner = authorId === currentUserId.toString();
     const io = getSocket(req);
 
+    // populated comes from .lean() so it's already a plain JS object
+    const populatedPoll = populated.poll || null;
+
     // Send full poll with voter identities and viewers ONLY to the status creator
-    if (io) {
+    if (io && populatedPoll) {
       io.to(`user:${authorId}`).emit('status:poll_voted', {
         statusId: id.toString(),
         authorId,
-        poll: populated.poll,
+        poll: populatedPoll,
         viewers: populated.viewers || [],
         totalViewers: populated.viewers?.length || 0
       });
 
-      // Broadcast sanitized option counts to everyone EXCEPT the author
-      // (author already received full data above; sending the sanitized
-      // version to them too would race-overwrite their votes[] arrays with
-      // voteCount-only objects, causing .length crashes on the client).
-      const sanitizedOptions = populated.poll?.options?.map((opt) => ({
+      // Build sanitized options: include ONLY the voter's own vote so they
+      // can see their selection (hasVoted), but hide all other voter identities.
+      const sanitizedOptions = (populatedPoll.options || []).map((opt) => ({
         text: opt.text,
         _id: opt._id,
-        // Preserve a minimal votes array so non-owners can check hasVoted.
-        // Filter to only include the voter's own ID to avoid privacy leaks.
         votes: (opt.votes || []).filter(
           (v) => getId(v) === currentUserId.toString()
         ),
         voteCount: (opt.votes || []).length
       }));
 
+      // Broadcast sanitized counts to everyone EXCEPT the author
       io.except(`user:${authorId}`).emit('status:poll_voted', {
         statusId: id.toString(),
         authorId,
-        poll: {
-          ...populated.poll,
-          options: sanitizedOptions
-        }
+        poll: { ...populatedPoll, options: sanitizedOptions }
       });
     }
 

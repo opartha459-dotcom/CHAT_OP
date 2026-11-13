@@ -99,17 +99,32 @@ export const StatusViewerModal = ({
   useEffect(() => {
     if (statuses && statuses[currentIndex]) {
       const incoming = statuses[currentIndex];
+      if (!incoming) return; // guard against sparse arrays
 
       setActiveStatus((prev) => {
         if (!prev || prev._id?.toString() !== incoming._id?.toString()) {
           return incoming;
         }
 
+        // Merge incoming feed data with local live data (viewers/reactions/poll).
+        // Always ensure poll options have a valid votes[] array.
+        const mergePoll = () => {
+          const src = incoming.poll || prev.poll;
+          if (!src) return undefined;
+          return {
+            ...src,
+            options: (src.options || []).filter(Boolean).map((opt) => ({
+              ...opt,
+              votes: Array.isArray(opt.votes) ? opt.votes : []
+            }))
+          };
+        };
+
         return {
           ...incoming,
           viewers: incoming.viewers || prev.viewers || [],
           reactions: incoming.reactions || prev.reactions || [],
-          poll: incoming.poll || prev.poll
+          poll: mergePoll()
         };
       });
     } else {
@@ -310,22 +325,26 @@ export const StatusViewerModal = ({
             return prev;
           }
 
-          // Normalise options so opt.votes is always an array.
-          // The server sends voteCount (number) for non-owners to avoid
-          // leaking voter identities; we still need a valid votes[] so
-          // .some() / .length never throw on undefined.
           const incomingPoll = payload.poll;
           if (!incomingPoll) return prev;
 
-          const normalizedOptions = (incomingPoll.options || []).map((opt, idx) => {
-            const prevOpt = prev.poll?.options?.[idx];
-            const votes = Array.isArray(opt.votes)
-              ? opt.votes
-              : Array.isArray(prevOpt?.votes)
-                ? prevOpt.votes // keep previous voter array when server omitted it
-                : [];
-            return { ...opt, votes };
-          });
+          // Normalise options: guard against undefined entries and ensure
+          // opt.votes is always an array so .some()/.length never throws.
+          const rawOptions = Array.isArray(incomingPoll.options)
+            ? incomingPoll.options
+            : [];
+
+          const normalizedOptions = rawOptions
+            .filter(Boolean) // drop any undefined / null entries
+            .map((opt, idx) => {
+              const prevOpt = prev.poll?.options?.[idx];
+              const votes = Array.isArray(opt.votes)
+                ? opt.votes
+                : Array.isArray(prevOpt?.votes)
+                  ? prevOpt.votes   // keep the previous voter list when server stripped it
+                  : [];
+              return { ...opt, votes };
+            });
 
           return {
             ...prev,
