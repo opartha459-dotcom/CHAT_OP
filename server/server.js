@@ -269,6 +269,12 @@ app.get(
   require('./controllers/adminController').getPublicLandingConfig
 );
 
+// Public official administrator contact information.
+app.get(
+  '/api/system/contact',
+  require('./controllers/adminController').getPublicContact
+);
+
 // Public maintenance status.
 app.get('/api/system/maintenance', async (req, res) => {
   try {

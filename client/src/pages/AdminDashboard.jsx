@@ -71,6 +71,9 @@ import { Avatar } from '../components/common/Avatar';
 import { PulseLogo } from '../components/common/PulseLogo';
 import { AdminDashboardSkeleton } from '../components/common/Skeleton';
 import { LandingCmsTab } from '../components/admin/LandingCmsTab';
+import { GenerateCodeModal } from '../components/admin/GenerateCodeModal';
+import { OfficialContactSettingsCard } from '../components/admin/OfficialContactSettingsCard';
+import { StorageManagementTab } from '../components/admin/StorageManagementTab';
 
 export const AdminDashboard = () => {
   const auth = useAuth();
@@ -202,6 +205,7 @@ export const AdminDashboard = () => {
   const [codeFilterAction, setCodeFilterAction] = useState('all');
   const [codeDateFrom, setCodeDateFrom] = useState('');
   const [codeDateTo, setCodeDateTo] = useState('');
+  const [isGenerateCodeModalOpen, setIsGenerateCodeModalOpen] = useState(false);
 
   // Announcement Modal & Edit state
   const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
@@ -1159,6 +1163,52 @@ export const AdminDashboard = () => {
     }
   };
 
+  const handleDeleteMaintenanceRecord = async (id, title) => {
+    if (!window.confirm(`Permanently delete maintenance record "${title || 'Untitled'}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/admin/maintenance/${id}/permanent`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg(d.message || 'Maintenance record permanently deleted.');
+        setSchedules((prev) => prev.filter((s) => s._id !== id));
+      } else {
+        showMsg(d.message || 'Failed to delete maintenance record.');
+      }
+    } catch {
+      showMsg('Network error deleting maintenance record.');
+    }
+  };
+
+  const handleClearMaintenanceHistory = async () => {
+    const historyCount = schedules.filter((s) => s.status === 'completed' || s.status === 'cancelled').length;
+    if (historyCount === 0) return;
+    if (!window.confirm(`Are you sure you want to permanently delete all ${historyCount} past maintenance history records? This cannot be undone.`)) return;
+    try {
+      const res = await fetch('/api/admin/maintenance/history', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
+        credentials: 'include',
+        body: JSON.stringify({ all: true })
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg(d.message || 'All past maintenance history deleted.');
+        setSchedules((prev) => prev.filter((s) => s.status !== 'completed' && s.status !== 'cancelled'));
+      } else {
+        showMsg(d.message || 'Failed to clear maintenance history.');
+      }
+    } catch {
+      showMsg('Network error clearing maintenance history.');
+    }
+  };
+
   // ── Recovery Requests ─────────────────────────────────────────────────────
   const loadRecoveries = async () => {
     setRecoveriesLoading(true);
@@ -1250,6 +1300,58 @@ export const AdminDashboard = () => {
       showMsg('Network error sending verification code.');
     } finally {
       setSendingCodeId(null);
+    }
+  };
+
+  const handleRevokeCode = async (c) => {
+    if (!window.confirm(`Revoke verification code ${c.code} for ${c.email}? This will expire the code immediately.`)) return;
+    try {
+      const res = await fetch(`/api/admin/verification-codes/${c._id}/revoke`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        setVerificationCodes((prev) =>
+          prev.map((item) => (item._id === c._id ? { ...item, status: 'expired' } : item))
+        );
+        showMsg(d.message || 'Verification code revoked successfully.');
+      } else {
+        showMsg(d.message || 'Failed to revoke code.');
+      }
+    } catch {
+      showMsg('Network error revoking code.');
+    }
+  };
+
+  const handleRegenerateCode = async (c) => {
+    try {
+      const res = await fetch('/api/admin/verification-codes/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders()
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          email: c.email,
+          username: c.username,
+          userId: c.user?._id || c.user,
+          action: c.action || 'email_verification',
+          expiryMinutes: 60,
+          autoDispatch: true
+        })
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg(d.message || 'New verification code regenerated and dispatched!');
+        loadVerificationCodes();
+      } else {
+        showMsg(d.message || 'Failed to regenerate code.');
+      }
+    } catch {
+      showMsg('Network error regenerating code.');
     }
   };
 
@@ -1382,6 +1484,7 @@ export const AdminDashboard = () => {
       label: 'Infrastructure',
       items: [
         { id: 'databases', label: 'Databases & Health', icon: HardDrive },
+        { id: 'storage', label: 'Storage & DB Optimization', icon: Database },
       ]
     }
   ];
@@ -1722,6 +1825,15 @@ export const AdminDashboard = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => setIsGenerateCodeModalOpen(true)}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition cursor-pointer font-semibold shadow-xs"
+                    title="Generate and assign a verification code"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Generate Code</span>
+                  </button>
+
                   <button
                     onClick={loadVerificationCodes}
                     disabled={verificationCodesLoading}
@@ -2098,8 +2210,31 @@ export const AdminDashboard = () => {
                                 </div>
                               </div>
 
-                              {/* Prominent Send Code Button */}
-                              <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
+                              {/* Prominent Send & Action Controls */}
+                              <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRegenerateCode(c)}
+                                    className="py-1.5 px-2.5 rounded-xl text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition flex items-center justify-center space-x-1 cursor-pointer"
+                                    title="Generate new 6-digit code for this user"
+                                  >
+                                    <RefreshCw className="w-3 h-3 text-indigo-500" />
+                                    <span>Regenerate</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRevokeCode(c)}
+                                    disabled={c.status === 'expired' || c.status === 'used'}
+                                    className="py-1.5 px-2.5 rounded-xl text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 disabled:opacity-40 transition flex items-center justify-center space-x-1 cursor-pointer"
+                                    title="Revoke and expire code immediately"
+                                  >
+                                    <XCircle className="w-3 h-3" />
+                                    <span>Revoke</span>
+                                  </button>
+                                </div>
+
                                 <button
                                   onClick={() => handleSendVerificationCode(c)}
                                   disabled={isSending || isUsed}
@@ -3519,10 +3654,29 @@ export const AdminDashboard = () => {
 
               {/* Maintenance History */}
               <div className="space-y-3 pt-4 border-t border-slate-800">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center space-x-2">
-                  <Clock className="w-4 h-4 text-slate-400" />
-                  <span>Maintenance History</span>
-                </h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                      <Clock className="w-4 h-4 text-slate-400" />
+                      <span>Maintenance History</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Past completed and cancelled maintenance downtime logs
+                    </p>
+                  </div>
+
+                  {schedules.filter((s) => s.status === 'completed' || s.status === 'cancelled').length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearMaintenanceHistory}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 text-xs text-rose-500 hover:text-white border border-rose-500/30 hover:bg-rose-600 rounded-xl transition cursor-pointer font-medium self-start sm:self-center shadow-xs"
+                      title="Clear all past completed and cancelled maintenance records"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Clear History ({schedules.filter((s) => s.status === 'completed' || s.status === 'cancelled').length})</span>
+                    </button>
+                  )}
+                </div>
 
                 {schedules.filter((s) => s.status === 'completed' || s.status === 'cancelled').length === 0 ? (
                   <div className="p-4 text-center text-xs text-slate-500">No past maintenance history records.</div>
@@ -3530,29 +3684,39 @@ export const AdminDashboard = () => {
                   <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                     {schedules
                       .filter((s) => s.status === 'completed' || s.status === 'cancelled')
-                      .slice(0, 10)
                       .map((sch) => (
-                        <div key={sch._id} className="p-3.5 flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        <div key={sch._id} className="p-3.5 flex items-center justify-between hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                          <div className="flex items-center space-x-3 min-w-0 pr-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
                               sch.status === 'completed'
                                 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                                 : 'bg-slate-700/50 text-slate-400'
                             }`}>
                               {sch.status}
                             </span>
-                            <div>
-                              <div className="font-bold text-white">{sch.title}</div>
-                              <div className="text-[11px] text-slate-400">
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-900 dark:text-white truncate">{sch.title}</div>
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                                 {sch.scope === 'full_system' ? 'Full System' : `Partial (${(sch.affectedFeatures || []).join(', ')})`}
                                 {' • '}
                                 {new Date(sch.startTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
                               </div>
                             </div>
                           </div>
-                          <span className="text-[11px] text-slate-500 font-mono">
-                            {sch.completedAt ? `Ended ${new Date(sch.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
-                          </span>
+
+                          <div className="flex items-center space-x-3 shrink-0">
+                            <span className="text-[11px] text-slate-500 font-mono hidden md:inline">
+                              {sch.completedAt ? `Ended ${new Date(sch.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMaintenanceRecord(sch._id, sch.title)}
+                              className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
+                              title="Delete this maintenance record"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                   </div>
@@ -4033,6 +4197,9 @@ export const AdminDashboard = () => {
                 </p>
               </div>
 
+              {/* Administrator Official Contact Settings Card */}
+              <OfficialContactSettingsCard authHeaders={authHeaders} showFeedback={showMsg} />
+
               {[
                 {
                   category: 'Core Communication Modules',
@@ -4155,6 +4322,11 @@ export const AdminDashboard = () => {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* TAB: STORAGE & DATABASE OPTIMIZATION */}
+          {activeTab === 'storage' && (
+            <StorageManagementTab authHeaders={authHeaders} showFeedback={showMsg} />
           )}
         </main>
       </div>
@@ -5329,6 +5501,18 @@ export const AdminDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Generate Verification Code Modal */}
+      <GenerateCodeModal
+        isOpen={isGenerateCodeModalOpen}
+        onClose={() => setIsGenerateCodeModalOpen(false)}
+        users={users}
+        authHeaders={authHeaders}
+        onGenerated={(newCode, msg) => {
+          showMsg(msg || 'Verification code generated!');
+          loadVerificationCodes();
+        }}
+      />
     </>
   );
 };

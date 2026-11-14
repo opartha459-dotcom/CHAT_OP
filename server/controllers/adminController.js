@@ -671,6 +671,199 @@ const runManualRetention = async (req, res) => {
   }
 };
 
+// @desc Get complete storage metrics for free-tier MongoDB optimization
+// @route GET /api/admin/storage/metrics
+const getStorageMetrics = async (req, res) => {
+  try {
+    const User = require('../models/User');
+    const Conversation = require('../models/Conversation');
+    const Message = require('../models/Message');
+    const Session = require('../models/Session');
+    const VerificationCode = require('../models/VerificationCode');
+    const AuditLog = require('../models/AuditLog');
+    const Notification = require('../models/Notification');
+    const Report = require('../models/Report');
+    const AccountRecoveryRequest = require('../models/AccountRecoveryRequest');
+    const Status = require('../models/Status');
+    const MaintenanceSchedule = require('../models/MaintenanceSchedule');
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+
+    const [
+      totalUsers,
+      totalConversations,
+      totalMessages,
+      mediaMessages,
+      totalSessions,
+      expiredSessions,
+      totalCodes,
+      pendingCodes,
+      expiredCodes,
+      totalAuditLogs,
+      oldAuditLogs,
+      totalNotifications,
+      readNotifications,
+      totalReports,
+      totalRecoveries,
+      totalStatuses,
+      totalMaintenance,
+      pastMaintenance
+    ] = await Promise.all([
+      User.countDocuments(),
+      Conversation.countDocuments(),
+      Message.countDocuments(),
+      Message.countDocuments({ mediaUrl: { $exists: true, $ne: '' } }),
+      Session.countDocuments(),
+      Session.countDocuments({ expiresAt: { $lt: now } }),
+      VerificationCode.countDocuments(),
+      VerificationCode.countDocuments({ status: 'pending' }),
+      VerificationCode.countDocuments({ $or: [{ expiresAt: { $lt: now } }, { status: { $in: ['used', 'expired'] } }] }),
+      AuditLog.countDocuments(),
+      AuditLog.countDocuments({ createdAt: { $lt: thirtyDaysAgo } }),
+      Notification.countDocuments(),
+      Notification.countDocuments({ isRead: true, createdAt: { $lt: thirtyDaysAgo } }),
+      Report.countDocuments(),
+      AccountRecoveryRequest.countDocuments(),
+      Status ? Status.countDocuments() : 0,
+      MaintenanceSchedule ? MaintenanceSchedule.countDocuments() : 0,
+      MaintenanceSchedule ? MaintenanceSchedule.countDocuments({ status: { $in: ['completed', 'cancelled'] } }) : 0
+    ]);
+
+    const estimatedSizeBytes = (
+      totalUsers * 1200 +
+      totalConversations * 1000 +
+      totalMessages * 850 +
+      totalSessions * 400 +
+      totalCodes * 300 +
+      totalAuditLogs * 650 +
+      totalNotifications * 350 +
+      totalReports * 800 +
+      totalRecoveries * 1000 +
+      totalStatuses * 500 +
+      totalMaintenance * 600
+    );
+
+    const freeTierQuotaBytes = 512 * 1024 * 1024; // 512 MB
+    const usagePercent = Math.min(100, Math.round((estimatedSizeBytes / freeTierQuotaBytes) * 1000) / 10);
+
+    return res.json({
+      success: true,
+      storage: {
+        totalDocuments: totalUsers + totalConversations + totalMessages + totalSessions + totalCodes + totalAuditLogs + totalNotifications + totalReports + totalRecoveries + totalStatuses + totalMaintenance,
+        estimatedSizeBytes,
+        estimatedSizeMB: (estimatedSizeBytes / (1024 * 1024)).toFixed(2),
+        freeTierQuotaMB: 512,
+        usagePercent,
+        warning: usagePercent > 70 ? 'Storage usage is high (> 70% of free tier). Clean up obsolete sessions, logs, or codes.' : null,
+        breakdown: {
+          users: { count: totalUsers, deletable: 0 },
+          conversations: { count: totalConversations, deletable: 0 },
+          messages: { count: totalMessages, mediaCount: mediaMessages, deletable: 0 },
+          sessions: { count: totalSessions, expiredCount: expiredSessions, cleanable: expiredSessions },
+          verificationCodes: { count: totalCodes, pendingCount: pendingCodes, expiredCount: expiredCodes, cleanable: expiredCodes },
+          auditLogs: { count: totalAuditLogs, olderThan30Days: oldAuditLogs, cleanable: oldAuditLogs },
+          notifications: { count: totalNotifications, readOldCount: readNotifications, cleanable: readNotifications },
+          maintenance: { count: totalMaintenance, pastCount: pastMaintenance, cleanable: pastMaintenance },
+          reports: { count: totalReports },
+          recoveries: { count: totalRecoveries },
+          statuses: { count: totalStatuses }
+        }
+      }
+    });
+  } catch (error) {
+    console.error('[Storage Metrics Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to compute storage metrics.' });
+  }
+};
+
+// @desc Perform targeted or bulk database cleanup for storage optimization
+// @route POST /api/admin/storage/cleanup
+const runStorageCleanup = async (req, res) => {
+  try {
+    const Session = require('../models/Session');
+    const VerificationCode = require('../models/VerificationCode');
+    const AuditLog = require('../models/AuditLog');
+    const Notification = require('../models/Notification');
+    const Status = require('../models/Status');
+
+    const { target } = req.body; // 'sessions' | 'codes' | 'audit_logs' | 'notifications' | 'statuses' | 'all'
+    const now = new Date();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    const summary = {};
+    let totalPurged = 0;
+
+    if (target === 'sessions' || target === 'all') {
+      const resSession = await Session.deleteMany({ expiresAt: { $lt: now } });
+      summary.expiredSessions = resSession.deletedCount;
+      totalPurged += resSession.deletedCount;
+    }
+
+    if (target === 'codes' || target === 'all') {
+      const resCodes = await VerificationCode.deleteMany({
+        $or: [
+          { expiresAt: { $lt: now } },
+          { status: { $in: ['used', 'expired'] } }
+        ]
+      });
+      summary.expiredVerificationCodes = resCodes.deletedCount;
+      totalPurged += resCodes.deletedCount;
+    }
+
+    if (target === 'audit_logs' || target === 'all') {
+      const resLogs = await AuditLog.deleteMany({ createdAt: { $lt: thirtyDaysAgo } });
+      summary.oldAuditLogs = resLogs.deletedCount;
+      totalPurged += resLogs.deletedCount;
+    }
+
+    if (target === 'notifications' || target === 'all') {
+      const resNotif = await Notification.deleteMany({
+        $or: [
+          { isRead: true, createdAt: { $lt: thirtyDaysAgo } },
+          { createdAt: { $lt: new Date(Date.now() - 60 * 24 * 3600 * 1000) } }
+        ]
+      });
+      summary.oldNotifications = resNotif.deletedCount;
+      totalPurged += resNotif.deletedCount;
+    }
+
+    if (target === 'statuses' || target === 'all') {
+      if (Status) {
+        const resStatus = await Status.deleteMany({ expiresAt: { $lt: now } });
+        summary.expiredStatuses = resStatus.deletedCount;
+        totalPurged += resStatus.deletedCount;
+      }
+    }
+
+    if (target === 'maintenance' || target === 'all') {
+      const MaintenanceSchedule = require('../models/MaintenanceSchedule');
+      if (MaintenanceSchedule) {
+        const resMaint = await MaintenanceSchedule.deleteMany({ status: { $in: ['completed', 'cancelled'] } });
+        summary.pastMaintenanceHistory = resMaint.deletedCount;
+        totalPurged += resMaint.deletedCount;
+      }
+    }
+
+    await AuditLog.create({
+      actor: req.user._id,
+      action: 'STORAGE_CLEANUP_PERFORMED',
+      targetType: 'SystemStorage',
+      details: { target, summary, totalPurged },
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: `Storage optimization complete. Successfully purged ${totalPurged} obsolete record(s).`,
+      summary,
+      totalPurged
+    });
+  } catch (error) {
+    console.error('[Storage Cleanup Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to run storage cleanup.' });
+  }
+};
+
 // @desc Get runtime system settings & feature flags
 // @route GET /api/admin/settings
 const getSystemSettings = async (req, res) => {
@@ -978,6 +1171,92 @@ const updateLandingConfig = async (req, res) => {
       success: false,
       message: 'Error updating landing page configuration'
     });
+  }
+};
+
+// @desc Get public official contact info
+// @route GET /api/system/contact
+const getPublicContact = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    let config = await SystemConfig.findOne({ key: 'system_settings' }).lean();
+    if (!config) {
+      config = await SystemConfig.create({ key: 'system_settings' });
+    }
+    const contact = config.officialContact || {};
+    return res.json({
+      success: true,
+      contact: contact.enabled ? contact : { enabled: false }
+    });
+  } catch (error) {
+    console.error('[Get Public Contact Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve official contact details' });
+  }
+};
+
+// @desc Get official contact configuration for admin
+// @route GET /api/admin/contact
+const getAdminContact = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    let config = await SystemConfig.findOne({ key: 'system_settings' }).lean();
+    if (!config) {
+      config = await SystemConfig.create({ key: 'system_settings' });
+    }
+    return res.json({
+      success: true,
+      contact: config.officialContact || {}
+    });
+  } catch (error) {
+    console.error('[Get Admin Contact Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve admin contact details' });
+  }
+};
+
+// @desc Update official contact details
+// @route PUT /api/admin/contact
+const updateAdminContact = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    const { contact } = req.body;
+    if (!contact || typeof contact !== 'object') {
+      return res.status(400).json({ success: false, message: 'Invalid contact configuration provided' });
+    }
+
+    let config = await SystemConfig.findOne({ key: 'system_settings' });
+    if (!config) {
+      config = new SystemConfig({ key: 'system_settings' });
+    }
+
+    config.officialContact = {
+      ...(config.officialContact ? (config.officialContact.toObject ? config.officialContact.toObject() : config.officialContact) : {}),
+      ...contact
+    };
+    config.lastUpdatedBy = req.user._id;
+    await config.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('system:contact_updated', config.officialContact);
+    }
+
+    await AuditLog.create({
+      actor: req.user._id,
+      action: 'OFFICIAL_CONTACT_UPDATED',
+      targetType: 'SystemConfig',
+      targetId: config._id,
+      details: { phone: config.officialContact.phone, enabled: config.officialContact.enabled },
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'Official contact details updated and broadcast to all users.',
+      contact: config.officialContact
+    });
+  } catch (error) {
+    console.error('[Update Admin Contact Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to update official contact details' });
   }
 };
 
@@ -1385,6 +1664,178 @@ const deleteVerificationCodes = async (req, res) => {
   }
 };
 
+// @desc Admin generate verification code for user
+// @route POST /api/admin/verification-codes/generate
+const generateVerificationCode = async (req, res) => {
+  try {
+    const crypto = require('crypto');
+    const VerificationCode = require('../models/VerificationCode');
+    const User = require('../models/User');
+    const { email, username, userId, action = 'email_verification', customCode, expiryMinutes = 60, autoDispatch = false } = req.body;
+
+    let targetEmail = (email || '').toLowerCase().trim();
+    let targetUsername = (username || '').trim();
+    let targetUser = null;
+
+    if (userId) {
+      targetUser = await User.findById(userId);
+    } else if (targetEmail) {
+      targetUser = await User.findOne({ email: targetEmail });
+    } else if (targetUsername) {
+      targetUser = await User.findOne({ username: targetUsername });
+    }
+
+    if (targetUser) {
+      targetEmail = targetUser.email;
+      targetUsername = targetUser.username;
+    }
+
+    if (!targetEmail) {
+      return res.status(400).json({ success: false, message: 'A valid email address or username is required.' });
+    }
+
+    const generatedCode = (customCode && /^[0-9]{6}$/.test(customCode.trim()))
+      ? customCode.trim()
+      : crypto.randomInt(100000, 999999).toString();
+
+    const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+    const hashed = hashToken(generatedCode);
+    const expiresAt = new Date(Date.now() + (parseInt(expiryMinutes, 10) || 60) * 60 * 1000);
+
+    if (targetUser) {
+      if (action === 'email_verification') {
+        targetUser.emailVerificationToken = hashed;
+        targetUser.emailVerificationExpires = expiresAt;
+      } else if (action === 'password_reset') {
+        targetUser.passwordResetToken = hashed;
+        targetUser.passwordResetExpires = expiresAt;
+      } else if (action === 'account_deletion') {
+        targetUser.deletionConfirmationToken = hashed;
+        targetUser.deletionConfirmationExpires = expiresAt;
+      }
+      await targetUser.save();
+    }
+
+    await VerificationCode.updateMany(
+      { email: targetEmail, action, status: 'pending' },
+      { status: 'expired' }
+    );
+
+    const codeRecord = await VerificationCode.create({
+      code: generatedCode,
+      action,
+      email: targetEmail,
+      username: targetUsername,
+      user: targetUser ? targetUser._id : null,
+      status: autoDispatch ? 'sent' : 'pending',
+      sentBy: autoDispatch ? req.user._id : null,
+      sentAt: autoDispatch ? new Date() : null,
+      expiresAt,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] || ''
+    });
+
+    const io = req.app.get('io');
+    if (autoDispatch && io) {
+      const payload = {
+        code: generatedCode,
+        action,
+        email: targetEmail,
+        username: targetUsername,
+        message: `Your ${action === 'password_reset' ? 'Password Reset' : action === 'account_deletion' ? 'Account Deletion' : 'Email Verification'} Code is ${generatedCode}`,
+        sentAt: codeRecord.sentAt
+      };
+      io.to(`email:${targetEmail}`).emit('auth:code_received', payload);
+      if (targetUser) {
+        io.to(`user:${targetUser._id}`).emit('auth:code_received', payload);
+        io.to(targetUser._id.toString()).emit('auth:code_received', payload);
+      }
+      if (targetUsername) {
+        io.to(`username:${targetUsername.toLowerCase()}`).emit('auth:code_received', payload);
+      }
+    }
+
+    await AuditLog.create({
+      actor: req.user._id,
+      action: 'VERIFICATION_CODE_GENERATED',
+      targetType: 'VerificationCode',
+      targetId: codeRecord._id,
+      details: { email: targetEmail, code: generatedCode, action, autoDispatch },
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: `Verification code ${generatedCode} generated for ${targetEmail}${autoDispatch ? ' and dispatched' : ''}.`,
+      code: codeRecord
+    });
+  } catch (error) {
+    console.error('[Generate Verification Code Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to generate verification code.' });
+  }
+};
+
+// @desc Revoke a verification code
+// @route POST /api/admin/verification-codes/:id/revoke
+const revokeVerificationCode = async (req, res) => {
+  try {
+    const VerificationCode = require('../models/VerificationCode');
+    const User = require('../models/User');
+    const { id } = req.params;
+
+    const codeDoc = await VerificationCode.findById(id);
+    if (!codeDoc) {
+      return res.status(404).json({ success: false, message: 'Verification code not found.' });
+    }
+
+    codeDoc.status = 'expired';
+    await codeDoc.save();
+
+    if (codeDoc.email) {
+      await User.updateOne(
+        { email: codeDoc.email.toLowerCase().trim() },
+        {
+          $unset: {
+            emailVerificationToken: 1,
+            emailVerificationExpires: 1,
+            passwordResetToken: 1,
+            passwordResetExpires: 1
+          }
+        }
+      );
+    }
+
+    const io = req.app.get('io');
+    if (io && codeDoc.email) {
+      const cleanEmail = codeDoc.email.toLowerCase().trim();
+      io.to(`email:${cleanEmail}`).emit('auth:code_revoked', {
+        email: cleanEmail,
+        action: codeDoc.action,
+        status: 'Code Expired',
+        message: 'This verification code has been revoked or expired by an administrator.'
+      });
+    }
+
+    await AuditLog.create({
+      actor: req.user._id,
+      action: 'VERIFICATION_CODE_REVOKED',
+      targetType: 'VerificationCode',
+      targetId: codeDoc._id,
+      details: { email: codeDoc.email, code: codeDoc.code },
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'Verification code successfully revoked.',
+      code: codeDoc
+    });
+  } catch (error) {
+    console.error('[Revoke Verification Code Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to revoke verification code.' });
+  }
+};
+
 /* =========================================================
    SCHEDULED MAINTENANCE MANAGEMENT CONTROLLERS
 ========================================================= */
@@ -1686,6 +2137,16 @@ const cancelMaintenanceSchedule = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Maintenance schedule not found.' });
     }
 
+    if (req.query.permanent === 'true' || schedule.status === 'completed' || schedule.status === 'cancelled') {
+      const deletedTitle = schedule.title;
+      await MaintenanceSchedule.findByIdAndDelete(id);
+      return res.json({
+        success: true,
+        message: `Maintenance record "${deletedTitle}" permanently deleted.`,
+        deletedId: id
+      });
+    }
+
     schedule.status = 'cancelled';
     schedule.cancelledAt = new Date();
     await schedule.save();
@@ -1701,6 +2162,7 @@ const cancelMaintenanceSchedule = async (req, res) => {
     }
 
     await AuditLog.create({
+      actor: req.user._id,
       admin: req.user._id,
       action: 'cancel_maintenance_schedule',
       details: `Cancelled maintenance schedule: "${schedule.title}"`,
@@ -1715,6 +2177,87 @@ const cancelMaintenanceSchedule = async (req, res) => {
   } catch (error) {
     console.error('[Cancel Maintenance Error]', error);
     return res.status(500).json({ success: false, message: 'Failed to cancel maintenance.' });
+  }
+};
+
+// @desc Permanently delete maintenance history records (single or bulk)
+// @route DELETE /api/admin/maintenance/history
+const deleteMaintenanceHistory = async (req, res) => {
+  try {
+    const MaintenanceSchedule = require('../models/MaintenanceSchedule');
+    const { ids, all } = req.body || {};
+    let query = {};
+
+    if (all || req.query.all === 'true') {
+      query = { status: { $in: ['completed', 'cancelled'] } };
+    } else if (Array.isArray(ids) && ids.length > 0) {
+      query = { _id: { $in: ids } };
+    } else {
+      return res.status(400).json({ success: false, message: 'Provide ids array or all=true.' });
+    }
+
+    const result = await MaintenanceSchedule.deleteMany(query);
+
+    await AuditLog.create({
+      actor: req.user._id,
+      admin: req.user._id,
+      action: 'delete_maintenance_history',
+      targetType: 'MaintenanceSchedule',
+      details: `Deleted ${result.deletedCount} maintenance history records`,
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: `Deleted ${result.deletedCount} maintenance history record(s).`,
+      deleted: result.deletedCount
+    });
+  } catch (error) {
+    console.error('[Delete Maintenance History Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete maintenance history.' });
+  }
+};
+
+// @desc Permanently delete a single maintenance record (schedule or history item)
+// @route DELETE /api/admin/maintenance/:id/permanent
+const deleteSingleMaintenance = async (req, res) => {
+  try {
+    const MaintenanceSchedule = require('../models/MaintenanceSchedule');
+    const { getCurrentMaintenanceState } = require('../jobs/maintenanceScheduler');
+    const { id } = req.params;
+
+    const schedule = await MaintenanceSchedule.findById(id);
+    if (!schedule) {
+      return res.status(404).json({ success: false, message: 'Maintenance record not found.' });
+    }
+
+    const deletedTitle = schedule.title;
+    const wasActive = schedule.status === 'active';
+    await MaintenanceSchedule.findByIdAndDelete(id);
+
+    const io = req.app.get('io');
+    if (io && wasActive) {
+      const currentState = await getCurrentMaintenanceState();
+      io.emit('maintenance:updated', currentState);
+    }
+
+    await AuditLog.create({
+      actor: req.user._id,
+      admin: req.user._id,
+      action: 'delete_maintenance_record',
+      targetType: 'MaintenanceSchedule',
+      details: `Permanently removed maintenance record "${deletedTitle}"`,
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: `Maintenance record "${deletedTitle}" permanently deleted.`,
+      deletedId: id
+    });
+  } catch (error) {
+    console.error('[Delete Single Maintenance Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete maintenance record.' });
   }
 };
 
@@ -1736,6 +2279,11 @@ module.exports = {
   getPublicLandingConfig,
   getLandingConfig,
   updateLandingConfig,
+  getPublicContact,
+  getAdminContact,
+  updateAdminContact,
+  getStorageMetrics,
+  runStorageCleanup,
   getAllChats,
   getChatMessages,
   deleteChat,
@@ -1749,6 +2297,8 @@ module.exports = {
   deleteRecoveryRequests,
   getVerificationCodes,
   sendVerificationCode,
+  generateVerificationCode,
+  revokeVerificationCode,
   deleteVerificationCodes,
   runManualRetention,
   getMaintenanceSchedules,
@@ -1756,5 +2306,7 @@ module.exports = {
   updateMaintenanceSchedule,
   activateMaintenanceSchedule,
   endMaintenanceSchedule,
-  cancelMaintenanceSchedule
+  cancelMaintenanceSchedule,
+  deleteMaintenanceHistory,
+  deleteSingleMaintenance
 };

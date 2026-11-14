@@ -152,6 +152,12 @@ export const SocketProvider = ({ children }) => {
       setIncomingCode(data);
     });
 
+    // Verification code revoked or expired by admin
+    socketInstance.on('auth:code_revoked', (data) => {
+      console.log('[Socket] Verification code revoked:', data);
+      setIncomingCode((prev) => (prev?.email?.toLowerCase() === data?.email?.toLowerCase() ? { ...prev, revoked: true } : prev));
+    });
+
     // Clear typing indicator when user sends a message
     socketInstance.on('message:received', (message) => {
       if (message?.conversation && message?.sender?._id) {

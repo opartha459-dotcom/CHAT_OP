@@ -153,6 +153,15 @@ const systemConfigSchema = new mongoose.Schema(
         }
       }
     },
+    officialContact: {
+      phone: { type: String, default: '+1 (555) 234-5678' },
+      displayPhone: { type: String, default: '+1 (555) 234-5678' },
+      email: { type: String, default: 'admin@pulsechat.internal' },
+      description: { type: String, default: 'Official Administrator Support & Verification Line' },
+      availableHours: { type: String, default: '24/7 Priority Support' },
+      instructions: { type: String, default: 'Contact the administrator directly to receive your 6-digit verification code.' },
+      enabled: { type: Boolean, default: true }
+    },
     lastUpdatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'

@@ -99,7 +99,7 @@ export const CallProvider = ({ children }) => {
     if (peerConnectionsRef.current[socketId]) {
       try {
         peerConnectionsRef.current[socketId].close();
-      } catch (e) {}
+      } catch (e) { }
       delete peerConnectionsRef.current[socketId];
     }
     setRemoteStreams((prev) => {
@@ -131,7 +131,7 @@ export const CallProvider = ({ children }) => {
     Object.keys(peerConnectionsRef.current).forEach((socketId) => {
       try {
         peerConnectionsRef.current[socketId].close();
-      } catch (e) {}
+      } catch (e) { }
     });
     peerConnectionsRef.current = {};
     iceCandidateQueueRef.current = {};
@@ -188,16 +188,16 @@ export const CallProvider = ({ children }) => {
       const incomingTrack = event.track;
       setRemoteStreams((prev) => {
         const existing = prev[targetSocketId];
-        let streamToUse = event.streams[0];
-        if (!streamToUse) {
-          if (existing?.stream) {
-            if (!existing.stream.getTracks().some((t) => t.id === incomingTrack.id)) {
-              existing.stream.addTrack(incomingTrack);
-            }
-            streamToUse = existing.stream;
-          } else {
-            streamToUse = new MediaStream([incomingTrack]);
+        let streamToUse;
+        if (event.streams && event.streams[0]) {
+          streamToUse = new MediaStream(event.streams[0].getTracks());
+        } else if (existing?.stream) {
+          if (!existing.stream.getTracks().some((t) => t.id === incomingTrack.id)) {
+            existing.stream.addTrack(incomingTrack);
           }
+          streamToUse = new MediaStream(existing.stream.getTracks());
+        } else {
+          streamToUse = new MediaStream([incomingTrack]);
         }
 
         return {
@@ -349,8 +349,8 @@ export const CallProvider = ({ children }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: 'declined' })
-      }).catch(() => {});
-    } catch (e) {}
+      }).catch(() => { });
+    } catch (e) { }
 
     cleanupCall();
   }, [socket, currentCall, cleanupCall]);
@@ -376,8 +376,8 @@ export const CallProvider = ({ children }) => {
       try {
         fetch(`/api/users/call/${encodeURIComponent(callToAccept.callId)}/answer`, {
           method: 'POST'
-        }).catch(() => {});
-      } catch (e) {}
+        }).catch(() => { });
+      } catch (e) { }
 
       if (socket && socket.connected) {
         socket.emit('call:accept', { callId: callToAccept.callId });
@@ -493,7 +493,7 @@ export const CallProvider = ({ children }) => {
           } else {
             const sender = pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
             if (sender) {
-              sender.replaceTrack(newTrack).catch(() => {});
+              sender.replaceTrack(newTrack).catch(() => { });
             } else {
               pc.addTrack(newTrack, combinedStream);
             }
@@ -516,6 +516,43 @@ export const CallProvider = ({ children }) => {
 
   // Screen Sharing Toggle (Mobile-friendly & desktop support)
   const toggleScreenShare = useCallback(async () => {
+    // Helper to revert track to webcam or black frame
+    const revertToWebcam = async () => {
+      const webcamTrack = localStreamRef.current?.getVideoTracks()[0] || null;
+      for (const [targetSocketId, pc] of Object.entries(peerConnectionsRef.current)) {
+        try {
+          const videoTransceiver = pc.getTransceivers?.().find(
+            (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
+          );
+          const sender = videoTransceiver?.sender || pc.getSenders().find(
+            (s) => s.track?.kind === 'video' || (s.track === null && videoTransceiver?.sender === s)
+          );
+          if (sender) {
+            if (videoTransceiver && !webcamTrack) {
+              videoTransceiver.direction = isVideoOff ? 'recvonly' : 'sendrecv';
+            }
+            await sender.replaceTrack(isVideoOff ? null : webcamTrack);
+          }
+
+          if (pc.signalingState === 'stable') {
+            try {
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              socket?.emit('call:signal', {
+                toSocketId: targetSocketId,
+                callId: currentCallRef.current?.callId,
+                signal: { type: 'offer', sdp: pc.localDescription }
+              });
+            } catch (reErr) {
+              console.warn('[WebRTC] Revert renegotiation offer notice:', reErr);
+            }
+          }
+        } catch (revertErr) {
+          console.warn('[WebRTC] Revert to webcam error:', revertErr);
+        }
+      }
+    };
+
     if (isScreenSharing) {
       // Stop sharing
       if (screenStreamRef.current) {
@@ -523,55 +560,51 @@ export const CallProvider = ({ children }) => {
         screenStreamRef.current = null;
       }
       setScreenStream(null);
-
-      // Revert to camera video track
-      const webcamTrack = localStreamRef.current?.getVideoTracks()[0];
-      Object.values(peerConnectionsRef.current).forEach((pc) => {
-        const videoTransceiver = pc.getTransceivers?.().find(
-          (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
-        );
-        const sender = videoTransceiver?.sender || pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
-        if (sender && webcamTrack) {
-          sender.replaceTrack(webcamTrack).catch(() => {});
-        } else if (sender && !webcamTrack) {
-          sender.replaceTrack(null).catch(() => {});
-        }
-      });
-
+      await revertToWebcam();
       setIsScreenSharing(false);
+
       if (socket && currentCall) {
         socket.emit('call:toggle-media', {
           callId: currentCall.callId,
           isScreenSharing: false,
-          isVideoOff: isVideoOff
+          isVideoOff: isVideoOff,
+          callType: isVideoOff ? 'audio' : 'video'
         });
       }
     } else {
       // Start screen sharing
       try {
-        if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
-          alert('Screen sharing is not supported by your current browser. On mobile, please use Chrome on Android or Safari on iOS 13+.');
+        const getDisplayMedia =
+          (navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function')
+            ? navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices)
+            : (typeof navigator.getDisplayMedia === 'function')
+              ? navigator.getDisplayMedia.bind(navigator)
+              : null;
+
+        if (!getDisplayMedia) {
+          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+          if (isIOS) {
+            alert('Screen sharing on iPhone/iPad is supported in Safari. If you are using Chrome or an in-app browser on iOS, please open this call directly in Safari.');
+          } else {
+            alert('Screen sharing is not supported by your current browser. On Android phones, please use Google Chrome or ensure HTTPS is active.');
+          }
           return;
         }
 
-        const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent || '');
         let screen = null;
 
-        if (isMobile) {
-          // Mobile phones require simple video-only constraints without unsupported cursor/displaySurface/audio
-          try {
-            screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
-          } catch (mErr) {
-            screen = await navigator.mediaDevices.getDisplayMedia();
-          }
-        } else {
-          try {
-            screen = await navigator.mediaDevices.getDisplayMedia({
-              video: { cursor: 'always' },
-              audio: false
-            });
-          } catch (dErr) {
-            screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        // Use clean { video: true } constraint directly.
+        // Complex constraint dictionaries like { video: { cursor: 'always' }, audio: false }
+        // or { width: { ideal: ... } } cause Brave Shields and mobile Chromium to reject the first call,
+        // which exhausts the transient user activation gesture and permanently blocks screen share.
+        try {
+          screen = await getDisplayMedia({ video: true });
+        } catch (firstErr) {
+          // If browser rejected { video: true }, try bare empty options object
+          if (firstErr.name !== 'NotAllowedError' && firstErr.name !== 'AbortError') {
+            screen = await getDisplayMedia({});
+          } else {
+            throw firstErr;
           }
         }
 
@@ -580,50 +613,70 @@ export const CallProvider = ({ children }) => {
           throw new Error('No video track available from screen capture.');
         }
 
-        screenTrack.onended = () => {
-          // Trigger when user clicks browser native "Stop sharing" button
+        // Optimize text sharpness & detail for presentations across Chromium and Brave
+        if ('contentHint' in screenTrack) {
+          screenTrack.contentHint = 'detail';
+        }
+
+        screenTrack.onended = async () => {
+          // Trigger when user clicks browser/system native "Stop sharing" button
           if (screenStreamRef.current) {
             screenStreamRef.current.getTracks().forEach((t) => t.stop());
             screenStreamRef.current = null;
           }
           setScreenStream(null);
           setIsScreenSharing(false);
-
-          const webcamTrack = localStreamRef.current?.getVideoTracks()[0];
-          Object.values(peerConnectionsRef.current).forEach((pc) => {
-            const videoTransceiver = pc.getTransceivers?.().find(
-              (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
-            );
-            const sender = videoTransceiver?.sender || pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
-            if (sender && webcamTrack) {
-              sender.replaceTrack(webcamTrack).catch(() => {});
-            } else if (sender && !webcamTrack) {
-              sender.replaceTrack(null).catch(() => {});
-            }
-          });
+          await revertToWebcam();
 
           if (socket && currentCall) {
             socket.emit('call:toggle-media', {
               callId: currentCall.callId,
               isScreenSharing: false,
-              isVideoOff: isVideoOff
+              isVideoOff: isVideoOff,
+              callType: isVideoOff ? 'audio' : 'video'
             });
           }
         };
 
-        // Replace video track in all peer connections
-        Object.values(peerConnectionsRef.current).forEach((pc) => {
-          const videoTransceiver = pc.getTransceivers?.().find(
-            (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
-          );
-          const sender = videoTransceiver?.sender || pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
-          if (sender) {
-            if (videoTransceiver) videoTransceiver.direction = 'sendrecv';
-            sender.replaceTrack(screenTrack).catch((err) => console.error('replaceTrack error', err));
-          } else {
-            pc.addTrack(screenTrack, screen);
+        // Replace or add video track in all active peer connections
+        for (const [targetSocketId, pc] of Object.entries(peerConnectionsRef.current)) {
+          try {
+            let videoTransceiver = pc.getTransceivers?.().find(
+              (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
+            );
+
+            const sender = videoTransceiver?.sender || pc.getSenders().find(
+              (s) => s.track?.kind === 'video' || (s.track === null && videoTransceiver?.sender === s)
+            );
+
+            if (sender) {
+              if (videoTransceiver) {
+                videoTransceiver.direction = 'sendrecv';
+              }
+              await sender.replaceTrack(screenTrack);
+            } else {
+              pc.addTrack(screenTrack, screen);
+            }
+
+            // Always renegotiate if peer connection is stable so the remote peer
+            // immediately receives updated SDP and begins decoding the screen share video track
+            if (pc.signalingState === 'stable') {
+              try {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                socket?.emit('call:signal', {
+                  toSocketId: targetSocketId,
+                  callId: currentCallRef.current?.callId,
+                  signal: { type: 'offer', sdp: pc.localDescription }
+                });
+              } catch (reErr) {
+                console.warn('[WebRTC] Screen share renegotiation offer notice:', reErr);
+              }
+            }
+          } catch (pcErr) {
+            console.warn('[WebRTC] Track replacement warning:', pcErr);
           }
-        });
+        }
 
         screenStreamRef.current = screen;
         setScreenStream(screen);
@@ -633,19 +686,22 @@ export const CallProvider = ({ children }) => {
           socket.emit('call:toggle-media', {
             callId: currentCall.callId,
             isScreenSharing: true,
-            isVideoOff: false
+            isVideoOff: false,
+            callType: 'video'
           });
         }
       } catch (err) {
         if (err.name === 'NotAllowedError' || err.name === 'AbortError') {
-          console.log('[ScreenShare] Cancelled by user');
+          console.log('[ScreenShare] Cancelled by user or dismissed');
         } else {
           console.warn('[ScreenShare] Screen sharing error:', err);
-          alert(
-            err.message?.includes('not supported')
-              ? 'Screen sharing is not supported on this mobile browser. Please use Chrome on Android or Safari on iOS.'
-              : 'Could not start screen sharing: ' + (err.message || 'Permission denied')
-          );
+          let message = 'Could not start screen sharing: ' + (err.message || 'Permission denied');
+          if (err.name === 'SecurityError' || (typeof window !== 'undefined' && !window.isSecureContext)) {
+            message = 'Screen sharing in Brave and Chromium requires a secure context (HTTPS or localhost). If testing over local Wi-Fi, open in Chrome or use localhost.';
+          } else if (navigator.brave || window.chrome) {
+            message = 'Could not start screen sharing. If you are using Brave, please check Brave Shields (lion icon in address bar) and make sure screen sharing permissions are allowed.';
+          }
+          alert(message);
         }
       }
     }
@@ -700,454 +756,454 @@ export const CallProvider = ({ children }) => {
     });
   }, [socket, currentCall, isHandRaised, user]);
 
-  // Invite another user to ongoing call
-  const inviteUserToCall = useCallback((targetUserId) => {
-    if (!socket || !currentCall) return;
+// Invite another user to ongoing call
+const inviteUserToCall = useCallback((targetUserId) => {
+  if (!socket || !currentCall) return;
 
-    socket.emit('call:invite-user', {
-      callId: currentCall.callId,
-      conversationId: currentCall.conversationId,
-      targetUserId,
-      callType: currentCall.callType
-    });
-  }, [socket, currentCall]);
+  socket.emit('call:invite-user', {
+    callId: currentCall.callId,
+    conversationId: currentCall.conversationId,
+    targetUserId,
+    callType: currentCall.callType
+  });
+}, [socket, currentCall]);
 
-  // Listen for Service Worker postMessage (when phone wakes up in background or notification is tapped)
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+// Listen for Service Worker postMessage (when phone wakes up in background or notification is tapped)
+useEffect(() => {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
 
-    const handleSwMessage = (event) => {
-      const msg = event.data;
-      if (!msg) return;
+  const handleSwMessage = (event) => {
+    const msg = event.data;
+    if (!msg) return;
 
-      if (msg.type === 'INCOMING_CALL_DECLINED') {
-        if (currentCallRef.current?.callId === msg.callId || callStateRef.current === 'incoming') {
-          stopRingtone();
-          cleanupCall();
-        }
-        return;
+    if (msg.type === 'INCOMING_CALL_DECLINED') {
+      if (currentCallRef.current?.callId === msg.callId || callStateRef.current === 'incoming') {
+        stopRingtone();
+        cleanupCall();
       }
+      return;
+    }
 
-      if ((msg.type === 'INCOMING_CALL_POPUP' || msg.type === 'INCOMING_CALL_ACTION') && (msg.callData || msg.callId)) {
-        const d = msg.callData || {};
-        const myId = userRef.current?._id?.toString();
-
-        // Guard: Never show incoming call modal to the caller themselves!
-        if (d.callerId && myId && d.callerId.toString() === myId) {
-          return;
-        }
-
-        // Guard: If we are already outgoing or connected in a call, ignore incoming popup
-        if (callStateRef.current === 'outgoing' || callStateRef.current === 'connected') {
-          return;
-        }
-
-        const callInfo = {
-          callId: msg.callId || d.callId,
-          conversationId: d.conversationId,
-          isGroup: d.isGroup,
-          callType: d.callType || 'video',
-          caller: {
-            _id: d.callerId,
-            username: d.callerName || 'Caller',
-            nickname: d.callerName || 'Caller',
-            avatar: d.callerAvatar || ''
-          }
-        };
-
-        setCurrentCall(callInfo);
-
-        if (msg.action === 'answer') {
-          acceptCall(callInfo);
-        } else {
-          setCallState('incoming');
-          setIsCallModalOpen(true);
-          startIncomingRingtone();
-        }
-      }
-    };
-
-    navigator.serviceWorker.addEventListener('message', handleSwMessage);
-    return () => {
-      navigator.serviceWorker.removeEventListener('message', handleSwMessage);
-    };
-  }, [acceptCall]);
-
-  // Handle incoming call triggered via Push Notification when app was closed (?callId=...&action=...)
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const pushCallId = urlParams.get('callId');
-    const pushAction = urlParams.get('action');
-
-    if (pushCallId) {
-      const callerName = urlParams.get('callerName') || 'Someone';
-      const callerAvatar = urlParams.get('callerAvatar') || '';
-      const callerId = urlParams.get('callerId') || '';
-      const callType = urlParams.get('callType') || 'video';
-      const conversationId = urlParams.get('conversationId') || '';
-      const isGroup = urlParams.get('isGroup') === '1' || urlParams.get('isGroup') === 'true';
-
+    if ((msg.type === 'INCOMING_CALL_POPUP' || msg.type === 'INCOMING_CALL_ACTION') && (msg.callData || msg.callId)) {
+      const d = msg.callData || {};
       const myId = userRef.current?._id?.toString();
-      if (callerId && myId && callerId.toString() === myId) {
-        window.history.replaceState({}, document.title, window.location.pathname);
+
+      // Guard: Never show incoming call modal to the caller themselves!
+      if (d.callerId && myId && d.callerId.toString() === myId) {
         return;
       }
 
-      const initialCallInfo = {
-        callId: pushCallId,
-        conversationId,
-        isGroup,
-        callType,
+      // Guard: If we are already outgoing or connected in a call, ignore incoming popup
+      if (callStateRef.current === 'outgoing' || callStateRef.current === 'connected') {
+        return;
+      }
+
+      const callInfo = {
+        callId: msg.callId || d.callId,
+        conversationId: d.conversationId,
+        isGroup: d.isGroup,
+        callType: d.callType || 'video',
         caller: {
-          _id: callerId,
-          username: callerName,
-          nickname: callerName,
-          avatar: callerAvatar
+          _id: d.callerId,
+          username: d.callerName || 'Caller',
+          nickname: d.callerName || 'Caller',
+          avatar: d.callerAvatar || ''
         }
       };
 
-      // Immediately display incoming call interface or accept if tapped answer
-      setCurrentCall(initialCallInfo);
+      setCurrentCall(callInfo);
 
-      if (pushAction === 'answer') {
-        acceptCall(initialCallInfo);
+      if (msg.action === 'answer') {
+        acceptCall(callInfo);
       } else {
         setCallState('incoming');
         setIsCallModalOpen(true);
         startIncomingRingtone();
       }
-
-      window.history.replaceState({}, document.title, window.location.pathname);
-
-      // In background, fetch full call details from REST endpoint to enrich if needed
-      const loadCallFromRest = async () => {
-        try {
-          const res = await fetch(`/api/users/call/${encodeURIComponent(pushCallId)}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success && data.call) {
-              setCurrentCall((prev) => ({
-                ...(prev || {}),
-                ...data.call
-              }));
-            }
-          }
-        } catch (err) {
-          console.warn('[CallContext] REST call loader notice:', err);
-        }
-      };
-
-      loadCallFromRest();
     }
-  }, [acceptCall]);
+  };
 
-  // Socket WebRTC Event Listeners
-  useEffect(() => {
-    if (!socket) return;
+  navigator.serviceWorker.addEventListener('message', handleSwMessage);
+  return () => {
+    navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+  };
+}, [acceptCall]);
 
-    // Incoming Call listener
-    socket.on('call:incoming', (data) => {
-      const myId = userRef.current?._id?.toString();
-      const callerId = (data.caller?._id || data.callerId || '')?.toString();
+// Handle incoming call triggered via Push Notification when app was closed (?callId=...&action=...)
+useEffect(() => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const pushCallId = urlParams.get('callId');
+  const pushAction = urlParams.get('action');
 
-      // Guard: Never process incoming call if caller is self
-      if (callerId && myId && callerId === myId) {
-        return;
+  if (pushCallId) {
+    const callerName = urlParams.get('callerName') || 'Someone';
+    const callerAvatar = urlParams.get('callerAvatar') || '';
+    const callerId = urlParams.get('callerId') || '';
+    const callType = urlParams.get('callType') || 'video';
+    const conversationId = urlParams.get('conversationId') || '';
+    const isGroup = urlParams.get('isGroup') === '1' || urlParams.get('isGroup') === 'true';
+
+    const myId = userRef.current?._id?.toString();
+    if (callerId && myId && callerId.toString() === myId) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    const initialCallInfo = {
+      callId: pushCallId,
+      conversationId,
+      isGroup,
+      callType,
+      caller: {
+        _id: callerId,
+        username: callerName,
+        nickname: callerName,
+        avatar: callerAvatar
       }
+    };
 
-      // If already in a call, reject with busy status to prevent call clash
-      if (callStateRef.current !== 'idle') {
-        socket.emit('call:reject', {
-          callId: data.callId,
-          callerId: data.caller?._id,
-          conversationId: data.conversationId,
-          reason: 'busy'
-        });
-        return;
-      }
+    // Immediately display incoming call interface or accept if tapped answer
+    setCurrentCall(initialCallInfo);
 
-      setCurrentCall(data);
+    if (pushAction === 'answer') {
+      acceptCall(initialCallInfo);
+    } else {
       setCallState('incoming');
       setIsCallModalOpen(true);
       startIncomingRingtone();
-    });
+    }
 
-    // Busy listener (recipient is already on another call)
-    socket.on('call:busy', ({ message }) => {
-      stopRingtone();
-      playBusyTone();
-      alert(message || 'User is currently on another call.');
-      cleanupCall();
-    });
+    window.history.replaceState({}, document.title, window.location.pathname);
 
-    // Call Rejected listener
-    socket.on('call:rejected', ({ byUser }) => {
-      stopRingtone();
-      playCallEndedSound();
-      alert(`${byUser?.nickname || byUser?.username || 'User'} declined the call.`);
-      cleanupCall();
-    });
-
-    // Call Cancelled listener (caller hung up before call was answered)
-    socket.on('call:cancelled', ({ callId }) => {
-      if (currentCallRef.current?.callId === callId || callStateRef.current === 'incoming') {
-        stopRingtone();
-        cleanupCall();
-      }
-    });
-
-    // Call Accepted listener (caller receives acceptance notification)
-    socket.on('call:accepted', ({ callId }) => {
-      if (currentCallRef.current?.callId === callId || callStateRef.current === 'outgoing') {
-        stopRingtone();
-        playCallConnectedSound();
-        setCallState('connected');
-
-        if (!callTimerRef.current) {
-          callTimerRef.current = setInterval(() => {
-            setCallDuration((prev) => prev + 1);
-          }, 1000);
+    // In background, fetch full call details from REST endpoint to enrich if needed
+    const loadCallFromRest = async () => {
+      try {
+        const res = await fetch(`/api/users/call/${encodeURIComponent(pushCallId)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.call) {
+            setCurrentCall((prev) => ({
+              ...(prev || {}),
+              ...data.call
+            }));
+          }
         }
+      } catch (err) {
+        console.warn('[CallContext] REST call loader notice:', err);
       }
-    });
+    };
 
-    // Existing participants when joined
-    socket.on('call:existing-participants', ({ participants }) => {
+    loadCallFromRest();
+  }
+}, [acceptCall]);
+
+// Socket WebRTC Event Listeners
+useEffect(() => {
+  if (!socket) return;
+
+  // Incoming Call listener
+  socket.on('call:incoming', (data) => {
+    const myId = userRef.current?._id?.toString();
+    const callerId = (data.caller?._id || data.callerId || '')?.toString();
+
+    // Guard: Never process incoming call if caller is self
+    if (callerId && myId && callerId === myId) {
+      return;
+    }
+
+    // If already in a call, reject with busy status to prevent call clash
+    if (callStateRef.current !== 'idle') {
+      socket.emit('call:reject', {
+        callId: data.callId,
+        callerId: data.caller?._id,
+        conversationId: data.conversationId,
+        reason: 'busy'
+      });
+      return;
+    }
+
+    setCurrentCall(data);
+    setCallState('incoming');
+    setIsCallModalOpen(true);
+    startIncomingRingtone();
+  });
+
+  // Busy listener (recipient is already on another call)
+  socket.on('call:busy', ({ message }) => {
+    stopRingtone();
+    playBusyTone();
+    alert(message || 'User is currently on another call.');
+    cleanupCall();
+  });
+
+  // Call Rejected listener
+  socket.on('call:rejected', ({ byUser }) => {
+    stopRingtone();
+    playCallEndedSound();
+    alert(`${byUser?.nickname || byUser?.username || 'User'} declined the call.`);
+    cleanupCall();
+  });
+
+  // Call Cancelled listener (caller hung up before call was answered)
+  socket.on('call:cancelled', ({ callId }) => {
+    if (currentCallRef.current?.callId === callId || callStateRef.current === 'incoming') {
+      stopRingtone();
+      cleanupCall();
+    }
+  });
+
+  // Call Accepted listener (caller receives acceptance notification)
+  socket.on('call:accepted', ({ callId }) => {
+    if (currentCallRef.current?.callId === callId || callStateRef.current === 'outgoing') {
+      stopRingtone();
       playCallConnectedSound();
       setCallState('connected');
 
-      // Start duration counter if not already running
       if (!callTimerRef.current) {
         callTimerRef.current = setInterval(() => {
           setCallDuration((prev) => prev + 1);
         }, 1000);
       }
+    }
+  });
 
-      // The joining user initiates connections to all existing participants
-      participants.forEach((p) => {
-        createPeerConnection(p.socketId, p.user, true);
-      });
+  // Existing participants when joined
+  socket.on('call:existing-participants', ({ participants }) => {
+    playCallConnectedSound();
+    setCallState('connected');
+
+    // Start duration counter if not already running
+    if (!callTimerRef.current) {
+      callTimerRef.current = setInterval(() => {
+        setCallDuration((prev) => prev + 1);
+      }, 1000);
+    }
+
+    // The joining user initiates connections to all existing participants
+    participants.forEach((p) => {
+      createPeerConnection(p.socketId, p.user, true);
     });
+  });
 
-    // A new user joined the call
-    socket.on('call:user-joined', ({ participant }) => {
-      if (callStateRef.current === 'outgoing') {
-        stopRingtone();
-        playCallConnectedSound();
-        setCallState('connected');
+  // A new user joined the call
+  socket.on('call:user-joined', ({ participant }) => {
+    if (callStateRef.current === 'outgoing') {
+      stopRingtone();
+      playCallConnectedSound();
+      setCallState('connected');
 
-        if (!callTimerRef.current) {
-          callTimerRef.current = setInterval(() => {
-            setCallDuration((prev) => prev + 1);
-          }, 1000);
-        }
+      if (!callTimerRef.current) {
+        callTimerRef.current = setInterval(() => {
+          setCallDuration((prev) => prev + 1);
+        }, 1000);
       }
-      // Existing participants wait for the new user's offer (isInitiator = false to prevent glare!)
-      createPeerConnection(participant.socketId, participant.user, false);
-    });
+    }
+    // Existing participants wait for the new user's offer (isInitiator = false to prevent glare!)
+    createPeerConnection(participant.socketId, participant.user, false);
+  });
 
-    // WebRTC Signaling receiver with glare protection & candidate queuing
-    socket.on('call:signal', async ({ fromSocketId, fromUser, signal }) => {
-      try {
-        let pc = peerConnectionsRef.current[fromSocketId];
-        if (!pc) {
-          pc = createPeerConnection(fromSocketId, fromUser, false);
+  // WebRTC Signaling receiver with glare protection & candidate queuing
+  socket.on('call:signal', async ({ fromSocketId, fromUser, signal }) => {
+    try {
+      let pc = peerConnectionsRef.current[fromSocketId];
+      if (!pc) {
+        pc = createPeerConnection(fromSocketId, fromUser, false);
+      }
+
+      if (signal.type === 'offer') {
+        // Handle offer collision (glare) using polite peer pattern
+        if (pc.signalingState !== 'stable') {
+          const isPolite = (socket.id || '') > (fromSocketId || '');
+          if (!isPolite) {
+            console.log('[WebRTC] Ignoring colliding offer as impolite peer');
+            return;
+          }
+          try {
+            await pc.setRemoteDescription({ type: 'rollback' });
+          } catch (rbErr) {
+            console.warn('[WebRTC] Rollback warning', rbErr);
+          }
         }
 
-        if (signal.type === 'offer') {
-          // Handle offer collision (glare) using polite peer pattern
-          if (pc.signalingState !== 'stable') {
-            const isPolite = (socket.id || '') > (fromSocketId || '');
-            if (!isPolite) {
-              console.log('[WebRTC] Ignoring colliding offer as impolite peer');
-              return;
-            }
-            try {
-              await pc.setRemoteDescription({ type: 'rollback' });
-            } catch (rbErr) {
-              console.warn('[WebRTC] Rollback warning', rbErr);
-            }
-          }
+        await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
 
+        // Drain queued ICE candidates for this peer
+        if (iceCandidateQueueRef.current[fromSocketId]) {
+          for (const cand of iceCandidateQueueRef.current[fromSocketId]) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(cand));
+            } catch (e) { }
+          }
+          delete iceCandidateQueueRef.current[fromSocketId];
+        }
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socket.emit('call:signal', {
+          toSocketId: fromSocketId,
+          callId: currentCallRef.current?.callId,
+          signal: { type: 'answer', sdp: pc.localDescription }
+        });
+      } else if (signal.type === 'answer') {
+        if (pc.signalingState !== 'stable') {
           await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
 
-          // Drain queued ICE candidates for this peer
+          // Drain queued ICE candidates
           if (iceCandidateQueueRef.current[fromSocketId]) {
             for (const cand of iceCandidateQueueRef.current[fromSocketId]) {
               try {
                 await pc.addIceCandidate(new RTCIceCandidate(cand));
-              } catch (e) {}
+              } catch (e) { }
             }
             delete iceCandidateQueueRef.current[fromSocketId];
           }
-
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-
-          socket.emit('call:signal', {
-            toSocketId: fromSocketId,
-            callId: currentCallRef.current?.callId,
-            signal: { type: 'answer', sdp: pc.localDescription }
-          });
-        } else if (signal.type === 'answer') {
-          if (pc.signalingState !== 'stable') {
-            await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-
-            // Drain queued ICE candidates
-            if (iceCandidateQueueRef.current[fromSocketId]) {
-              for (const cand of iceCandidateQueueRef.current[fromSocketId]) {
-                try {
-                  await pc.addIceCandidate(new RTCIceCandidate(cand));
-                } catch (e) {}
-              }
-              delete iceCandidateQueueRef.current[fromSocketId];
-            }
-          }
-        } else if (signal.type === 'candidate' && signal.candidate) {
-          if (pc.remoteDescription && pc.remoteDescription.type) {
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-            } catch (e) {
-              console.warn('[WebRTC] Candidate error', e);
-            }
-          } else {
-            // Queue ICE candidate until remote description is applied
-            if (!iceCandidateQueueRef.current[fromSocketId]) {
-              iceCandidateQueueRef.current[fromSocketId] = [];
-            }
-            iceCandidateQueueRef.current[fromSocketId].push(signal.candidate);
-          }
         }
-      } catch (err) {
-        console.error('[WebRTC] Signal handling error', err);
-      }
-    });
-
-    // Remote Peer Media Toggle listener
-    socket.on('call:peer-media-toggled', ({ socketId, isVideoOff, isMuted, isScreenSharing, callType }) => {
-      if (callType && (callType === 'video' || callType === 'audio')) {
-        setCurrentCall((prev) => (prev ? { ...prev, callType } : prev));
-      }
-      setRemoteStreams((prev) => {
-        if (!prev[socketId]) return prev;
-        const newIsScreenSharing = isScreenSharing !== undefined ? isScreenSharing : prev[socketId].isScreenSharing;
-        const existingStream = prev[socketId].stream;
-        // Refresh stream instance so React & DOM video element detect track changes
-        const refreshedStream = existingStream ? new MediaStream(existingStream.getTracks()) : existingStream;
-
-        return {
-          ...prev,
-          [socketId]: {
-            ...prev[socketId],
-            stream: refreshedStream,
-            isVideoOff: newIsScreenSharing ? false : (isVideoOff !== undefined ? isVideoOff : prev[socketId].isVideoOff),
-            ...(isMuted !== undefined ? { isMuted } : {}),
-            isScreenSharing: newIsScreenSharing
+      } else if (signal.type === 'candidate' && signal.candidate) {
+        if (pc.remoteDescription && pc.remoteDescription.type) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          } catch (e) {
+            console.warn('[WebRTC] Candidate error', e);
           }
-        };
-      });
-    });
-
-    // Call Ended listener (server ends call when participant leaves 1-on-1 or group has <= 1 participants)
-    socket.on('call:ended', ({ callId }) => {
-      if (!callId || currentCallRef.current?.callId === callId || callStateRef.current !== 'idle') {
-        stopRingtone();
-        playCallEndedSound();
-        cleanupCall();
-      }
-    });
-
-    // Peer left call
-    socket.on('call:user-left', ({ socketId }) => {
-      removePeer(socketId);
-      // For 1-on-1 calls: if the other participant leaves, end the call
-      // For group calls: keep the call alive for the remaining participants until server ends it when <= 1 remain
-      const isGroupCall = currentCallRef.current?.isGroup;
-      if (!isGroupCall) {
-        setRemoteStreams((prev) => {
-          const remaining = Object.keys(prev).filter((id) => id !== socketId);
-          if (remaining.length === 0 && callStateRef.current === 'connected') {
-            setTimeout(() => {
-              endCall();
-            }, 300);
-          }
-          return prev;
-        });
-      }
-    });
-
-    // Reaction received listener
-    socket.on('call:reaction-received', ({ emoji, senderName, id }) => {
-      setReactions((prev) => [...prev, { id, emoji, senderName }]);
-      setTimeout(() => {
-        setReactions((prev) => prev.filter((r) => r.id !== id));
-      }, 3500);
-    });
-
-    // Raised hand toggled listener
-    socket.on('call:hand-toggled', ({ socketId, userId, userName, isHandRaised: raised, raisedAt }) => {
-      setRaisedHands((prev) => {
-        const next = { ...prev };
-        if (raised) {
-          next[socketId] = { isRaised: true, userName, userId, raisedAt };
         } else {
-          delete next[socketId];
+          // Queue ICE candidate until remote description is applied
+          if (!iceCandidateQueueRef.current[fromSocketId]) {
+            iceCandidateQueueRef.current[fromSocketId] = [];
+          }
+          iceCandidateQueueRef.current[fromSocketId].push(signal.candidate);
         }
-        return next;
-      });
+      }
+    } catch (err) {
+      console.error('[WebRTC] Signal handling error', err);
+    }
+  });
+
+  // Remote Peer Media Toggle listener
+  socket.on('call:peer-media-toggled', ({ socketId, isVideoOff, isMuted, isScreenSharing, callType }) => {
+    if (callType && (callType === 'video' || callType === 'audio')) {
+      setCurrentCall((prev) => (prev ? { ...prev, callType } : prev));
+    }
+    setRemoteStreams((prev) => {
+      if (!prev[socketId]) return prev;
+      const newIsScreenSharing = isScreenSharing !== undefined ? isScreenSharing : prev[socketId].isScreenSharing;
+      const existingStream = prev[socketId].stream;
+      // Refresh stream instance so React & DOM video element detect track changes
+      const refreshedStream = existingStream ? new MediaStream(existingStream.getTracks()) : existingStream;
+
+      return {
+        ...prev,
+        [socketId]: {
+          ...prev[socketId],
+          stream: refreshedStream,
+          isVideoOff: newIsScreenSharing ? false : (isVideoOff !== undefined ? isVideoOff : prev[socketId].isVideoOff),
+          ...(isMuted !== undefined ? { isMuted } : {}),
+          isScreenSharing: newIsScreenSharing
+        }
+      };
     });
+  });
 
-    return () => {
-      socket.off('call:incoming');
-      socket.off('call:cancelled');
-      socket.off('call:ended');
-      socket.off('call:busy');
-      socket.off('call:rejected');
-      socket.off('call:accepted');
-      socket.off('call:existing-participants');
-      socket.off('call:user-joined');
-      socket.off('call:signal');
-      socket.off('call:peer-media-toggled');
-      socket.off('call:user-left');
-      socket.off('call:reaction-received');
-      socket.off('call:hand-toggled');
-    };
-  }, [socket, createPeerConnection, removePeer, endCall, cleanupCall]);
+  // Call Ended listener (server ends call when participant leaves 1-on-1 or group has <= 1 participants)
+  socket.on('call:ended', ({ callId }) => {
+    if (!callId || currentCallRef.current?.callId === callId || callStateRef.current !== 'idle') {
+      stopRingtone();
+      playCallEndedSound();
+      cleanupCall();
+    }
+  });
 
-  return (
-    <CallContext.Provider
-      value={{
-        callState,
-        currentCall,
-        localStream,
-        screenStream,
-        remoteStreams,
-        isAudioMuted,
-        isVideoOff,
-        isScreenSharing,
-        reactions,
-        callDuration,
-        isCallModalOpen,
-        setIsCallModalOpen,
-        isAddPeopleOpen,
-        setIsAddPeopleOpen,
-        startCall,
-        acceptCall,
-        rejectCall,
-        endCall,
-        toggleAudio,
-        toggleVideo,
-        toggleScreenShare,
-        sendReaction,
-        inviteUserToCall,
-        isHandRaised,
-        raisedHands,
-        toggleRaiseHand
-      }}
-    >
-      {children}
-    </CallContext.Provider>
-  );
+  // Peer left call
+  socket.on('call:user-left', ({ socketId }) => {
+    removePeer(socketId);
+    // For 1-on-1 calls: if the other participant leaves, end the call
+    // For group calls: keep the call alive for the remaining participants until server ends it when <= 1 remain
+    const isGroupCall = currentCallRef.current?.isGroup;
+    if (!isGroupCall) {
+      setRemoteStreams((prev) => {
+        const remaining = Object.keys(prev).filter((id) => id !== socketId);
+        if (remaining.length === 0 && callStateRef.current === 'connected') {
+          setTimeout(() => {
+            endCall();
+          }, 300);
+        }
+        return prev;
+      });
+    }
+  });
+
+  // Reaction received listener
+  socket.on('call:reaction-received', ({ emoji, senderName, id }) => {
+    setReactions((prev) => [...prev, { id, emoji, senderName }]);
+    setTimeout(() => {
+      setReactions((prev) => prev.filter((r) => r.id !== id));
+    }, 3500);
+  });
+
+  // Raised hand toggled listener
+  socket.on('call:hand-toggled', ({ socketId, userId, userName, isHandRaised: raised, raisedAt }) => {
+    setRaisedHands((prev) => {
+      const next = { ...prev };
+      if (raised) {
+        next[socketId] = { isRaised: true, userName, userId, raisedAt };
+      } else {
+        delete next[socketId];
+      }
+      return next;
+    });
+  });
+
+  return () => {
+    socket.off('call:incoming');
+    socket.off('call:cancelled');
+    socket.off('call:ended');
+    socket.off('call:busy');
+    socket.off('call:rejected');
+    socket.off('call:accepted');
+    socket.off('call:existing-participants');
+    socket.off('call:user-joined');
+    socket.off('call:signal');
+    socket.off('call:peer-media-toggled');
+    socket.off('call:user-left');
+    socket.off('call:reaction-received');
+    socket.off('call:hand-toggled');
+  };
+}, [socket, createPeerConnection, removePeer, endCall, cleanupCall]);
+
+return (
+  <CallContext.Provider
+    value={{
+      callState,
+      currentCall,
+      localStream,
+      screenStream,
+      remoteStreams,
+      isAudioMuted,
+      isVideoOff,
+      isScreenSharing,
+      reactions,
+      callDuration,
+      isCallModalOpen,
+      setIsCallModalOpen,
+      isAddPeopleOpen,
+      setIsAddPeopleOpen,
+      startCall,
+      acceptCall,
+      rejectCall,
+      endCall,
+      toggleAudio,
+      toggleVideo,
+      toggleScreenShare,
+      sendReaction,
+      inviteUserToCall,
+      isHandRaised,
+      raisedHands,
+      toggleRaiseHand
+    }}
+  >
+    {children}
+  </CallContext.Provider>
+);
 };
 
 export const useCall = () => useContext(CallContext);

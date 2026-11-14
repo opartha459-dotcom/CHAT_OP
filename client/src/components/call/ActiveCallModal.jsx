@@ -91,6 +91,8 @@ const VideoTile = ({
           }}
           autoPlay
           playsInline
+          webkit-playsinline="true"
+          onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
         />
       )}
 
@@ -107,7 +109,9 @@ const VideoTile = ({
         }}
         autoPlay
         playsInline
+        webkit-playsinline="true"
         muted={isLocal}
+        onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
         className={`w-full h-full ${hasVideoTrack ? 'block' : 'hidden'} ${
           isScreenSharing || isSpotlight ? 'object-contain bg-black' : 'object-cover'
         } ${isLocal && !isScreenSharing ? 'scale-x-[-1]' : ''}`}
