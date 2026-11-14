@@ -81,6 +81,31 @@
   box-shadow: 0 0 0 2px var(--primary-border) !important;
 }
 
+/* Dynamic Brand Utility Bindings */
+.theme-bg-primary {
+  background-color: var(--primary) !important;
+}
+
+.theme-bg-primary-hover:hover {
+  background-color: var(--primary-hover) !important;
+}
+
+.theme-text-primary {
+  color: var(--primary) !important;
+}
+
+.theme-border-primary {
+  border-color: var(--primary) !important;
+}
+
+.theme-border-light {
+  border-color: var(--primary-border) !important;
+}
+
+.theme-bg-light {
+  background-color: var(--primary-light) !important;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -88,13 +113,21 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--app-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif);
+  font-size: var(--app-font-size, 16px);
+  font-weight: var(--app-font-weight-normal, 400);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
   background-color: #ffffff;
   color: #0f172a;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+h1, h2, h3, h4, h5, h6, .font-heading {
+  font-weight: var(--app-font-weight-heading, 700);
+  letter-spacing: var(--app-heading-spacing, -0.02em);
+  text-transform: var(--app-heading-transform, none);
 }
 
 html.dark body {

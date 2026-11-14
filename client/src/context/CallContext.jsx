@@ -61,6 +61,7 @@ export const CallProvider = ({ children }) => {
   const iceCandidateQueueRef = useRef({}); // socketId -> Array of queued ICE candidates
   const currentCallRef = useRef(null);
   const callStateRef = useRef(callState);
+  const userRef = useRef(user);
   const callTimerRef = useRef(null);
   const pendingJoinCallIdRef = useRef(null);
   const acceptingCallIdRef = useRef(null);
@@ -73,6 +74,10 @@ export const CallProvider = ({ children }) => {
   useEffect(() => {
     callStateRef.current = callState;
   }, [callState]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   // If a join is queued while socket was establishing during cold launch
   useEffect(() => {
@@ -439,7 +444,7 @@ export const CallProvider = ({ children }) => {
     }
   }, [socket, currentCall]);
 
-  // Toggle Camera On/Off
+  // Toggle Camera On/Off (Supports mid-call upgrade from audio-only to video)
   const toggleVideo = useCallback(async () => {
     if (!localStreamRef.current) return;
 
@@ -456,33 +461,60 @@ export const CallProvider = ({ children }) => {
         });
       }
     } else {
-      // If call started as audio-only and user wants to enable camera
+      // If call started as audio-only and user wants to enable camera (convert to video call)
       try {
         const camStream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
         });
         const newTrack = camStream.getVideoTracks()[0];
-        localStreamRef.current.addTrack(newTrack);
+        if (!newTrack) return;
 
-        // Add track to all active peer connections
+        // Combine existing audio tracks with new video track
+        const existingAudioTracks = localStreamRef.current.getAudioTracks();
+        const combinedStream = new MediaStream([...existingAudioTracks, newTrack]);
+        localStreamRef.current = combinedStream;
+        setLocalStream(combinedStream);
+        setIsVideoOff(false);
+
+        // Update call type to video
+        setCurrentCall((prev) => (prev ? { ...prev, callType: 'video' } : prev));
+
+        // Add or replace track in all active peer connections
         Object.values(peerConnectionsRef.current).forEach((pc) => {
-          pc.addTrack(newTrack, localStreamRef.current);
+          const videoTransceiver = pc.getTransceivers?.().find(
+            (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
+          );
+
+          if (videoTransceiver && videoTransceiver.sender) {
+            videoTransceiver.direction = 'sendrecv';
+            videoTransceiver.sender.replaceTrack(newTrack).catch((err) => {
+              console.warn('[WebRTC] replaceTrack warning:', err);
+            });
+          } else {
+            const sender = pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
+            if (sender) {
+              sender.replaceTrack(newTrack).catch(() => {});
+            } else {
+              pc.addTrack(newTrack, combinedStream);
+            }
+          }
         });
 
-        setIsVideoOff(false);
         if (socket && currentCall) {
           socket.emit('call:toggle-media', {
             callId: currentCall.callId,
-            isVideoOff: false
+            isVideoOff: false,
+            callType: 'video'
           });
         }
       } catch (err) {
         console.error('Cannot access camera', err);
+        alert('Could not access camera. Please check your camera permissions.');
       }
     }
   }, [socket, currentCall]);
 
-  // Screen Sharing Toggle
+  // Screen Sharing Toggle (Mobile-friendly & desktop support)
   const toggleScreenShare = useCallback(async () => {
     if (isScreenSharing) {
       // Stop sharing
@@ -495,7 +527,10 @@ export const CallProvider = ({ children }) => {
       // Revert to camera video track
       const webcamTrack = localStreamRef.current?.getVideoTracks()[0];
       Object.values(peerConnectionsRef.current).forEach((pc) => {
-        const sender = pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
+        const videoTransceiver = pc.getTransceivers?.().find(
+          (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
+        );
+        const sender = videoTransceiver?.sender || pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
         if (sender && webcamTrack) {
           sender.replaceTrack(webcamTrack).catch(() => {});
         } else if (sender && !webcamTrack) {
@@ -515,7 +550,7 @@ export const CallProvider = ({ children }) => {
       // Start screen sharing
       try {
         if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
-          alert('Screen sharing is not supported by your current browser. Please open PulseChat in Chrome or Safari.');
+          alert('Screen sharing is not supported by your current browser. On mobile, please use Chrome on Android or Safari on iOS 13+.');
           return;
         }
 
@@ -525,7 +560,7 @@ export const CallProvider = ({ children }) => {
         if (isMobile) {
           // Mobile phones require simple video-only constraints without unsupported cursor/displaySurface/audio
           try {
-            screen = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+            screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
           } catch (mErr) {
             screen = await navigator.mediaDevices.getDisplayMedia();
           }
@@ -540,7 +575,7 @@ export const CallProvider = ({ children }) => {
           }
         }
 
-        const screenTrack = screen.getVideoTracks()[0];
+        const screenTrack = screen?.getVideoTracks?.()[0];
         if (!screenTrack) {
           throw new Error('No video track available from screen capture.');
         }
@@ -556,7 +591,10 @@ export const CallProvider = ({ children }) => {
 
           const webcamTrack = localStreamRef.current?.getVideoTracks()[0];
           Object.values(peerConnectionsRef.current).forEach((pc) => {
-            const sender = pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
+            const videoTransceiver = pc.getTransceivers?.().find(
+              (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
+            );
+            const sender = videoTransceiver?.sender || pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
             if (sender && webcamTrack) {
               sender.replaceTrack(webcamTrack).catch(() => {});
             } else if (sender && !webcamTrack) {
@@ -575,8 +613,12 @@ export const CallProvider = ({ children }) => {
 
         // Replace video track in all peer connections
         Object.values(peerConnectionsRef.current).forEach((pc) => {
-          const sender = pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
+          const videoTransceiver = pc.getTransceivers?.().find(
+            (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
+          );
+          const sender = videoTransceiver?.sender || pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
           if (sender) {
+            if (videoTransceiver) videoTransceiver.direction = 'sendrecv';
             sender.replaceTrack(screenTrack).catch((err) => console.error('replaceTrack error', err));
           } else {
             pc.addTrack(screenTrack, screen);
@@ -688,6 +730,18 @@ export const CallProvider = ({ children }) => {
 
       if ((msg.type === 'INCOMING_CALL_POPUP' || msg.type === 'INCOMING_CALL_ACTION') && (msg.callData || msg.callId)) {
         const d = msg.callData || {};
+        const myId = userRef.current?._id?.toString();
+
+        // Guard: Never show incoming call modal to the caller themselves!
+        if (d.callerId && myId && d.callerId.toString() === myId) {
+          return;
+        }
+
+        // Guard: If we are already outgoing or connected in a call, ignore incoming popup
+        if (callStateRef.current === 'outgoing' || callStateRef.current === 'connected') {
+          return;
+        }
+
         const callInfo = {
           callId: msg.callId || d.callId,
           conversationId: d.conversationId,
@@ -732,6 +786,12 @@ export const CallProvider = ({ children }) => {
       const callType = urlParams.get('callType') || 'video';
       const conversationId = urlParams.get('conversationId') || '';
       const isGroup = urlParams.get('isGroup') === '1' || urlParams.get('isGroup') === 'true';
+
+      const myId = userRef.current?._id?.toString();
+      if (callerId && myId && callerId.toString() === myId) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return;
+      }
 
       const initialCallInfo = {
         callId: pushCallId,
@@ -787,6 +847,14 @@ export const CallProvider = ({ children }) => {
 
     // Incoming Call listener
     socket.on('call:incoming', (data) => {
+      const myId = userRef.current?._id?.toString();
+      const callerId = (data.caller?._id || data.callerId || '')?.toString();
+
+      // Guard: Never process incoming call if caller is self
+      if (callerId && myId && callerId === myId) {
+        return;
+      }
+
       // If already in a call, reject with busy status to prevent call clash
       if (callStateRef.current !== 'idle') {
         socket.emit('call:reject', {
@@ -956,7 +1024,10 @@ export const CallProvider = ({ children }) => {
     });
 
     // Remote Peer Media Toggle listener
-    socket.on('call:peer-media-toggled', ({ socketId, isVideoOff, isMuted, isScreenSharing }) => {
+    socket.on('call:peer-media-toggled', ({ socketId, isVideoOff, isMuted, isScreenSharing, callType }) => {
+      if (callType && (callType === 'video' || callType === 'audio')) {
+        setCurrentCall((prev) => (prev ? { ...prev, callType } : prev));
+      }
       setRemoteStreams((prev) => {
         if (!prev[socketId]) return prev;
         const newIsScreenSharing = isScreenSharing !== undefined ? isScreenSharing : prev[socketId].isScreenSharing;

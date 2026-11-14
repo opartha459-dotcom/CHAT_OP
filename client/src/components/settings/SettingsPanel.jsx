@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   User,
@@ -26,13 +26,32 @@ import {
   UserX,
   Users,
   Search,
-  Sliders
+  Sliders,
+  Camera,
+  Sparkles,
+  RotateCcw,
+  CheckCircle2,
+  ZoomIn,
+  ZoomOut,
+  RotateCw
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme, THEME_PALETTES, TYPOGRAPHY_FONTS } from '../../context/ThemeContext';
 import { useChat } from '../../context/ChatContext';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { Avatar } from '../common/Avatar';
+import { useFeatureFlags } from '../../context/FeatureFlagsContext';
+
+const PRESET_AVATARS = [
+  { id: 'neon-1', name: 'Cyber Neon', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80' },
+  { id: 'tech-2', name: 'Tech Minimalist', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=250&q=80' },
+  { id: 'glow-3', name: 'Futuristic Glow', url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=250&q=80' },
+  { id: 'gamer-4', name: 'Emerald Gamer', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=250&q=80' },
+  { id: 'cyber-5', name: 'Purple Cyberpunk', url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=250&q=80' },
+  { id: 'matrix-6', name: 'Data Matrix', url: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=250&q=80' },
+  { id: 'nomad-7', name: 'Digital Nomad', url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=250&q=80' },
+  { id: 'pulse-8', name: 'Cosmic Pulse', url: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=250&q=80' }
+];
 
 export const SettingsPanel = ({
   isModal = false,
@@ -43,9 +62,43 @@ export const SettingsPanel = ({
 }) => {
   const navigate = useNavigate();
   const { user, token, updateUser, logout, logoutAll } = useAuth();
-  const { theme, setTheme, accentColor, setAccentColor, fontSize, setFontSize } = useTheme();
+  const {
+    theme,
+    setTheme,
+    accentColor,
+    setAccentColor,
+    fontSize,
+    setFontSize,
+    fontFamily,
+    setFontFamily,
+    isCustomTheme,
+    resetToAdminDefault,
+    activeTheme,
+    adminTheme
+  } = useTheme();
   const { conversations } = useChat();
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
+  const { featureFlags, isFeatureEnabled } = useFeatureFlags();
+  const canUploadCustomAvatar = isFeatureEnabled
+    ? isFeatureEnabled('customAvatarUpload')
+    : featureFlags?.customAvatarUpload !== false;
+
+  // Avatar upload / crop state
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarObjectUrl, setAvatarObjectUrl] = useState(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropScale, setCropScale] = useState(1);
+  const [cropRotation, setCropRotation] = useState(0);
+  const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 });
+  const [cropDragging, setCropDragging] = useState(false);
+  const [imageNaturalSize, setImageNaturalSize] = useState({ width: 300, height: 300 });
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const cropImgRef = useRef(null);
+  const cropBoxRef = useRef(null);
+  const dragStartRef = useRef(null);
+  const pinchStartDistRef = useRef(null);
+  const pinchStartScaleRef = useRef(1);
+  const fileInputRef = useRef(null);
 
   const [internalActiveTab, setInternalActiveTab] = useState('appearance');
   const activeTab = controlledActiveTab !== undefined ? controlledActiveTab : internalActiveTab;
@@ -54,6 +107,23 @@ export const SettingsPanel = ({
   const [nickname, setNickname] = useState(user?.nickname || '');
   const [bio, setBio] = useState(user?.bio || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
+
+  // User's custom uploaded avatars history (persisted in DB + local cache)
+  const [uploadedAvatars, setUploadedAvatars] = useState(() => {
+    try {
+      const local = JSON.parse(localStorage.getItem(`pulse_uploads_${user?._id}`) || '[]');
+      const combined = [...(user?.uploadedAvatars || []), ...local];
+      return Array.from(new Set(combined.filter(Boolean)));
+    } catch {
+      return user?.uploadedAvatars || [];
+    }
+  });
+
+  useEffect(() => {
+    if (user?.uploadedAvatars?.length) {
+      setUploadedAvatars((prev) => Array.from(new Set([...user.uploadedAvatars, ...prev])));
+    }
+  }, [user?.uploadedAvatars]);
 
   const [profileVisibility, setProfileVisibility] = useState(user?.privacySettings?.profileVisibility || 'everyone');
   const [lastSeenVisibility, setLastSeenVisibility] = useState(user?.privacySettings?.lastSeenVisibility || 'everyone');
@@ -100,6 +170,316 @@ export const SettingsPanel = ({
     });
     return Array.from(map.values());
   }, [conversations, user?._id]);
+
+  // Cleanup object URLs on unmount or when avatarObjectUrl changes
+  useEffect(() => {
+    return () => {
+      if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl);
+    };
+  }, [avatarObjectUrl]);
+
+  // Base cover dimensions: scale natural dimensions so image completely covers the 260px circular box
+  const { baseWidth, baseHeight } = useMemo(() => {
+    const w = imageNaturalSize.width || 300;
+    const h = imageNaturalSize.height || 300;
+    const coverScale = Math.max(260 / w, 260 / h);
+    return {
+      baseWidth: Math.round(w * coverScale),
+      baseHeight: Math.round(h * coverScale)
+    };
+  }, [imageNaturalSize]);
+
+  const openCropModal = (file) => {
+    if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl);
+    const url = URL.createObjectURL(file);
+    setAvatarFile(file);
+    setAvatarObjectUrl(url);
+    setCropScale(1);
+    setCropRotation(0);
+    setCropOffset({ x: 0, y: 0 });
+    setCropDragging(false);
+
+    // Pre-measure the image natural dimensions for pixel-perfect aspect ratio & cover sizing
+    const probe = new Image();
+    probe.onload = () => {
+      setImageNaturalSize({
+        width: probe.naturalWidth || 300,
+        height: probe.naturalHeight || 300
+      });
+      setCropModalOpen(true);
+    };
+    probe.onerror = () => {
+      setImageNaturalSize({ width: 300, height: 300 });
+      setCropModalOpen(true);
+    };
+    probe.src = url;
+  };
+
+  const openCropModalFromUrl = async (url) => {
+    if (!url) return;
+    try {
+      setAvatarUploading(true);
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const file = new File([blob], 'photo.jpg', { type: blob.type || 'image/jpeg' });
+      openCropModal(file);
+    } catch (e) {
+      if (avatarObjectUrl && avatarObjectUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(avatarObjectUrl);
+      }
+      setAvatarFile(null);
+      setAvatarObjectUrl(url);
+      setCropScale(1);
+      setCropRotation(0);
+      setCropOffset({ x: 0, y: 0 });
+      setCropDragging(false);
+
+      const probe = new Image();
+      probe.crossOrigin = 'anonymous';
+      probe.onload = () => {
+        setImageNaturalSize({
+          width: probe.naturalWidth || 300,
+          height: probe.naturalHeight || 300
+        });
+        setCropModalOpen(true);
+      };
+      probe.onerror = () => {
+        setImageNaturalSize({ width: 300, height: 300 });
+        setCropModalOpen(true);
+      };
+      probe.src = url;
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    openCropModal(file);
+    // reset input so same file can be re-selected
+    e.target.value = '';
+  };
+
+  const handleCropMouseDown = (e) => {
+    e.preventDefault();
+    setCropDragging(true);
+    dragStartRef.current = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      offsetX: cropOffset.x,
+      offsetY: cropOffset.y
+    };
+  };
+
+  const handleCropTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      // Two fingers: Pinch-to-zoom
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      pinchStartDistRef.current = dist;
+      pinchStartScaleRef.current = cropScale;
+      setCropDragging(true);
+    } else if (e.touches.length === 1) {
+      // Single finger: Pan
+      const touch = e.touches[0];
+      setCropDragging(true);
+      dragStartRef.current = {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        offsetX: cropOffset.x,
+        offsetY: cropOffset.y
+      };
+    }
+  };
+
+  const handleCropWheel = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const delta = e.deltaY < 0 ? 0.15 : -0.15;
+    setCropScale((s) => Math.min(3.5, Math.max(1, +(s + delta).toFixed(2))));
+  };
+
+  // Window pointer move and up listeners for silky-smooth dragging across the viewport
+  useEffect(() => {
+    if (!cropDragging) return;
+
+    const handlePointerMove = (e) => {
+      if (e.touches && e.touches.length === 2 && pinchStartDistRef.current) {
+        // Pinch zoom
+        const currentDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const factor = currentDist / pinchStartDistRef.current;
+        const newScale = Math.min(3.5, Math.max(1, +(pinchStartScaleRef.current * factor).toFixed(2)));
+        setCropScale(newScale);
+        return;
+      }
+
+      if (!dragStartRef.current) return;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const dx = clientX - dragStartRef.current.clientX;
+      const dy = clientY - dragStartRef.current.clientY;
+      setCropOffset({
+        x: dragStartRef.current.offsetX + dx,
+        y: dragStartRef.current.offsetY + dy
+      });
+    };
+
+    const handlePointerUp = () => {
+      setCropDragging(false);
+      dragStartRef.current = null;
+      pinchStartDistRef.current = null;
+    };
+
+    window.addEventListener('mousemove', handlePointerMove);
+    window.addEventListener('mouseup', handlePointerUp);
+    window.addEventListener('touchmove', handlePointerMove, { passive: false });
+    window.addEventListener('touchend', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handlePointerMove);
+      window.removeEventListener('mouseup', handlePointerUp);
+      window.removeEventListener('touchmove', handlePointerMove);
+      window.removeEventListener('touchend', handlePointerUp);
+    };
+  }, [cropDragging]);
+
+  const handleApplyCrop = () => {
+    const imgEl = cropImgRef.current;
+    if (!imgEl) return;
+
+    const OUTPUT_SIZE = 400; // 400x400 high-res circle avatar
+    const canvas = document.createElement('canvas');
+    canvas.width = OUTPUT_SIZE;
+    canvas.height = OUTPUT_SIZE;
+    const ctx = canvas.getContext('2d');
+
+    // 1. Clip canvas to smooth circular mask
+    ctx.beginPath();
+    ctx.arc(OUTPUT_SIZE / 2, OUTPUT_SIZE / 2, OUTPUT_SIZE / 2, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+
+    // 2. High quality image smoothing
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    // 3. Exact scale factor from 260px display circle to 400px output canvas
+    const displayToCanvasRatio = OUTPUT_SIZE / 260; // 400 / 260 ≈ 1.53846
+
+    // Image center on the output canvas
+    const imgCenterX = (OUTPUT_SIZE / 2) + (cropOffset.x * displayToCanvasRatio);
+    const imgCenterY = (OUTPUT_SIZE / 2) + (cropOffset.y * displayToCanvasRatio);
+
+    // Image dimensions on the output canvas
+    const drawW = baseWidth * cropScale * displayToCanvasRatio;
+    const drawH = baseHeight * cropScale * displayToCanvasRatio;
+
+    // 4. Translate, rotate around image center, and draw
+    ctx.save();
+    ctx.translate(imgCenterX, imgCenterY);
+    if (cropRotation) {
+      ctx.rotate((cropRotation * Math.PI) / 180);
+    }
+    ctx.drawImage(imgEl, -drawW / 2, -drawH / 2, drawW, drawH);
+    ctx.restore();
+
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      setAvatarUploading(true);
+      setCropModalOpen(false);
+      try {
+        const formData = new FormData();
+        formData.append('file', blob, 'avatar.jpg');
+        const res = await fetch('/api/users/upload', {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'include',
+          body: formData
+        });
+        const data = await res.json();
+        const newUrl = data.fileUrl || data.url;
+        if (data.success && newUrl) {
+          setAvatar(newUrl);
+
+          const nextUploads = Array.from(new Set([newUrl, ...uploadedAvatars]));
+          setUploadedAvatars(nextUploads);
+          try {
+            localStorage.setItem(`pulse_uploads_${user?._id}`, JSON.stringify(nextUploads));
+          } catch {}
+
+          // IMMEDIATELY update user profile in DB & AuthContext!
+          try {
+            const profileRes = await fetch('/api/users/profile', {
+              method: 'PUT',
+              headers: authHeaders(),
+              credentials: 'include',
+              body: JSON.stringify({
+                nickname: nickname || user?.nickname || '',
+                bio: bio || user?.bio || '',
+                avatar: newUrl,
+                uploadedAvatars: nextUploads
+              })
+            });
+            const profileData = await profileRes.json();
+            if (profileData.success && profileData.user) {
+              updateUser(profileData.user);
+            }
+          } catch (profileErr) {
+            console.warn('[Auto-save profile error]:', profileErr);
+          }
+
+          showFeedback('Profile photo cropped & updated successfully!');
+        } else {
+          showFeedback(data.message || 'Upload failed', 'error');
+        }
+      } catch (err) {
+        showFeedback('Network error uploading avatar', 'error');
+      } finally {
+        setAvatarUploading(false);
+      }
+    }, 'image/jpeg', 0.92);
+  };
+
+  const handleDeleteUploadedAvatar = async (url) => {
+    const nextList = uploadedAvatars.filter((u) => u !== url);
+    setUploadedAvatars(nextList);
+    try {
+      localStorage.setItem(`pulse_uploads_${user?._id}`, JSON.stringify(nextList));
+    } catch {}
+
+    // If currently selected avatar is deleted, fall back
+    if (avatar === url) {
+      const fallback = nextList[0] || '';
+      setAvatar(fallback);
+    }
+
+    try {
+      const res = await fetch('/api/users/profile', {
+        method: 'PUT',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({
+          nickname,
+          bio,
+          avatar: avatar === url ? (nextList[0] || '') : avatar,
+          uploadedAvatars: nextList
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.user) {
+        updateUser(data.user);
+        showFeedback('Removed photo from your uploads.');
+      }
+    } catch (err) {
+      showFeedback('Removed photo locally.');
+    }
+  };
 
   useEffect(() => {
     const query = contactSearchQuery.trim();
@@ -195,13 +575,17 @@ export const SettingsPanel = ({
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
+    if (avatarUploading) {
+      showFeedback('Please wait for photo upload to complete...', 'error');
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch('/api/users/profile', {
         method: 'PUT',
         headers: authHeaders(),
         credentials: 'include',
-        body: JSON.stringify({ nickname, bio, avatar })
+        body: JSON.stringify({ nickname, bio, avatar, uploadedAvatars })
       });
       const data = await res.json();
       if (data.success) {
@@ -523,14 +907,61 @@ export const SettingsPanel = ({
                 <div className="flex items-start justify-between gap-3 mb-5">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-violet-300">Personalize PulseChat</p>
-                    <h3 className="text-lg font-bold text-white mt-1">Appearance & Sound</h3>
-                    <p className="text-xs text-slate-400 mt-1">Tune the look and reading comfort of your chat experience.</p>
+                    <h3 className="text-lg font-bold text-white mt-1">Appearance & Typography</h3>
+                    <p className="text-xs text-slate-400 mt-1">Customize your colors and typography or keep synced with admin defaults.</p>
                   </div>
                   <div className="w-10 h-10 rounded-2xl bg-violet-500/15 border border-violet-400/20 flex items-center justify-center">
                     <Palette className="w-5 h-5 text-violet-300" />
                   </div>
                 </div>
 
+                {/* Theme Status & Sync Banner */}
+                <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 ${
+                  isCustomTheme
+                    ? 'border-indigo-500/40 bg-indigo-950/20'
+                    : 'border-emerald-500/30 bg-emerald-950/15'
+                }`}>
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                      isCustomTheme ? 'bg-indigo-500/20 text-indigo-400' : 'bg-emerald-500/20 text-emerald-400'
+                    }`}>
+                      {isCustomTheme ? <Sparkles className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-bold text-white">
+                          {isCustomTheme ? 'Personal Custom Theme Active' : 'Synced with Admin Default Theme'}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                          isCustomTheme ? 'bg-indigo-500/20 text-indigo-300' : 'bg-emerald-500/20 text-emerald-300'
+                        }`}>
+                          {isCustomTheme ? 'Customized' : 'Auto-Sync'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {isCustomTheme
+                          ? 'Your custom theme overrides the system default. Reset anytime to follow admin updates.'
+                          : 'You are automatically using the latest admin-configured theme and typography.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {isCustomTheme && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await resetToAdminDefault();
+                        showFeedback('Restored admin default theme.');
+                      }}
+                      className="px-3 py-1.5 rounded-xl border border-slate-700 hover:border-slate-600 bg-slate-900 text-slate-200 text-xs font-semibold flex items-center justify-center space-x-1.5 transition shrink-0 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Reset to Admin Default</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Color theme mode */}
                 <section className="rounded-2xl border border-slate-800 bg-[#090F1C]/70 p-4 sm:p-5">
                   <div className="flex items-center justify-between mb-3">
                     <div>
@@ -556,7 +987,7 @@ export const SettingsPanel = ({
                             showFeedback(`Theme set to ${item.label}.`);
                           }}
                           aria-pressed={selected}
-                          className={`min-w-0 rounded-xl border px-2 py-3 flex flex-col items-center gap-2 text-xs font-semibold transition ${selected
+                          className={`min-w-0 rounded-xl border px-2 py-3 flex flex-col items-center gap-2 text-xs font-semibold transition cursor-pointer ${selected
                             ? 'border-violet-400 bg-violet-500/15 text-violet-200 ring-1 ring-violet-400/30'
                             : 'border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-600 hover:text-white'
                             }`}
@@ -570,24 +1001,18 @@ export const SettingsPanel = ({
                   </div>
                 </section>
 
+                {/* Accent Color Section with Presets and Custom Color Picker */}
                 <section className="rounded-2xl border border-slate-800 bg-[#090F1C]/70 p-4 sm:p-5 mt-3">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h4 className="text-sm font-bold text-white">Accent color</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Choose the highlight color used across controls.</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Choose the highlight color used across buttons and active controls.</p>
                     </div>
-                    <span className="text-[10px] text-slate-500">{accentColor || 'violet'}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">{accentColor || 'indigo'}</span>
                   </div>
-                  <div className="flex flex-wrap gap-4">
-                    {[
-                      { id: 'indigo', class: 'bg-[#4F46E5]', name: 'Indigo' },
-                      { id: 'emerald', class: 'bg-[#059669]', name: 'Emerald' },
-                      { id: 'violet', class: 'bg-[#8B5CF6]', name: 'Violet' },
-                      { id: 'rose', class: 'bg-[#E11D48]', name: 'Rose' },
-                      { id: 'cyan', class: 'bg-[#0891B2]', name: 'Cyan' },
-                      { id: 'amber', class: 'bg-[#D97706]', name: 'Amber' }
-                    ].map((color) => {
-                      const selected = accentColor === color.id || (accentColor === 'purple' && color.id === 'violet');
+                  <div className="flex flex-wrap items-center gap-3">
+                    {Object.values(THEME_PALETTES).map((color) => {
+                      const selected = accentColor === color.id;
                       return (
                         <button
                           key={color.id}
@@ -598,7 +1023,8 @@ export const SettingsPanel = ({
                           }}
                           aria-label={`${color.name} accent color`}
                           aria-pressed={selected}
-                          className={`w-9 h-9 rounded-full ${color.class} flex items-center justify-center transition ${selected
+                          style={{ backgroundColor: color.primary }}
+                          className={`w-9 h-9 rounded-full flex items-center justify-center transition cursor-pointer ${selected
                             ? 'ring-2 ring-white ring-offset-4 ring-offset-[#090F1C] scale-110'
                             : 'opacity-80 hover:opacity-100 hover:scale-110'
                             }`}
@@ -607,9 +1033,59 @@ export const SettingsPanel = ({
                         </button>
                       );
                     })}
+
+                    {/* Custom Color Picker Button */}
+                    <div className="flex items-center space-x-2 pl-3 border-l border-slate-800">
+                      <label className="text-[11px] text-slate-400 font-semibold cursor-pointer">Custom:</label>
+                      <input
+                        type="color"
+                        value={activeTheme?.primaryColor || '#6366f1'}
+                        onChange={(e) => {
+                          setAccentColor(e.target.value);
+                          showFeedback('Custom color applied.');
+                        }}
+                        className="w-8 h-8 rounded-xl cursor-pointer bg-transparent border border-slate-700 p-0.5"
+                        title="Pick custom color"
+                      />
+                    </div>
                   </div>
                 </section>
 
+                {/* Typography: Font Family Selection */}
+                <section className="rounded-2xl border border-slate-800 bg-[#090F1C]/70 p-4 sm:p-5 mt-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Font Family</h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Choose your preferred reading typeface.</p>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-mono">{fontFamily || 'Inter'}</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {TYPOGRAPHY_FONTS.map((font) => {
+                      const isSel = (fontFamily || 'Inter') === font.id;
+                      return (
+                        <button
+                          key={font.id}
+                          type="button"
+                          onClick={() => {
+                            setFontFamily(font.id);
+                            showFeedback(`Font set to ${font.name.split(' ')[0]}.`);
+                          }}
+                          style={{ fontFamily: font.family }}
+                          className={`p-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer text-center truncate ${
+                            isSel
+                              ? 'border-violet-400 bg-violet-500/15 text-violet-200 ring-1 ring-violet-400/30'
+                              : 'border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-600 hover:text-white'
+                          }`}
+                        >
+                          {font.id}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                {/* Message font size */}
                 <section className="rounded-2xl border border-slate-800 bg-[#090F1C]/70 p-4 sm:p-5 mt-3">
                   <div className="flex items-center gap-2 mb-3">
                     <Type className="w-4 h-4 text-violet-300" />
@@ -634,7 +1110,7 @@ export const SettingsPanel = ({
                             showFeedback(`Message font size set to ${item.label}.`);
                           }}
                           aria-pressed={selected}
-                          className={`rounded-xl border px-2 py-3 transition ${selected
+                          className={`rounded-xl border px-2 py-3 transition cursor-pointer ${selected
                             ? 'border-violet-400 bg-violet-500/15 text-violet-200'
                             : 'border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-600 hover:text-white'
                             }`}
@@ -647,8 +1123,8 @@ export const SettingsPanel = ({
                   </div>
                   <div className="mt-3 rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
                     <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Live preview</p>
-                    <p className={`${fontSize === 'small' ? 'text-xs' : fontSize === 'large' ? 'text-lg' : 'text-sm'} text-slate-200`}>
-                      The quick brown fox jumps over the lazy dog.
+                    <p className={`${fontSize === 'small' ? 'text-xs' : fontSize === 'large' ? 'text-lg' : 'text-sm'} text-slate-200`} style={{ fontFamily: activeTheme?.fontFamily ? `'${activeTheme.fontFamily}', sans-serif` : 'inherit' }}>
+                      The quick brown fox jumps over the lazy dog. 🚀
                     </p>
                   </div>
                 </section>
@@ -656,7 +1132,7 @@ export const SettingsPanel = ({
                 <div className="mt-4 flex items-start gap-2 text-[11px] text-slate-500">
                   <Lock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                   <p>
-                    Appearance preferences are applied through your app settings. Sound controls are not shown here because this version does not expose a sound-preference API.
+                    Personal theme choices persist across all devices. If you reset, you automatically receive admin updates.
                   </p>
                 </div>
               </div>
@@ -665,21 +1141,348 @@ export const SettingsPanel = ({
 
           {activeTab === 'profile' && (
             <form onSubmit={handleSaveProfile} className="space-y-4">
-              <div className="flex items-center space-x-4">
-                <Avatar src={avatar} name={nickname || user?.username} size="lg" />
-                <div className="flex-1">
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Avatar URL
-                  </label>
-                  <input
-                    type="url"
-                    placeholder="https://..."
-                    value={avatar}
-                    onChange={(e) => setAvatar(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs bg-[#0E1422] border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
+              {/* Avatar section */}
+              <div className="flex items-start space-x-4">
+                <div className="relative flex-shrink-0">
+                  <Avatar src={avatar} name={nickname || user?.username} size="lg" />
+                  {avatarUploading && (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60">
+                      <svg className="animate-spin w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 space-y-2">
+                  {featureFlags?.customAvatarUpload === false ? (
+                    <div className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-400" />
+                      <span>Custom photo uploads are currently disabled by the administrator. Choose from the curated avatar logos below.</span>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        Profile Photo
+                      </label>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleFileSelect}
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={avatarUploading}
+                          className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl transition cursor-pointer shadow-sm active:scale-98"
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                          <span>Upload &amp; Crop Photo</span>
+                        </button>
+                        {avatar && (
+                          <button
+                            type="button"
+                            onClick={() => openCropModalFromUrl(avatar)}
+                            disabled={avatarUploading}
+                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition cursor-pointer shadow-sm"
+                            title="Re-adjust crop, zoom, and orientation of current photo"
+                          >
+                            <Sliders className="w-3.5 h-3.5 text-purple-400" />
+                            <span>Adjust / Crop Photo</span>
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* User Uploaded Photos Gallery (Show uploaded custom photos as options) */}
+                  {uploadedAvatars.length > 0 && (
+                    <div className="pt-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Your Uploaded Photos ({uploadedAvatars.length})</span>
+                        </label>
+                        <span className="text-[10px] text-purple-400 font-medium">Click to select</span>
+                      </div>
+                      <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+                        {uploadedAvatars.map((url, idx) => {
+                          const isSelected = avatar === url;
+                          return (
+                            <div key={`${url}-${idx}`} className="relative group aspect-square">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAvatar(url);
+                                  showFeedback('Selected your uploaded photo.');
+                                }}
+                                className={`w-full h-full rounded-xl overflow-hidden border-2 transition cursor-pointer relative ${
+                                  isSelected
+                                    ? 'border-purple-500 ring-2 ring-purple-500/40 scale-105 shadow-md shadow-purple-500/30'
+                                    : 'border-slate-800 hover:border-slate-600 opacity-85 hover:opacity-100 hover:scale-105'
+                                }`}
+                                title="Use this photo"
+                              >
+                                <img src={url} alt="Uploaded avatar" className="w-full h-full object-cover" />
+                                {isSelected && (
+                                  <div className="absolute inset-0 bg-purple-600/40 flex items-center justify-center">
+                                    <Check className="w-4 h-4 text-white stroke-[3]" />
+                                  </div>
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteUploadedAvatar(url);
+                                }}
+                                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-sm z-10 cursor-pointer"
+                                title="Remove photo"
+                              >
+                                <X className="w-3 h-3 stroke-[3]" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Free Preset Avatars Gallery */}
+                  <div className="pt-2">
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                      Choose an Avatar Logo
+                    </label>
+                    <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+                      {PRESET_AVATARS.map((preset) => {
+                        const isSelected = avatar === preset.url;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => {
+                              setAvatar(preset.url);
+                              showFeedback(`Selected ${preset.name} avatar.`);
+                            }}
+                            className={`relative rounded-xl overflow-hidden aspect-square border-2 transition cursor-pointer group ${
+                              isSelected
+                                ? 'border-purple-500 ring-2 ring-purple-500/40 scale-105'
+                                : 'border-slate-800 hover:border-slate-600 opacity-80 hover:opacity-100 hover:scale-105'
+                            }`}
+                            title={preset.name}
+                          >
+                            <img src={preset.url} alt={preset.name} className="w-full h-full object-cover" />
+                            {isSelected && (
+                              <div className="absolute inset-0 bg-purple-600/40 flex items-center justify-center">
+                                <Check className="w-4 h-4 text-white stroke-[3]" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Secondary Direct URL input (only if custom uploads enabled) */}
+                  {featureFlags?.customAvatarUpload !== false && (
+                    <div className="pt-2">
+                      <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        Or custom Image URL
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://example.com/avatar.png"
+                        value={avatar}
+                        onChange={(e) => setAvatar(e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs bg-[#0E1422] border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
+
+              {/* Crop & Adjust Modal Dialog */}
+              {cropModalOpen && avatarObjectUrl && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200"
+                  onClick={() => setCropModalOpen(false)}
+                >
+                  <div
+                    className="relative w-full max-w-md max-h-[92vh] overflow-y-auto rounded-3xl border border-purple-500/40 bg-[#0B0F19] p-5 sm:p-6 space-y-4 shadow-2xl animate-in zoom-in-95 scrollbar-thin scrollbar-thumb-purple-900/50"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <Camera className="w-5 h-5 text-purple-400" />
+                        <span className="text-sm font-bold text-white uppercase tracking-wider">Crop &amp; Adjust Photo</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCropModalOpen(false)}
+                        className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                        title="Close"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Circular Crop Box Viewport */}
+                    <div className="flex flex-col items-center justify-center py-2">
+                      <div
+                        ref={cropBoxRef}
+                        className="relative overflow-hidden rounded-full border-2 border-purple-500/60 bg-slate-950 cursor-grab active:cursor-grabbing select-none shadow-xl touch-none"
+                        style={{ width: 260, height: 260 }}
+                        onMouseDown={handleCropMouseDown}
+                        onTouchStart={handleCropTouchStart}
+                        onWheel={handleCropWheel}
+                      >
+                        <img
+                          ref={cropImgRef}
+                          src={avatarObjectUrl}
+                          alt="Crop preview"
+                          draggable={false}
+                          style={{
+                            position: 'absolute',
+                            width: `${Math.round(baseWidth * cropScale)}px`,
+                            height: `${Math.round(baseHeight * cropScale)}px`,
+                            maxWidth: 'none',
+                            maxHeight: 'none',
+                            left: '50%',
+                            top: '50%',
+                            transform: `translate(calc(-50% + ${cropOffset.x}px), calc(-50% + ${cropOffset.y}px)) rotate(${cropRotation}deg)`,
+                            userSelect: 'none',
+                            pointerEvents: 'none',
+                            transition: cropDragging ? 'none' : 'transform 0.05s ease-out'
+                          }}
+                        />
+
+                        {/* Rule-of-thirds grid */}
+                        <div className="absolute inset-0 pointer-events-none opacity-20">
+                          <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white" />
+                          <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white" />
+                          <div className="absolute top-1/3 left-0 right-0 h-px bg-white" />
+                          <div className="absolute top-2/3 left-0 right-0 h-px bg-white" />
+                        </div>
+
+                        {/* Center crosshair */}
+                        <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-30">
+                          <div className="w-4 h-px bg-white" />
+                          <div className="h-4 w-px bg-white absolute" />
+                        </div>
+
+                        {/* Border ring */}
+                        <div className="absolute inset-0 rounded-full border border-white/20 pointer-events-none" />
+                      </div>
+
+                      <p className="mt-2 text-[11px] text-slate-400 flex items-center gap-1.5">
+                        <Sliders className="w-3 h-3 text-purple-400" />
+                        <span>Drag photo to pan &bull; use controls below to scale &amp; rotate</span>
+                      </p>
+                    </div>
+
+                    {/* Zoom Controls */}
+                    <div className="space-y-1.5 bg-[#0E1422] p-3 rounded-xl border border-slate-800">
+                      <div className="flex items-center justify-between text-xs text-slate-300">
+                        <span className="font-medium flex items-center gap-1.5">
+                          <ZoomIn className="w-3.5 h-3.5 text-purple-400" /> Zoom Scale
+                        </span>
+                        <span className="font-mono text-purple-400 font-semibold">{cropScale.toFixed(2)}&times;</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setCropScale((s) => Math.max(1, +(s - 0.2).toFixed(2)))}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                          title="Zoom out"
+                        >
+                          <ZoomOut className="w-4 h-4" />
+                        </button>
+                        <input
+                          type="range"
+                          min="1"
+                          max="3.5"
+                          step="0.05"
+                          value={cropScale}
+                          onChange={(e) => setCropScale(parseFloat(e.target.value))}
+                          className="flex-1 accent-purple-500 cursor-pointer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCropScale((s) => Math.min(3.5, +(s + 0.2).toFixed(2)))}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                          title="Zoom in"
+                        >
+                          <ZoomIn className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Quick Action Buttons */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCropRotation((r) => (r + 90) % 360)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-xl transition"
+                        >
+                          <RotateCw className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Rotate 90&deg;</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCropOffset({ x: 0, y: 0 });
+                            setCropScale(1);
+                            setCropRotation(0);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-700 rounded-xl transition"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Reset</span>
+                        </button>
+                      </div>
+                      {cropRotation !== 0 && (
+                        <span className="text-[11px] text-purple-400 font-mono">{cropRotation}&deg;</span>
+                      )}
+                    </div>
+
+                    {/* Modal Action Buttons */}
+                    <div className="flex gap-2.5 pt-2 border-t border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setCropModalOpen(false)}
+                        className="flex-1 px-4 py-2.5 text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-xl transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleApplyCrop}
+                        disabled={avatarUploading}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl transition shadow-lg shadow-purple-600/30 cursor-pointer"
+                      >
+                        {avatarUploading ? (
+                          <>
+                            <svg className="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                            </svg>
+                            <span>Processing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Apply &amp; Save Photo</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
@@ -743,10 +1546,22 @@ export const SettingsPanel = ({
               <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="px-5 py-2.5 text-xs font-bold text-white bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 rounded-2xl shadow-md transition cursor-pointer"
+                  disabled={loading || avatarUploading}
+                  className="px-5 py-2.5 text-xs font-bold text-white bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 rounded-2xl shadow-md transition cursor-pointer flex items-center gap-2"
                 >
-                  Save Profile Changes
+                  {avatarUploading ? (
+                    <>
+                      <svg className="animate-spin w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                      <span>Uploading photo...</span>
+                    </>
+                  ) : loading ? (
+                    <span>Saving...</span>
+                  ) : (
+                    <span>Save Profile Changes</span>
+                  )}
                 </button>
               </div>
             </form>

@@ -11,7 +11,8 @@ const FEATURE_FLAG_MAP = {
   voice: 'voiceMessagesEnabled',
   polls: 'pollsEnabled',
   announcements: 'announcementsEnabled',
-  e2ee: 'e2eeEnabled'
+  e2ee: 'e2eeEnabled',
+  customAvatarUpload: 'customAvatarUpload'
 };
 
 const FEATURE_NAMES = {
@@ -24,7 +25,8 @@ const FEATURE_NAMES = {
   voice: 'Voice audio messages',
   polls: 'Interactive polls',
   announcements: 'Broadcast announcements',
-  e2ee: 'End-to-end encryption'
+  e2ee: 'End-to-end encryption',
+  customAvatarUpload: 'Custom profile photo upload'
 };
 
 /**

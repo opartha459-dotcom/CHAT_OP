@@ -82,6 +82,11 @@ const userSchema = new mongoose.Schema(
       default: ''
     },
 
+    uploadedAvatars: {
+      type: [String],
+      default: []
+    },
+
     bio: {
       type: String,
       trim: true,
@@ -293,6 +298,27 @@ const userSchema = new mongoose.Schema(
         type: String,
         enum: ['small', 'medium', 'large'],
         default: 'medium'
+      },
+
+      isCustomTheme: {
+        type: Boolean,
+        default: false
+      },
+
+      customTheme: {
+        accentColor: { type: String, default: 'indigo' },
+        primaryColor: { type: String, default: '#6366f1' },
+        primaryHover: { type: String, default: '#4f46e5' },
+        primaryLight: { type: String, default: 'rgba(99, 102, 241, 0.15)' },
+        primaryBorder: { type: String, default: 'rgba(99, 102, 241, 0.35)' },
+        secondaryColor: { type: String, default: '#10b981' },
+        mode: { type: String, enum: ['dark', 'light', 'system'], default: 'dark' },
+        fontFamily: { type: String, default: 'Inter' },
+        fontSize: { type: String, enum: ['small', 'medium', 'large'], default: 'medium' },
+        fontWeightNormal: { type: String, default: '400' },
+        fontWeightHeading: { type: String, default: '700' },
+        headingLetterSpacing: { type: String, default: '-0.02em' },
+        headingTransform: { type: String, default: 'none' }
       },
 
       soundEnabled: {

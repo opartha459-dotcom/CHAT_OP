@@ -49,15 +49,28 @@ import {
   KeyRound,
   Send,
   Copy,
-  Calendar
+  Calendar,
+  Type,
+  Globe
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { useSocket } from '../context/SocketContext';
+import {
+  useTheme,
+  THEME_PALETTES,
+  TYPOGRAPHY_FONTS,
+  FONT_SIZES,
+  HEADING_WEIGHTS,
+  HEADING_TRANSFORMS,
+  adjustBrightness,
+  hexToRgba
+} from '../context/ThemeContext';
 import { GridListView } from '../components/common/GridListView';
 import { Avatar } from '../components/common/Avatar';
 import { PulseLogo } from '../components/common/PulseLogo';
 import { AdminDashboardSkeleton } from '../components/common/Skeleton';
+import { LandingCmsTab } from '../components/admin/LandingCmsTab';
 
 export const AdminDashboard = () => {
   const auth = useAuth();
@@ -103,6 +116,35 @@ export const AdminDashboard = () => {
   const [selectedAuditLogs, setSelectedAuditLogs] = useState(new Set());
   const [dbStatus, setDbStatus] = useState(null);
   const [systemSettings, setSystemSettings] = useState(null);
+
+  // Dynamic Theme & Typography State
+  const { adminTheme, updateAdminDefaultTheme } = useTheme();
+  const [themeForm, setThemeForm] = useState(() => ({
+    accentColor: adminTheme?.accentColor || 'indigo',
+    primaryColor: adminTheme?.primaryColor || '#6366f1',
+    primaryHover: adminTheme?.primaryHover || '#4f46e5',
+    primaryLight: adminTheme?.primaryLight || 'rgba(99, 102, 241, 0.15)',
+    primaryBorder: adminTheme?.primaryBorder || 'rgba(99, 102, 241, 0.35)',
+    secondaryColor: adminTheme?.secondaryColor || '#10b981',
+    mode: adminTheme?.mode || 'dark',
+    fontFamily: adminTheme?.fontFamily || 'Inter',
+    fontSize: adminTheme?.fontSize || 'medium',
+    fontWeightNormal: adminTheme?.fontWeightNormal || '400',
+    fontWeightHeading: adminTheme?.fontWeightHeading || '700',
+    headingLetterSpacing: adminTheme?.headingLetterSpacing || '-0.02em',
+    headingTransform: adminTheme?.headingTransform || 'none'
+  }));
+  const [savingTheme, setSavingTheme] = useState(false);
+  const [themeSuccessMsg, setThemeSuccessMsg] = useState('');
+
+  useEffect(() => {
+    if (adminTheme) {
+      setThemeForm((prev) => ({
+        ...prev,
+        ...adminTheme
+      }));
+    }
+  }, [adminTheme]);
 
   // Chat Monitoring & Inspection State
   const [inspectingChat, setInspectingChat] = useState(null);
@@ -893,6 +935,53 @@ export const AdminDashboard = () => {
     }
   };
 
+  // Actions: Dynamic Theme & Typography
+  const handleSaveTheme = async (e) => {
+    if (e) e.preventDefault();
+    setSavingTheme(true);
+    setThemeSuccessMsg('');
+    try {
+      const data = await updateAdminDefaultTheme(themeForm);
+      if (data?.success) {
+        setThemeSuccessMsg('Theme and typography updated and broadcast live to all users!');
+        showMsg('Theme updated across the entire application!');
+        setTimeout(() => setThemeSuccessMsg(''), 5000);
+      } else {
+        showMsg(data?.message || 'Failed to update theme.');
+      }
+    } catch (err) {
+      showMsg('Network error updating theme.');
+    } finally {
+      setSavingTheme(false);
+    }
+  };
+
+  const handleResetThemeDefaults = async () => {
+    if (!window.confirm('Reset application theme to factory defaults (Indigo & Inter)?')) return;
+    const factory = {
+      accentColor: 'indigo',
+      primaryColor: '#6366f1',
+      primaryHover: '#4f46e5',
+      primaryLight: 'rgba(99, 102, 241, 0.15)',
+      primaryBorder: 'rgba(99, 102, 241, 0.35)',
+      secondaryColor: '#10b981',
+      mode: 'dark',
+      fontFamily: 'Inter',
+      fontSize: 'medium',
+      fontWeightNormal: '400',
+      fontWeightHeading: '700',
+      headingLetterSpacing: '-0.02em',
+      headingTransform: 'none'
+    };
+    setThemeForm(factory);
+    try {
+      await updateAdminDefaultTheme(factory);
+      showMsg('Reset to factory theme defaults.');
+    } catch {
+      showMsg('Failed to reset theme.');
+    }
+  };
+
   // ── Scheduled Maintenance Handlers ─────────────────────────────────────────
   const loadMaintenance = async () => {
     setSchedulesLoading(true);
@@ -1257,18 +1346,46 @@ export const AdminDashboard = () => {
     }
   };
 
-  const navItems = [
-    { id: 'overview', label: 'Overview', icon: TrendingUp },
-    { id: 'codes', label: 'Code Dispatch', icon: KeyRound },
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'groups', label: 'Chats & Groups', icon: MessageSquare },
-    { id: 'announcements', label: 'Announcements', icon: Bell },
-    { id: 'recoveries', label: 'Account Recoveries', icon: RotateCcw },
-    { id: 'maintenance', label: 'Maintenance', icon: Wrench },
-    { id: 'settings', label: 'System Settings', icon: Sliders },
-    { id: 'databases', label: 'Databases & Health', icon: HardDrive },
-    { id: 'audit', label: 'Audit Logs', icon: FileText },
+  const navSections = [
+    {
+      label: 'Core Platform',
+      items: [
+        { id: 'overview', label: 'Overview', icon: TrendingUp },
+        { id: 'users', label: 'Users', icon: Users },
+        { id: 'groups', label: 'Chats & Messaging', icon: MessageSquare },
+        { id: 'announcements', label: 'Announcements', icon: Bell },
+      ]
+    },
+    {
+      label: 'Theme & Appearance',
+      items: [
+        { id: 'theme', label: 'Theme & Typography', icon: Palette },
+        { id: 'landing', label: 'Landing Page CMS', icon: Globe },
+      ]
+    },
+    {
+      label: 'Features & Control',
+      items: [
+        { id: 'settings', label: 'Feature Flags', icon: Sliders },
+        { id: 'maintenance', label: 'Maintenance', icon: Wrench },
+      ]
+    },
+    {
+      label: 'Security & Access',
+      items: [
+        { id: 'codes', label: 'Code Dispatch', icon: KeyRound },
+        { id: 'recoveries', label: 'Account Recoveries', icon: RotateCcw },
+        { id: 'audit', label: 'Audit Logs', icon: FileText },
+      ]
+    },
+    {
+      label: 'Infrastructure',
+      items: [
+        { id: 'databases', label: 'Databases & Health', icon: HardDrive },
+      ]
+    }
   ];
+  const navItems = navSections.flatMap(s => s.items);
 
   if (auth.loading) {
     return <AdminDashboardSkeleton />;
@@ -1334,39 +1451,48 @@ export const AdminDashboard = () => {
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar Nav */}
         <aside className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-4 hidden md:flex flex-col justify-between shrink-0">
-          <nav className="space-y-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              const pendingBadge =
-                item.id === 'codes'
-                  ? verificationCodes.filter((c) => c.status === 'pending').length
-                  : item.id === 'recoveries'
-                  ? recoveries.filter((r) => r.status === 'pending' || r.status === 'partial').length
-                  : 0;
+          <nav className="space-y-4">
+            {navSections.map((section) => (
+              <div key={section.label}>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-3 mb-1">
+                  {section.label}
+                </p>
+                <div className="space-y-0.5">
+                  {section.items.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+                    const pendingBadge =
+                      item.id === 'codes'
+                        ? verificationCodes.filter((c) => c.status === 'pending').length
+                        : item.id === 'recoveries'
+                        ? recoveries.filter((r) => r.status === 'pending' || r.status === 'partial').length
+                        : 0;
 
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                    isActive
-                      ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3 min-w-0">
-                    <Icon className="w-4 h-4 shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                  </div>
-                  {pendingBadge > 0 && (
-                    <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/30 font-mono shrink-0">
-                      {pendingBadge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setActiveTab(item.id)}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                          isActive
+                            ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3 min-w-0">
+                          <Icon className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                        </div>
+                        {pendingBadge > 0 && (
+                          <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/30 font-mono shrink-0">
+                            {pendingBadge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
 
           {/* Quick Database Health Status Card */}
@@ -3435,6 +3561,465 @@ export const AdminDashboard = () => {
             </div>
           )}
 
+          {/* TAB: THEME & TYPOGRAPHY MANAGEMENT */}
+          {activeTab === 'theme' && (
+            <div className="space-y-8 max-w-5xl">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                    <Palette className="w-5 h-5 text-indigo-500" />
+                    <span>Dynamic App Theme & Typography Studio</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Configure the platform-wide default colors and typography. All users who haven't customized their theme automatically synchronize in real time.
+                  </p>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={handleResetThemeDefaults}
+                    className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset Defaults</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveTheme}
+                    disabled={savingTheme}
+                    className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center space-x-1.5 transition cursor-pointer"
+                  >
+                    {savingTheme ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                    <span>{savingTheme ? 'Broadcasting...' : 'Save & Broadcast'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {themeSuccessMsg && (
+                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center space-x-2 animate-fadeIn">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{themeSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* Grid: Left Column Controls, Right Column Live Interactive Preview */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                {/* Left 7 Cols: Theme & Typography Controls */}
+                <div className="lg:col-span-7 space-y-6">
+                  {/* Card 1: Curated Palette Presets */}
+                  <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                          <Sparkles className="w-4 h-4 text-amber-400" />
+                          <span>Curated Default Palettes</span>
+                        </h3>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Instant one-click color harmonies optimized for high readability across components.
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                        {themeForm.accentColor}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 sm:grid-cols-3 gap-2.5">
+                      {Object.values(THEME_PALETTES).map((p) => {
+                        const isSelected = themeForm.accentColor === p.id || themeForm.primaryColor?.toLowerCase() === p.primary?.toLowerCase();
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setThemeForm((prev) => ({
+                                ...prev,
+                                accentColor: p.id,
+                                primaryColor: p.primary,
+                                primaryHover: p.hover,
+                                secondaryColor: p.secondary
+                              }));
+                            }}
+                            className={`p-2.5 rounded-2xl border text-left flex items-center space-x-2.5 transition cursor-pointer ${
+                              isSelected
+                                ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/40 ring-2 ring-indigo-500/20'
+                                : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40'
+                            }`}
+                          >
+                            <div className="w-5 h-5 rounded-full shrink-0 shadow-sm flex items-center justify-center" style={{ backgroundColor: p.primary }}>
+                              {isSelected && <Check className="w-3 h-3 text-white stroke-[3]" />}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">{p.name}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">{p.primary}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Card 2: Custom Color Palette Fine-Tuning */}
+                  <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm space-y-4">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                      <Palette className="w-4 h-4 text-indigo-400" />
+                      <span>Custom Color Values</span>
+                    </h3>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Primary Color */}
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                          Primary Brand Color
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="color"
+                            value={themeForm.primaryColor || '#6366f1'}
+                            onChange={(e) => {
+                              const hex = e.target.value;
+                              setThemeForm((prev) => ({
+                                ...prev,
+                                accentColor: 'custom',
+                                primaryColor: hex,
+                                primaryHover: adjustBrightness(hex, -12)
+                              }));
+                            }}
+                            className="w-10 h-10 rounded-xl cursor-pointer border border-slate-300 dark:border-slate-700 bg-transparent p-0.5"
+                          />
+                          <input
+                            type="text"
+                            value={themeForm.primaryColor || ''}
+                            onChange={(e) => {
+                              const hex = e.target.value;
+                              setThemeForm((prev) => ({
+                                ...prev,
+                                accentColor: 'custom',
+                                primaryColor: hex,
+                                primaryHover: adjustBrightness(hex, -12)
+                              }));
+                            }}
+                            placeholder="#6366f1"
+                            className="flex-1 px-3 py-2 text-xs font-mono rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Secondary / Accent Color */}
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                          Secondary / Badge Color
+                        </label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="color"
+                            value={themeForm.secondaryColor || '#10b981'}
+                            onChange={(e) => {
+                              setThemeForm((prev) => ({
+                                ...prev,
+                                secondaryColor: e.target.value
+                              }));
+                            }}
+                            className="w-10 h-10 rounded-xl cursor-pointer border border-slate-300 dark:border-slate-700 bg-transparent p-0.5"
+                          />
+                          <input
+                            type="text"
+                            value={themeForm.secondaryColor || ''}
+                            onChange={(e) => {
+                              setThemeForm((prev) => ({
+                                ...prev,
+                                secondaryColor: e.target.value
+                              }));
+                            }}
+                            placeholder="#10b981"
+                            className="flex-1 px-3 py-2 text-xs font-mono rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Mode (Dark, Light, System) */}
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                        Default Display Mode
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { id: 'dark', label: 'Dark Mode (PulseChat Spec)' },
+                          { id: 'light', label: 'Light Mode' },
+                          { id: 'system', label: 'System Automatic' }
+                        ].map((m) => {
+                          const isSel = (themeForm.mode || 'dark') === m.id;
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => setThemeForm((prev) => ({ ...prev, mode: m.id }))}
+                              className={`p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer text-center ${
+                                isSel
+                                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400'
+                                  : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-600 dark:text-slate-400'
+                              }`}
+                            >
+                              {m.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 3: Typography System */}
+                  <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm space-y-4">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                      <Type className="w-4 h-4 text-violet-400" />
+                      <span>Typography & Font Styles</span>
+                    </h3>
+
+                    {/* Font Family Selection */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                        Application Font Family
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {TYPOGRAPHY_FONTS.map((font) => {
+                          const isSel = (themeForm.fontFamily || 'Inter') === font.id;
+                          return (
+                            <button
+                              key={font.id}
+                              type="button"
+                              onClick={() => setThemeForm((prev) => ({ ...prev, fontFamily: font.id }))}
+                              style={{ fontFamily: font.family }}
+                              className={`p-3 rounded-xl border text-left transition cursor-pointer flex items-center justify-between ${
+                                isSel
+                                  ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300 ring-2 ring-violet-500/20'
+                                  : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              <div>
+                                <div className="text-xs font-bold">{font.id}</div>
+                                <div className="text-[10px] text-slate-400">The quick brown fox 0123</div>
+                              </div>
+                              {isSel && <Check className="w-3.5 h-3.5 text-violet-500 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Font Size & Heading Styles */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                          Base Font Size
+                        </label>
+                        <select
+                          value={themeForm.fontSize || 'medium'}
+                          onChange={(e) => setThemeForm((prev) => ({ ...prev, fontSize: e.target.value }))}
+                          className="w-full px-3 py-2 rounded-xl text-xs bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                        >
+                          {FONT_SIZES.map((s) => (
+                            <option key={s.id} value={s.id}>{s.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                          Heading Weight
+                        </label>
+                        <select
+                          value={themeForm.fontWeightHeading || '700'}
+                          onChange={(e) => setThemeForm((prev) => ({ ...prev, fontWeightHeading: e.target.value }))}
+                          className="w-full px-3 py-2 rounded-xl text-xs bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                        >
+                          {HEADING_WEIGHTS.map((w) => (
+                            <option key={w.id} value={w.id}>{w.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                          Heading Text Transform
+                        </label>
+                        <select
+                          value={themeForm.headingTransform || 'none'}
+                          onChange={(e) => setThemeForm((prev) => ({ ...prev, headingTransform: e.target.value }))}
+                          className="w-full px-3 py-2 rounded-xl text-xs bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                        >
+                          {HEADING_TRANSFORMS.map((t) => (
+                            <option key={t.id} value={t.id}>{t.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                          Heading Letter Spacing
+                        </label>
+                        <select
+                          value={themeForm.headingLetterSpacing || '-0.02em'}
+                          onChange={(e) => setThemeForm((prev) => ({ ...prev, headingLetterSpacing: e.target.value }))}
+                          className="w-full px-3 py-2 rounded-xl text-xs bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white"
+                        >
+                          <option value="-0.03em">Tight (-0.03em)</option>
+                          <option value="-0.02em">Standard (-0.02em)</option>
+                          <option value="0em">Normal (0em)</option>
+                          <option value="0.04em">Wide (0.04em)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right 5 Cols: Live Interactive Component Preview Studio */}
+                <div className="lg:col-span-5 space-y-4 sticky top-20">
+                  <div className="p-5 bg-slate-950 border border-slate-800 rounded-3xl shadow-xl space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 font-mono flex items-center space-x-1.5">
+                        <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Live Component Preview</span>
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                        {themeForm.mode} mode
+                      </span>
+                    </div>
+
+                    {/* Simulated Mini App Interface */}
+                    <div
+                      className="rounded-2xl p-4 space-y-4 border border-slate-800 bg-[#070b14] text-white"
+                      style={{
+                        fontFamily: themeForm.fontFamily ? `'${themeForm.fontFamily}', sans-serif` : 'Inter, sans-serif'
+                      }}
+                    >
+                      {/* Mini Navbar */}
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+                        <div className="flex items-center space-x-2">
+                          <div
+                            className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[11px] font-black shadow-sm"
+                            style={{ backgroundColor: themeForm.primaryColor || '#6366f1' }}
+                          >
+                            P
+                          </div>
+                          <span
+                            className="text-xs font-bold tracking-tight"
+                            style={{
+                              fontWeight: themeForm.fontWeightHeading || '700',
+                              letterSpacing: themeForm.headingLetterSpacing || '-0.02em',
+                              textTransform: themeForm.headingTransform || 'none'
+                            }}
+                          >
+                            PulseChat
+                          </span>
+                        </div>
+                        <span
+                          className="px-2 py-0.5 rounded-full text-[9px] font-bold"
+                          style={{
+                            backgroundColor: hexToRgba(themeForm.secondaryColor || '#10b981', 0.2),
+                            color: themeForm.secondaryColor || '#10b981'
+                          }}
+                        >
+                          ACTIVE
+                        </span>
+                      </div>
+
+                      {/* Headings Sample */}
+                      <div className="space-y-1">
+                        <h4
+                          className="text-sm"
+                          style={{
+                            fontWeight: themeForm.fontWeightHeading || '700',
+                            letterSpacing: themeForm.headingLetterSpacing || '-0.02em',
+                            textTransform: themeForm.headingTransform || 'none'
+                          }}
+                        >
+                          Heading Sample H1
+                        </h4>
+                        <p className="text-[11px] text-slate-400">
+                          Body text rendered with base font ({themeForm.fontSize || 'medium'}).
+                        </p>
+                      </div>
+
+                      {/* Sample Chat Message Bubbles */}
+                      <div className="space-y-2 pt-1">
+                        {/* Received Bubble */}
+                        <div className="flex items-start space-x-2">
+                          <div className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[9px] font-bold text-slate-400">
+                            A
+                          </div>
+                          <div className="max-w-[75%] p-2 rounded-2xl bg-slate-900 border border-slate-800 text-[11px] text-slate-200">
+                            Hello! How does the new theme look?
+                          </div>
+                        </div>
+
+                        {/* Sent Bubble */}
+                        <div className="flex items-start justify-end space-x-2">
+                          <div
+                            className="max-w-[75%] p-2 rounded-2xl text-[11px] text-white shadow-sm"
+                            style={{ backgroundColor: themeForm.primaryColor || '#6366f1' }}
+                          >
+                            It looks vibrant and instantly synced! 🚀
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Interactive Buttons Preview */}
+                      <div className="pt-2 flex items-center space-x-2">
+                        <button
+                          type="button"
+                          className="flex-1 py-2 px-3 rounded-xl text-xs font-bold text-white shadow-sm transition"
+                          style={{ backgroundColor: themeForm.primaryColor || '#6366f1' }}
+                        >
+                          Primary Action
+                        </button>
+                        <button
+                          type="button"
+                          className="py-2 px-3 rounded-xl text-xs font-bold border transition"
+                          style={{
+                            borderColor: hexToRgba(themeForm.primaryColor || '#6366f1', 0.4),
+                            color: themeForm.primaryColor || '#6366f1',
+                            backgroundColor: hexToRgba(themeForm.primaryColor || '#6366f1', 0.1)
+                          }}
+                        >
+                          Secondary
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
+                      <div className="font-semibold text-slate-300">How Synchronized Theme Works:</div>
+                      <div>• When you click Save, the theme is saved in the database.</div>
+                      <div>• Socket.io broadcasts to all connected clients immediately.</div>
+                      <div>• Users with personal customizations keep their choices intact.</div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSaveTheme}
+                      disabled={savingTheme}
+                      className="w-full py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center space-x-2 transition cursor-pointer shadow-lg"
+                      style={{ backgroundColor: themeForm.primaryColor || '#6366f1' }}
+                    >
+                      {savingTheme ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                      <span>{savingTheme ? 'Broadcasting Updates...' : 'Apply Default System-Wide'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: LANDING PAGE CMS */}
+          {activeTab === 'landing' && (
+            <LandingCmsTab
+              authHeaders={authHeaders}
+              showFeedback={setFeedback}
+              token={token}
+            />
+          )}
+
           {/* TAB 7: SETTINGS & FEATURE FLAGS */}
           {activeTab === 'settings' && (
             <div className="space-y-6 max-w-4xl">
@@ -3486,6 +4071,11 @@ export const AdminDashboard = () => {
                       key: 'pollsEnabled',
                       label: 'In-Chat Interactive Polls',
                       desc: 'Interactive voting polls with single or multiple choice responses in chats'
+                    },
+                    {
+                      key: 'customAvatarUpload',
+                      label: 'Custom Profile Photo Upload & Crop',
+                      desc: 'Allow users to upload, zoom and crop their own profile photo. When disabled, only preset avatars or URL input are shown'
                     }
                   ]
                 },

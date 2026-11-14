@@ -11,7 +11,8 @@ const DEFAULT_FLAGS = {
   voiceMessagesEnabled: true,
   pollsEnabled: true,
   announcementsEnabled: true,
-  e2eeEnabled: true
+  e2eeEnabled: true,
+  customAvatarUpload: true
 };
 
 const FeatureFlagsContext = createContext({
@@ -81,7 +82,8 @@ export const FeatureFlagsProvider = ({ children }) => {
         voice: 'voiceMessagesEnabled',
         polls: 'pollsEnabled',
         announcements: 'announcementsEnabled',
-        e2ee: 'e2eeEnabled'
+        e2ee: 'e2eeEnabled',
+        customAvatarUpload: 'customAvatarUpload'
       };
       const key = aliasMap[featureKey] || featureKey;
       return featureFlags[key] !== false;

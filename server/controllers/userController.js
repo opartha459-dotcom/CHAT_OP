@@ -270,6 +270,12 @@ const updateProfile = async (req, res) => {
       updateData.avatar = avatar;
     }
 
+    if (req.body.uploadedAvatars !== undefined && Array.isArray(req.body.uploadedAvatars)) {
+      updateData.uploadedAvatars = req.body.uploadedAvatars.filter(
+        (u) => typeof u === 'string' && u.trim().length > 0
+      );
+    }
+
     if (e2eePublicKey !== undefined) {
       if (typeof e2eePublicKey !== 'string') {
         return res.status(400).json({
@@ -428,7 +434,10 @@ const updateChatSettings = async (req, res) => {
       accentColor,
       fontSize,
       soundEnabled,
-      notificationPreferences
+      notificationPreferences,
+      isCustomTheme,
+      customTheme,
+      resetToDefault
     } = req.body;
 
     const user = await User.findById(req.user._id);
@@ -442,6 +451,20 @@ const updateChatSettings = async (req, res) => {
 
     if (!user.chatSettings) {
       user.chatSettings = {};
+    }
+
+    if (resetToDefault === true) {
+      user.chatSettings.isCustomTheme = false;
+    } else {
+      if (isCustomTheme !== undefined) {
+        user.chatSettings.isCustomTheme = Boolean(isCustomTheme);
+      }
+      if (customTheme !== undefined && typeof customTheme === 'object') {
+        user.chatSettings.customTheme = {
+          ...(user.chatSettings.customTheme || {}),
+          ...customTheme
+        };
+      }
     }
 
     if (theme !== undefined) {
@@ -743,6 +766,7 @@ const uploadFile = async (req, res) => {
 
     return res.json({
       success: true,
+      url: result.url,
       fileUrl: result.url,
       fileName: result.fileName,
       fileSize: result.fileSize,

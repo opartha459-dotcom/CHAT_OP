@@ -18,7 +18,11 @@ export const ChatDashboard = () => {
         {/* Sidebar: Visible on desktop or when no chat is active on mobile */}
         <div
           className={`h-full ${
-            activeConversation ? 'hidden md:flex' : 'flex w-full md:w-auto'
+            mainTab === 'settings'
+              ? 'flex w-full md:w-auto'
+              : activeConversation
+              ? 'hidden md:flex'
+              : 'flex w-full md:w-auto'
           }`}
         >
           <Sidebar />
@@ -27,10 +31,14 @@ export const ChatDashboard = () => {
         {/* Main Area: Chat Area or Desktop Settings Detail */}
         <div
           className={`h-full flex-1 min-w-0 ${
-            activeConversation ? 'flex' : 'hidden md:flex'
+            mainTab === 'settings'
+              ? 'hidden md:flex'
+              : activeConversation
+              ? 'flex'
+              : 'hidden md:flex'
           }`}
         >
-          {mainTab === 'settings' && !activeConversation ? (
+          {mainTab === 'settings' ? (
             <div className="w-full h-full bg-[#0B0F19] text-slate-100 flex flex-col min-w-0 overflow-hidden">
               <SettingsPanel
                 isModal={false}

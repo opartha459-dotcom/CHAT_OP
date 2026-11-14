@@ -19,6 +19,9 @@ const {
   getDatabaseStatus,
   getSystemSettings,
   updateSystemSettings,
+  updateSystemTheme,
+  getLandingConfig,
+  updateLandingConfig,
   getRecoveryRequests,
   resolveRecoveryRequest,
   resolveDataItem,
@@ -36,6 +39,8 @@ const {
 } = require('../controllers/adminController');
 const { protect } = require('../middlewares/auth');
 const { requireAdmin } = require('../middlewares/adminAuth');
+const upload = require('../middlewares/upload');
+const { uploadFile } = require('../controllers/userController');
 
 router.use(protect);
 router.use(requireAdmin);
@@ -57,6 +62,10 @@ router.get('/database/status', getDatabaseStatus);
 router.post('/retention/run', runManualRetention);
 router.get('/settings', getSystemSettings);
 router.put('/settings', updateSystemSettings);
+router.put('/theme', updateSystemTheme);
+router.get('/landing', getLandingConfig);
+router.put('/landing', updateLandingConfig);
+router.post('/upload', upload.single('file'), uploadFile);
 
 // Scheduled Maintenance Management
 router.get('/maintenance', getMaintenanceSchedules);

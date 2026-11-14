@@ -257,6 +257,18 @@ app.get(
   require('./controllers/adminController').getPublicFeatureFlags
 );
 
+// Public default theme & typography.
+app.get(
+  '/api/system/theme',
+  require('./controllers/adminController').getPublicTheme
+);
+
+// Public landing page CMS configuration.
+app.get(
+  '/api/system/landing',
+  require('./controllers/adminController').getPublicLandingConfig
+);
+
 // Public maintenance status.
 app.get('/api/system/maintenance', async (req, res) => {
   try {

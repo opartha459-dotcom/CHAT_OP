@@ -1270,7 +1270,10 @@ export const Sidebar = () => {
           {/* 5. Settings */}
           <button
             type="button"
-            onClick={() => setMainTab('settings')}
+            onClick={() => {
+              setMainTab('settings');
+              setMobileSettingsOpen(false);
+            }}
             className={`flex flex-col items-center justify-center flex-1 py-1 transition-all cursor-pointer relative ${
               mainTab === 'settings'
                 ? 'text-emerald-600 dark:text-emerald-400 font-bold'

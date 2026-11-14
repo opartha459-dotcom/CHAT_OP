@@ -705,6 +705,12 @@ const updateSystemSettings = async (req, res) => {
     if (featureFlags) {
       config.featureFlags = { ...config.featureFlags, ...featureFlags };
     }
+    if (req.body.defaultTheme) {
+      config.defaultTheme = {
+        ...(config.defaultTheme ? (config.defaultTheme.toObject ? config.defaultTheme.toObject() : config.defaultTheme) : {}),
+        ...req.body.defaultTheme
+      };
+    }
     if (databaseAssignments) {
       config.databaseAssignments = { ...config.databaseAssignments, ...databaseAssignments };
     }
@@ -719,6 +725,9 @@ const updateSystemSettings = async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       io.emit('system:features_updated', config.featureFlags);
+      if (req.body.defaultTheme) {
+        io.emit('system:theme_updated', config.defaultTheme);
+      }
     }
 
     await AuditLog.create({
@@ -757,7 +766,8 @@ const getPublicFeatureFlags = async (req, res) => {
       voiceMessagesEnabled: true,
       pollsEnabled: true,
       announcementsEnabled: true,
-      e2eeEnabled: true
+      e2eeEnabled: true,
+      customAvatarUpload: true
     };
 
     return res.json({
@@ -781,8 +791,192 @@ const getPublicFeatureFlags = async (req, res) => {
         voiceMessagesEnabled: true,
         pollsEnabled: true,
         announcementsEnabled: true,
-        e2eeEnabled: true
+        e2eeEnabled: true,
+        customAvatarUpload: true
       }
+    });
+  }
+};
+
+// @desc Get public default application theme & typography
+// @route GET /api/system/theme
+const getPublicTheme = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    let config = await SystemConfig.findOne({ key: 'system_settings' }).lean();
+    if (!config) {
+      config = await SystemConfig.create({ key: 'system_settings' });
+    }
+    const DEFAULT_THEME = {
+      accentColor: 'indigo',
+      primaryColor: '#6366f1',
+      primaryHover: '#4f46e5',
+      primaryLight: 'rgba(99, 102, 241, 0.15)',
+      primaryBorder: 'rgba(99, 102, 241, 0.35)',
+      secondaryColor: '#10b981',
+      mode: 'dark',
+      fontFamily: 'Inter',
+      fontSize: 'medium',
+      fontWeightNormal: '400',
+      fontWeightHeading: '700',
+      headingLetterSpacing: '-0.02em',
+      headingTransform: 'none'
+    };
+
+    return res.json({
+      success: true,
+      defaultTheme: {
+        ...DEFAULT_THEME,
+        ...(config?.defaultTheme || {})
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching theme settings'
+    });
+  }
+};
+
+// @desc Update system default theme & typography
+// @route PUT /api/admin/theme
+const updateSystemTheme = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    const { defaultTheme } = req.body;
+
+    if (!defaultTheme || typeof defaultTheme !== 'object') {
+      return res.status(400).json({ success: false, message: 'Invalid theme configuration provided.' });
+    }
+
+    let config = await SystemConfig.findOne({ key: 'system_settings' });
+    if (!config) {
+      config = new SystemConfig({ key: 'system_settings' });
+    }
+
+    config.defaultTheme = {
+      ...(config.defaultTheme ? (config.defaultTheme.toObject ? config.defaultTheme.toObject() : config.defaultTheme) : {}),
+      ...defaultTheme
+    };
+    config.lastUpdatedBy = req.user._id;
+    await config.save();
+
+    // Broadcast theme updates to all connected clients in real-time
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('system:theme_updated', config.defaultTheme);
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'update_system_theme',
+      details: `Updated default application theme (${config.defaultTheme.primaryColor || ''}, ${config.defaultTheme.fontFamily || ''})`,
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'System default theme & typography updated successfully.',
+      defaultTheme: config.defaultTheme
+    });
+  } catch (error) {
+    console.error('[Admin Theme Update Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to update system theme.' });
+  }
+};
+
+// @desc Get public landing page configuration
+// @route GET /api/system/landing
+const getPublicLandingConfig = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    let config = await SystemConfig.findOne({ key: 'system_settings' }).lean();
+    if (!config) {
+      config = await SystemConfig.create({ key: 'system_settings' });
+    }
+
+    return res.json({
+      success: true,
+      landingPageConfig: config.landingPageConfig
+    });
+  } catch (error) {
+    console.error('[Get Landing Config Error]', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching landing page configuration'
+    });
+  }
+};
+
+// @desc Get landing page configuration for admin
+// @route GET /api/admin/landing
+const getLandingConfig = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    let config = await SystemConfig.findOne({ key: 'system_settings' }).lean();
+    if (!config) {
+      config = await SystemConfig.create({ key: 'system_settings' });
+    }
+
+    return res.json({
+      success: true,
+      landingPageConfig: config.landingPageConfig
+    });
+  } catch (error) {
+    console.error('[Get Admin Landing Config Error]', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching landing page configuration'
+    });
+  }
+};
+
+// @desc Update landing page configuration (images, text, features, sections)
+// @route PUT /api/admin/landing
+const updateLandingConfig = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    const { landingPageConfig } = req.body;
+
+    if (!landingPageConfig || typeof landingPageConfig !== 'object') {
+      return res.status(400).json({ success: false, message: 'Invalid landing page configuration provided.' });
+    }
+
+    let config = await SystemConfig.findOne({ key: 'system_settings' });
+    if (!config) {
+      config = new SystemConfig({ key: 'system_settings' });
+    }
+
+    config.landingPageConfig = {
+      ...(config.landingPageConfig ? (config.landingPageConfig.toObject ? config.landingPageConfig.toObject() : config.landingPageConfig) : {}),
+      ...landingPageConfig
+    };
+    config.lastUpdatedBy = req.user._id;
+    await config.save();
+
+    // Broadcast landing page updates to all connected clients
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('system:landing_updated', config.landingPageConfig);
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'update_landing_page',
+      details: 'Updated landing page CMS configuration (text, images, features)',
+      ipAddress: req.ip
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'Landing page configuration updated successfully.',
+      landingPageConfig: config.landingPageConfig
+    });
+  } catch (error) {
+    console.error('[Update Landing Config Error]', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error updating landing page configuration'
     });
   }
 };
@@ -1537,6 +1731,11 @@ module.exports = {
   getAuditLogs,
   deleteAuditLogs,
   getPublicFeatureFlags,
+  getPublicTheme,
+  updateSystemTheme,
+  getPublicLandingConfig,
+  getLandingConfig,
+  updateLandingConfig,
   getAllChats,
   getChatMessages,
   deleteChat,

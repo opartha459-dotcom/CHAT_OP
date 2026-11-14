@@ -148,9 +148,9 @@ const JoinGroupHandler = () => {
 export default function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <AuthProvider>
-          <SocketProvider>
+      <AuthProvider>
+        <SocketProvider>
+          <ThemeProvider>
             <FeatureFlagsProvider>
               <MaintenanceProvider>
                 <ChatProvider>
@@ -249,9 +249,9 @@ export default function App() {
               </ChatProvider>
             </MaintenanceProvider>
           </FeatureFlagsProvider>
+          </ThemeProvider>
         </SocketProvider>
       </AuthProvider>
-      </ThemeProvider>
     </ErrorBoundary>
   );
 }

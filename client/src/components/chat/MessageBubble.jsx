@@ -31,7 +31,8 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Share2,
-  Pin
+  Pin,
+  ImageOff
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -509,27 +510,34 @@ export const MessageBubble = ({ message, isGroup = false }) => {
                         {!imgBroken ? (
                           <img
                             src={message.fileUrl}
-                            alt="Shared media"
+                            alt=""
                             onClick={() => setLightboxOpen(true)}
                             className="max-h-60 rounded-xl object-cover cursor-pointer hover:opacity-95 transition"
-                            onError={() => setImgBroken(true)}
+                            onError={(e) => {
+                              try {
+                                e.currentTarget.style.display = 'none';
+                              } catch {}
+                              setImgBroken(true);
+                            }}
                           />
                         ) : (
-                          <a
-                            href={message.fileUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={`flex items-center space-x-2 p-2.5 rounded-xl transition ${
+                          <div
+                            className={`flex items-center space-x-2.5 p-2.5 rounded-xl border transition ${
                               isMe
-                                ? 'bg-indigo-700/80 hover:bg-indigo-700 text-white'
-                                : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-800 dark:text-white'
+                                ? 'bg-indigo-700/60 border-indigo-500/40 text-white'
+                                : 'bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white'
                             }`}
                           >
-                            <File className="w-5 h-5 flex-shrink-0" />
-                            <span className="text-xs font-medium truncate">{message.fileName || 'Image'}</span>
-                          </a>
+                            <div className="p-2 rounded-lg bg-black/20 flex-shrink-0">
+                              <ImageOff className="w-4 h-4 opacity-80" />
+                            </div>
+                            <div className="text-left overflow-hidden min-w-0 flex-1">
+                              <div className="font-semibold text-xs truncate">{message.fileName || 'Image'}</div>
+                              <div className="text-[10px] opacity-75">Photo unavailable or expired</div>
+                            </div>
+                          </div>
                         )}
-                        {lightboxOpen && (
+                        {lightboxOpen && !imgBroken && (
                           <div
                             onClick={() => setLightboxOpen(false)}
                             className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm cursor-zoom-out"

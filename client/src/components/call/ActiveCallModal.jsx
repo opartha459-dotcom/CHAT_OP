@@ -39,7 +39,8 @@ const VideoTile = ({
   isScreenSharing,
   isHandRaised = false,
   isSpotlight = false,
-  onSelectSpotlight
+  onSelectSpotlight,
+  onToggleVideo
 }) => {
   const videoRef = useRef(null);
 
@@ -129,6 +130,18 @@ const VideoTile = ({
             />
           </div>
           <span className="text-xs font-semibold text-slate-300">{displayName}</span>
+          {isLocal && onToggleVideo && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleVideo();
+              }}
+              className="mt-1 px-3 py-1.5 bg-indigo-600/90 hover:bg-indigo-600 text-white text-xs font-medium rounded-xl flex items-center space-x-1.5 shadow-lg border border-indigo-500/40 transition active:scale-95 cursor-pointer"
+            >
+              <Video className="w-3.5 h-3.5 text-indigo-200" />
+              <span>Switch to Video</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -302,6 +315,9 @@ export const ActiveCallModal = () => {
                 <ShieldCheck className="w-3 h-3" />
                 <span>P2P Encrypted</span>
               </span>
+              <span className="px-2 py-0.5 bg-slate-800/90 text-slate-300 border border-slate-700/60 text-[10px] font-medium rounded-md">
+                {currentCall?.callType === 'audio' ? 'Voice Call' : 'Video Call'}
+              </span>
             </div>
 
             {spotlightId && (
@@ -392,6 +408,7 @@ export const ActiveCallModal = () => {
                     isHandRaised={isHandRaised}
                     isSpotlight={true}
                     onSelectSpotlight={() => setSpotlightId(null)}
+                    onToggleVideo={toggleVideo}
                   />
                 ) : spotlightPeer ? (
                   <VideoTile
@@ -423,6 +440,7 @@ export const ActiveCallModal = () => {
                       isHandRaised={isHandRaised}
                       isSpotlight={false}
                       onSelectSpotlight={() => setSpotlightId('local')}
+                      onToggleVideo={toggleVideo}
                     />
                   </div>
                 )}
@@ -461,6 +479,7 @@ export const ActiveCallModal = () => {
                 isHandRaised={isHandRaised}
                 isSpotlight={false}
                 onSelectSpotlight={() => setSpotlightId('local')}
+                onToggleVideo={toggleVideo}
               />
 
               {/* Remote Participants */}

@@ -1,12 +1,19 @@
 import React from 'react';
 import { Phone, PhoneOff, Video } from 'lucide-react';
 import { useCall } from '../../context/CallContext';
+import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../common/Avatar';
 
 export const IncomingCallModal = () => {
   const { callState, currentCall, acceptCall, rejectCall } = useCall();
+  const { user } = useAuth();
 
   if (callState !== 'incoming' || !currentCall) return null;
+
+  // Guard: Never display incoming modal to the caller themselves
+  const myId = user?._id?.toString();
+  const callerId = (currentCall.caller?._id || currentCall.callerId || '')?.toString();
+  if (callerId && myId && callerId === myId) return null;
 
   const isVideo = currentCall.callType === 'video';
   const isGroup = currentCall.isGroup;

@@ -430,7 +430,7 @@ const setupSockets = (io) => {
             sentAt: latest.sentAt || latest.createdAt
           });
         }
-      } catch (e) {}
+      } catch (e) { }
     };
 
     socket.on('admin:join', async (payload = {}) => {
@@ -447,7 +447,7 @@ const setupSockets = (io) => {
         } else if (socket.user && socket.user.role === 'admin') {
           socket.join('admin:room');
         }
-      } catch (e) {}
+      } catch (e) { }
     });
 
     if (socket.isGuest) {
@@ -516,8 +516,8 @@ const setupSockets = (io) => {
         const { getCurrentMaintenanceState } = require('../jobs/maintenanceScheduler');
         getCurrentMaintenanceState().then((maintState) => {
           socket.emit('maintenance:updated', maintState);
-        }).catch(() => {});
-      } catch (e) {}
+        }).catch(() => { });
+      } catch (e) { }
 
       // Join only conversations the user is allowed to access.
       const conversations = await Conversation.find({
@@ -818,11 +818,18 @@ const setupSockets = (io) => {
 
         const targetUserId = isGroup
           ? null
-          : participants.find((id) => id !== userId);
+          : (payload.targetUserId || participants.find((id) => id !== userId));
 
         if (!isGroup && !targetUserId) {
           socket.emit('call:error', {
             message: 'Invalid private call recipient.'
+          });
+          return;
+        }
+
+        if (!isGroup && targetUserId === userId) {
+          socket.emit('call:error', {
+            message: 'You cannot call yourself.'
           });
           return;
         }
@@ -900,15 +907,19 @@ const setupSockets = (io) => {
 
         const recipients = isGroup
           ? participants.filter((id) => id !== userId)
-          : [targetUserId];
+          : (targetUserId && targetUserId !== userId ? [targetUserId] : []);
 
         recipients.forEach((recipientId) => {
           call.invitedUsers.add(recipientId);
 
-          io.to(`user:${recipientId}`).emit(
-            'call:incoming',
-            incomingPayload
-          );
+          const isRecipientOnline = onlineUsers.has(recipientId) && onlineUsers.get(recipientId).size > 0;
+
+          if (isRecipientOnline) {
+            io.to(`user:${recipientId}`).emit(
+              'call:incoming',
+              incomingPayload
+            );
+          }
 
           notifyCallPush(recipientId, {
             callId,
@@ -1099,12 +1110,17 @@ const setupSockets = (io) => {
         callId,
         isVideoOff,
         isMuted,
-        isScreenSharing
+        isScreenSharing,
+        callType
       } = payload;
 
       const call = activeCalls.get(callId);
 
       if (!call || !call.participants.has(socket.id)) return;
+
+      if (callType && (callType === 'video' || callType === 'audio')) {
+        call.callType = callType;
+      }
 
       socket.to(`call:${callId}`).emit(
         'call:peer-media-toggled',
@@ -1113,7 +1129,8 @@ const setupSockets = (io) => {
           userId,
           isVideoOff: Boolean(isVideoOff),
           isMuted: Boolean(isMuted),
-          isScreenSharing: Boolean(isScreenSharing)
+          isScreenSharing: Boolean(isScreenSharing),
+          callType: call.callType
         }
       );
     });
