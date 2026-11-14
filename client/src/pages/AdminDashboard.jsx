@@ -41,6 +41,7 @@ import {
   Square,
   CheckSquare,
   X,
+  Menu,
   RotateCcw,
   Clock,
   Hourglass,
@@ -74,6 +75,8 @@ import { LandingCmsTab } from '../components/admin/LandingCmsTab';
 import { GenerateCodeModal } from '../components/admin/GenerateCodeModal';
 import { OfficialContactSettingsCard } from '../components/admin/OfficialContactSettingsCard';
 import { StorageManagementTab } from '../components/admin/StorageManagementTab';
+import { AdminAnalyticsCharts } from '../components/admin/AdminAnalyticsCharts';
+import { ChatsManagementTab } from '../components/admin/ChatsManagementTab';
 
 export const AdminDashboard = () => {
   const auth = useAuth();
@@ -95,6 +98,7 @@ export const AdminDashboard = () => {
   };
 
   const [activeTab, setActiveTab] = useState('overview');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -1498,35 +1502,40 @@ export const AdminDashboard = () => {
     <>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans">
       {/* Top Navigation Bar */}
-      <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
-        <div className="flex items-center space-x-3">
+      <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30">
+        <div className="flex items-center space-x-2.5 min-w-0">
           <button
             onClick={() => navigate('/chat')}
-            className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
             title="Back to Chat"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
+          <div className="flex items-center space-x-2 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white shadow-md shrink-0">
               <ShieldAlert className="w-4 h-4" />
             </div>
-            <div>
-              <h1 className="text-base font-bold tracking-tight text-slate-900 dark:text-white flex items-center space-x-2">
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white flex items-center space-x-1.5 truncate">
                 <span>PulseChat Admin</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 font-semibold border border-rose-200 dark:border-rose-800">
-                  Root RBAC
+                <span className="hidden sm:inline px-1.5 py-0.2 rounded-full text-[9px] font-mono bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 font-semibold border border-rose-200 dark:border-rose-800">
+                  RBAC
                 </span>
               </h1>
+              {/* Active Screen Subtitle on Phone */}
+              <div className="md:hidden text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 truncate flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block shrink-0" />
+                <span className="capitalize">{navItems.find((n) => n.id === activeTab)?.label || activeTab}</span>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2 shrink-0">
           <button
             onClick={loadDashboard}
             disabled={refreshing}
-            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer"
+            className="p-2 sm:px-3 sm:py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer"
             title="Refresh Live Data"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-indigo-500' : ''}`} />
@@ -1540,10 +1549,22 @@ export const AdminDashboard = () => {
             </div>
           )}
 
-          <div className="flex items-center space-x-2 pl-2 border-l border-slate-200 dark:border-slate-800">
+          {/* Mobile Hamburger Drawer Button */}
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            className="md:hidden p-2 text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer relative"
+            aria-label="Open Admin Menu"
+          >
+            <Menu className="w-5 h-5" />
+            {(verificationCodes.some((c) => c.status === 'pending') || recoveries.some((r) => r.status === 'pending')) && (
+              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full ring-2 ring-white dark:ring-slate-900 animate-pulse" />
+            )}
+          </button>
+
+          <div className="hidden md:flex items-center space-x-2 pl-2 border-l border-slate-200 dark:border-slate-800">
             <Avatar src={user?.avatar} name={user?.username} size="sm" />
-            <div className="hidden md:block text-left text-xs">
-              <div className="font-semibold text-slate-800 dark:text-white">{user?.username}</div>
+            <div className="text-left text-xs">
+              <div className="font-semibold text-slate-800 dark:text-white truncate max-w-[100px]">{user?.username}</div>
               <div className="text-[10px] text-slate-400 uppercase font-mono">Administrator</div>
             </div>
           </div>
@@ -1563,13 +1584,17 @@ export const AdminDashboard = () => {
                 <div className="space-y-0.5">
                   {section.items.map((item) => {
                     const Icon = item.icon;
-                    const isActive = activeTab === item.id;
+                    const isActive = activeTab === item.id || (item.id === 'groups' && activeTab === 'chats');
                     const pendingBadge =
                       item.id === 'codes'
                         ? verificationCodes.filter((c) => c.status === 'pending').length
                         : item.id === 'recoveries'
                         ? recoveries.filter((r) => r.status === 'pending' || r.status === 'partial').length
+                        : item.id === 'groups' && allChats.length > 0
+                        ? allChats.length
                         : 0;
+
+                    const isAlertBadge = item.id === 'codes' || item.id === 'recoveries';
 
                     return (
                       <button
@@ -1577,16 +1602,22 @@ export const AdminDashboard = () => {
                         onClick={() => setActiveTab(item.id)}
                         className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
                           isActive
-                            ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 shadow-xs'
+                            ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 shadow-xs ring-1 ring-indigo-500/30'
                             : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
                         }`}
                       >
                         <div className="flex items-center space-x-3 min-w-0">
-                          <Icon className="w-4 h-4 shrink-0" />
+                          <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
                           <span className="truncate">{item.label}</span>
                         </div>
                         {pendingBadge > 0 && (
-                          <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/30 font-mono shrink-0">
+                          <span
+                            className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full font-mono shrink-0 ${
+                              isAlertBadge
+                                ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30'
+                                : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
                             {pendingBadge}
                           </span>
                         )}
@@ -1617,33 +1648,45 @@ export const AdminDashboard = () => {
         </aside>
 
         {/* Content Area */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 overflow-y-auto pb-28 md:pb-8">
           {/* Mobile Tab Scroller */}
-          <div className="md:hidden flex items-center space-x-2 overflow-x-auto pb-3 mb-4 scrollbar-none">
+          <div className="md:hidden flex items-center space-x-2 overflow-x-auto pb-2.5 mb-3 scrollbar-none">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = activeTab === item.id;
+              const isActive = activeTab === item.id || (item.id === 'groups' && activeTab === 'chats');
               const pendingBadge =
                 item.id === 'codes'
                   ? verificationCodes.filter((c) => c.status === 'pending').length
                   : item.id === 'recoveries'
                   ? recoveries.filter((r) => r.status === 'pending' || r.status === 'partial').length
+                  : item.id === 'groups' && allChats.length > 0
+                  ? allChats.length
                   : 0;
+
+              const isAlertBadge = item.id === 'codes' || item.id === 'recoveries';
 
               return (
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center space-x-1.5 transition ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center space-x-1.5 transition shrink-0 ${
                     isActive
-                      ? 'bg-indigo-600 text-white'
+                      ? 'bg-indigo-600 text-white shadow-xs'
                       : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                   }`}
                 >
-                  <Icon className="w-3.5 h-3.5" />
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
                   <span>{item.label}</span>
                   {pendingBadge > 0 && (
-                    <span className="ml-1 text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-500 text-white font-mono">
+                    <span
+                      className={`ml-1 text-[9px] font-bold px-1.5 py-0.2 rounded-full font-mono ${
+                        isAlertBadge
+                          ? 'bg-amber-500 text-white'
+                          : isActive
+                          ? 'bg-white/20 text-white'
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
                       {pendingBadge}
                     </span>
                   )}
@@ -1655,39 +1698,37 @@ export const AdminDashboard = () => {
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-6 max-w-6xl">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">System Overview</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Real-time operational metrics, quick actions, and active records
-                </p>
-              </div>
-
-              {/* Quick Action Broadcast Banner */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-200 dark:border-indigo-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-                    <Sparkles className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">Broadcast Announcement or Poll</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Publish announcements with custom gradient themes, typography, and interactive voting.
-                    </p>
-                  </div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Admin Operations & Analytics</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Live operational metrics, throughput trends, and real-time platform telemetry
+                  </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setAnnouncementModalOpen(true);
-                    setModalTab('content');
-                  }}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs flex items-center space-x-1.5 transition cursor-pointer shadow-sm shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>New Announcement</span>
-                </button>
+                <div className="flex items-center space-x-2 shrink-0">
+                  <button
+                    onClick={loadDashboard}
+                    disabled={refreshing}
+                    className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer shadow-xs"
+                    title="Refresh all metrics"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-indigo-500' : ''}`} />
+                    <span>{refreshing ? 'Syncing...' : 'Live Refresh'}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAnnouncementModalOpen(true);
+                      setModalTab('content');
+                    }}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs flex items-center space-x-1.5 transition cursor-pointer shadow-xs"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Broadcast</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Stats Cards Grid */}
+              {/* KPI Summary Tiles */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                 <div
                   onClick={() => setActiveTab('users')}
@@ -1707,36 +1748,39 @@ export const AdminDashboard = () => {
 
                 <div
                   onClick={() => setActiveTab('groups')}
-                  className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs cursor-pointer hover:border-sky-500/50 transition group"
+                  className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs cursor-pointer hover:border-purple-500/50 transition group"
                 >
                   <div className="flex items-center justify-between text-slate-400 mb-2">
-                    <span className="text-xs font-medium">Groups</span>
-                    <Layers className="w-4 h-4 text-sky-500 group-hover:scale-110 transition" />
+                    <span className="text-xs font-medium">Channels & Chats</span>
+                    <MessageSquare className="w-4 h-4 text-purple-500 group-hover:scale-110 transition" />
                   </div>
                   <div className="text-2xl font-bold text-slate-900 dark:text-white font-mono">
-                    {stats?.totalGroups !== undefined ? stats.totalGroups : (groups.length || 0)}
+                    {allChats.length || stats?.totalGroups || 0}
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-1">Encrypted Channels</div>
+                  <div className="text-[11px] text-slate-400 mt-1">Active communities</div>
                 </div>
 
-                <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs">
+                <div
+                  onClick={() => setActiveTab('codes')}
+                  className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs cursor-pointer hover:border-amber-500/50 transition group"
+                >
                   <div className="flex items-center justify-between text-slate-400 mb-2">
-                    <span className="text-xs font-medium">Direct Chats</span>
-                    <MessageSquare className="w-4 h-4 text-emerald-500" />
+                    <span className="text-xs font-medium">Pending Verifications</span>
+                    <KeyRound className="w-4 h-4 text-amber-500 group-hover:scale-110 transition" />
                   </div>
                   <div className="text-2xl font-bold text-slate-900 dark:text-white font-mono">
-                    {stats?.totalDirectChats || 0}
+                    {verificationCodes.filter((c) => c.status === 'pending').length}
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-1">1-on-1 Sessions</div>
+                  <div className="text-[11px] text-amber-500 font-medium mt-1">Awaiting code dispatch</div>
                 </div>
 
                 <div
                   onClick={() => setActiveTab('announcements')}
-                  className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs cursor-pointer hover:border-amber-500/50 transition group"
+                  className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs cursor-pointer hover:border-sky-500/50 transition group"
                 >
                   <div className="flex items-center justify-between text-slate-400 mb-2">
                     <span className="text-xs font-medium">Announcements</span>
-                    <Bell className="w-4 h-4 text-amber-500 group-hover:scale-110 transition" />
+                    <Bell className="w-4 h-4 text-sky-500 group-hover:scale-110 transition" />
                   </div>
                   <div className="text-2xl font-bold text-slate-900 dark:text-white font-mono">
                     {announcements.length}
@@ -1744,10 +1788,13 @@ export const AdminDashboard = () => {
                   <div className="text-[11px] text-slate-400 mt-1">Broadcasts & Polls</div>
                 </div>
 
-                <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs">
+                <div
+                  onClick={() => setActiveTab('groups')}
+                  className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs cursor-pointer hover:border-emerald-500/50 transition group"
+                >
                   <div className="flex items-center justify-between text-slate-400 mb-2">
                     <span className="text-xs font-medium">Messages Sent</span>
-                    <TrendingUp className="w-4 h-4 text-purple-500" />
+                    <TrendingUp className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition" />
                   </div>
                   <div className="text-2xl font-bold text-slate-900 dark:text-white font-mono">
                     {stats?.totalMessages || 0}
@@ -1756,8 +1803,16 @@ export const AdminDashboard = () => {
                 </div>
               </div>
 
-              {/* Quick Actions & Navigation Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              {/* Visual Analytics Charts (Activity trend, chat distribution donut, health metrics) */}
+              <AdminAnalyticsCharts
+                stats={stats}
+                allChats={allChats}
+                users={users}
+                setActiveTab={setActiveTab}
+              />
+
+              {/* Quick Navigation Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
                 <div
                   onClick={() => setActiveTab('users')}
                   className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs hover:border-indigo-500/50 transition cursor-pointer group"
@@ -1770,39 +1825,39 @@ export const AdminDashboard = () => {
                   </div>
                   <h3 className="font-bold text-sm text-slate-900 dark:text-white mt-4">User Management</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Inspect accounts, toggle moderation bans, and adjust access roles.
+                    Inspect accounts, manage roles, and review account security.
                   </p>
                 </div>
 
                 <div
-                  onClick={() => setActiveTab('announcements')}
-                  className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs hover:border-indigo-500/50 transition cursor-pointer group"
+                  onClick={() => setActiveTab('groups')}
+                  className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs hover:border-purple-500/50 transition cursor-pointer group"
                 >
                   <div className="flex items-center justify-between">
                     <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-950 dark:text-purple-400 flex items-center justify-center">
-                      <Bell className="w-5 h-5" />
+                      <MessageSquare className="w-5 h-5" />
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition" />
                   </div>
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white mt-4">Announcements</h3>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white mt-4">Chats & Messaging</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Publish real-time news alerts, release notes, and community polls.
+                    Inspect conversation threads, search channels, and moderate messages.
                   </p>
                 </div>
 
                 <div
-                  onClick={() => setActiveTab('databases')}
-                  className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs hover:border-indigo-500/50 transition cursor-pointer group"
+                  onClick={() => setActiveTab('storage')}
+                  className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs hover:border-cyan-500/50 transition cursor-pointer group"
                 >
                   <div className="flex items-center justify-between">
                     <div className="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-600 dark:bg-cyan-950 dark:text-cyan-400 flex items-center justify-center">
-                      <HardDrive className="w-5 h-5" />
+                      <Database className="w-5 h-5" />
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition" />
                   </div>
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white mt-4">Database Health</h3>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white mt-4">Storage Management</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Inspect MongoDB connections, category allocations, and query latency.
+                    Monitor MongoDB collection storage, purge logs, and optimize database quota.
                   </p>
                 </div>
               </div>
@@ -1960,14 +2015,14 @@ export const AdminDashboard = () => {
                           </select>
 
                           {/* Date Range Filter */}
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
                             <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <input
                               type="date"
                               value={codeDateFrom}
                               onChange={(e) => setCodeDateFrom(e.target.value)}
                               title="From date"
-                              className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer font-medium"
+                              className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer font-medium max-w-[135px] sm:max-w-none"
                             />
                             <span className="text-slate-400 text-xs">–</span>
                             <input
@@ -1976,7 +2031,7 @@ export const AdminDashboard = () => {
                               min={codeDateFrom || undefined}
                               onChange={(e) => setCodeDateTo(e.target.value)}
                               title="To date"
-                              className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer font-medium"
+                              className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer font-medium max-w-[135px] sm:max-w-none"
                             />
                           </div>
 
@@ -2308,7 +2363,7 @@ export const AdminDashboard = () => {
                 renderItem={(u, mode) => (
                   <div
                     className={`p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs min-w-0 overflow-hidden ${
-                      mode === 'grid' ? 'flex flex-col justify-between h-full space-y-3' : 'flex items-center justify-between'
+                      mode === 'grid' ? 'flex flex-col justify-between h-full space-y-3' : 'flex flex-col sm:flex-row sm:items-center justify-between gap-3'
                     }`}
                   >
                     <div className="flex items-center space-x-3 min-w-0 overflow-hidden">
@@ -2339,11 +2394,11 @@ export const AdminDashboard = () => {
                       </div>
                     </div>
 
-                    <div className={`flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 ${mode === 'grid' ? 'flex-wrap' : 'flex-nowrap shrink-0'}`}>
+                    <div className="flex items-center gap-1.5 flex-wrap shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800/80">
                       {u._id !== user?._id && (
                         <button
                           onClick={() => handleStartDirectChat(u._id)}
-                          className="px-2 py-1 text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition cursor-pointer flex items-center space-x-1 shrink-0"
+                          className="px-2.5 py-1.5 text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition cursor-pointer flex items-center space-x-1 shrink-0"
                           title="Open direct chat with this user"
                         >
                           <MessageSquare className="w-3 h-3" />
@@ -2353,7 +2408,7 @@ export const AdminDashboard = () => {
 
                       <button
                         onClick={() => handleOpenEditUser(u)}
-                        className="px-2 py-1 text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition cursor-pointer flex items-center space-x-1 shrink-0"
+                        className="px-2.5 py-1.5 text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition cursor-pointer flex items-center space-x-1 shrink-0"
                         title="Edit user profile"
                       >
                         <Pencil className="w-3 h-3" />
@@ -2362,7 +2417,7 @@ export const AdminDashboard = () => {
 
                       <button
                         onClick={() => handleRoleToggle(u)}
-                        className="px-2 py-1 text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer shrink-0"
+                        className="px-2.5 py-1.5 text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer shrink-0"
                         title="Toggle admin / user role"
                       >
                         {u.role === 'admin' ? 'Demote' : 'Make Admin'}
@@ -2370,7 +2425,7 @@ export const AdminDashboard = () => {
 
                       <button
                         onClick={() => handleBanToggle(u)}
-                        className={`px-2 py-1 text-[11px] font-semibold rounded-xl transition cursor-pointer shrink-0 ${
+                        className={`px-2.5 py-1.5 text-[11px] font-semibold rounded-xl transition cursor-pointer shrink-0 ${
                           u.isBanned
                             ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400 hover:bg-emerald-100'
                             : 'bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-400 hover:bg-rose-100'
@@ -2383,7 +2438,7 @@ export const AdminDashboard = () => {
                       {u.role !== 'admin' && (
                         <button
                           onClick={() => { setDeleteUserModal({ user: u }); setDeleteReason(''); }}
-                          className="px-2 py-1 text-[11px] font-semibold bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900 rounded-xl transition cursor-pointer shrink-0"
+                          className="px-2.5 py-1.5 text-[11px] font-semibold bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900 rounded-xl transition cursor-pointer shrink-0"
                           title="Permanently delete user"
                         >
                           Delete
@@ -2396,160 +2451,16 @@ export const AdminDashboard = () => {
             </div>
           )}
 
-          {/* TAB 3: CHATS & GROUPS */}
-          {activeTab === 'groups' && (
-            <div className="max-w-6xl space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center space-x-2">
-                    <MessageSquare className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                    <span>Chat Channels & Direct Messages</span>
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Monitor live conversations, inspect full message threads, and moderate abusive content
-                  </p>
-                </div>
-
-                <div className="flex items-center space-x-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-semibold">
-                  <button
-                    onClick={() => setChatTypeFilter('all')}
-                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                      chatTypeFilter === 'all'
-                        ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                    }`}
-                  >
-                    All ({allChats.length})
-                  </button>
-                  <button
-                    onClick={() => setChatTypeFilter('group')}
-                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                      chatTypeFilter === 'group'
-                        ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                    }`}
-                  >
-                    Groups ({allChats.filter((c) => c.type === 'group').length})
-                  </button>
-                  <button
-                    onClick={() => setChatTypeFilter('private')}
-                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                      chatTypeFilter === 'private'
-                        ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                    }`}
-                  >
-                    Direct ({allChats.filter((c) => c.type === 'private').length})
-                  </button>
-                </div>
-              </div>
-
-              <GridListView
-                title=""
-                items={allChats.filter((c) => chatTypeFilter === 'all' || c.type === chatTypeFilter)}
-                loading={loading}
-                initialView="grid"
-                storageKey="admin_all_chats"
-                searchKeys={['groupDetails.name', 'groupDetails.description', 'participants.username', 'participants.nickname']}
-                searchPlaceholder="Search conversations by name or participant..."
-                dateKey="createdAt"
-                renderItem={(c, mode) => {
-                  const isGroup = c.type === 'group';
-                  const title = isGroup
-                    ? c.groupDetails?.name || 'Group Channel'
-                    : c.participants?.map((p) => `@${p.username}`).join(' ↔ ') || 'Direct Chat';
-                  const desc = isGroup
-                    ? c.groupDetails?.description || 'Active group channel'
-                    : `1-on-1 private encrypted chat (${c.participants?.length || 2} members)`;
-
-                  return (
-                    <div
-                      className={`p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs transition hover:border-indigo-500/40 hover:shadow-md min-w-0 overflow-hidden ${
-                        mode === 'grid' ? 'flex flex-col justify-between h-full min-h-[220px]' : 'flex items-center justify-between'
-                      }`}
-                    >
-                      <div className={`space-y-3 ${mode === 'grid' ? 'w-full' : 'flex items-start space-x-3 min-w-0 flex-1 pr-4'}`}>
-                        <div className="flex items-start space-x-3 min-w-0">
-                          <div
-                            className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 shadow-xs ${
-                              isGroup
-                                ? 'bg-purple-100 text-purple-600 dark:bg-purple-950/80 dark:text-purple-400 border border-purple-200 dark:border-purple-800/50'
-                                : 'bg-cyan-100 text-cyan-600 dark:bg-cyan-950/80 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-800/50'
-                            }`}
-                          >
-                            {isGroup ? <Layers className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
-                          </div>
-
-                          <div className="min-w-0 flex-1 overflow-hidden">
-                            <div className="flex items-center justify-between gap-1.5 min-w-0">
-                              <h4 className="font-bold text-xs text-slate-900 dark:text-white truncate" title={title}>
-                                {title}
-                              </h4>
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase shrink-0 ${
-                                  isGroup
-                                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
-                                    : 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300'
-                                }`}
-                              >
-                                {c.type}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">
-                              {desc}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Badges / Stats */}
-                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-mono pt-1">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800">
-                            👥 {c.participants?.length || 0} members
-                          </span>
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800">
-                            💬 {c.messageCount || 0} msgs
-                          </span>
-                          {c.createdAt && (
-                            <span className="text-slate-400">
-                              {new Date(c.createdAt).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Action buttons */}
-                      <div className={`pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-2 ${mode === 'grid' ? 'w-full mt-3' : 'shrink-0'}`}>
-                        <button
-                          onClick={() => handleOpenInChat(c)}
-                          className="flex-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 transition cursor-pointer"
-                          title="Open and navigate directly to this conversation in Chat"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5 text-indigo-500" />
-                          <span>Chat</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleInspectChat(c)}
-                          className="flex-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-1.5 transition cursor-pointer shadow-xs"
-                          title="Inspect conversation messages"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>Inspect</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleDeleteEntireChat(c._id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/50 transition cursor-pointer"
-                          title="Delete conversation"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }}
-              />
-            </div>
+          {/* TAB 3: CHATS & MESSAGING */}
+          {(activeTab === 'groups' || activeTab === 'chats') && (
+            <ChatsManagementTab
+              allChats={allChats}
+              loading={loading}
+              loadAllChats={loadGroups}
+              authHeaders={authHeaders}
+              navigate={navigate}
+              showFeedback={showMsg}
+            />
           )}
 
           {/* TAB 4: ANNOUNCEMENTS */}
@@ -4334,7 +4245,7 @@ export const AdminDashboard = () => {
       {/* CREATE ANNOUNCEMENT MODAL WITH DESIGN & POLL SUITE */}
       {announcementModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-4 max-h-[92vh] flex flex-col">
+          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-4 sm:p-6 space-y-4 max-h-[92vh] flex flex-col">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center space-x-2">
@@ -4768,7 +4679,7 @@ export const AdminDashboard = () => {
       {/* EDIT USER PROFILE MODAL */}
       {userModalOpen && editingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-4">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-4 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center space-x-3">
                 <Avatar src={editingUser.avatar} name={editingUser.username} size="md" />
@@ -5128,7 +5039,7 @@ export const AdminDashboard = () => {
       {/* ── Resolve Recovery Modal ─────────────────────────────────────────── */}
       {resolveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 {resolveModal.action === 'approve'
@@ -5216,7 +5127,7 @@ export const AdminDashboard = () => {
       {/* ── Delete User Modal ────────────────────────────────────────────────── */}
       {deleteUserModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-          <div className="w-full max-w-md bg-slate-900 border border-red-800/50 rounded-3xl p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-md bg-slate-900 border border-red-800/50 rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Trash2 className="w-5 h-5 text-red-400" />
@@ -5272,7 +5183,7 @@ export const AdminDashboard = () => {
       {/* ── Scheduled Maintenance Modal ─────────────────────────────────────── */}
       {maintenanceModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-4 max-h-[92vh] overflow-y-auto">
+          <div className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-4 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center space-x-2">
                 <Wrench className="w-5 h-5 text-indigo-500" />
@@ -5513,6 +5424,191 @@ export const AdminDashboard = () => {
           loadVerificationCodes();
         }}
       />
+
+      {/* ── MOBILE BOTTOM NAVIGATION BAR (Phones only) ────────────────────── */}
+      <nav
+        aria-label="Mobile Admin Navigation"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 px-2 py-1 flex items-center justify-around shadow-2xl safe-area-bottom"
+      >
+        {/* Overview */}
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={`flex-1 py-1.5 px-1 flex flex-col items-center justify-center transition-all cursor-pointer ${
+            activeTab === 'overview'
+              ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+              : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+          }`}
+        >
+          <TrendingUp className={`w-5 h-5 ${activeTab === 'overview' ? 'scale-110 text-indigo-600 dark:text-indigo-400' : ''}`} />
+          <span className="text-[10px] mt-1 tracking-tight">Overview</span>
+        </button>
+
+        {/* Chats & Messaging */}
+        <button
+          onClick={() => setActiveTab('groups')}
+          className={`flex-1 py-1.5 px-1 flex flex-col items-center justify-center transition-all cursor-pointer relative ${
+            activeTab === 'groups' || activeTab === 'chats'
+              ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+              : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+          }`}
+        >
+          <MessageSquare className={`w-5 h-5 ${activeTab === 'groups' || activeTab === 'chats' ? 'scale-110 text-indigo-600 dark:text-indigo-400' : ''}`} />
+          <span className="text-[10px] mt-1 tracking-tight">Chats</span>
+          {allChats.length > 0 && (
+            <span className="absolute top-1 right-2 px-1 py-0.2 rounded-full text-[8px] font-mono font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              {allChats.length}
+            </span>
+          )}
+        </button>
+
+        {/* Users */}
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`flex-1 py-1.5 px-1 flex flex-col items-center justify-center transition-all cursor-pointer ${
+            activeTab === 'users'
+              ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+              : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+          }`}
+        >
+          <Users className={`w-5 h-5 ${activeTab === 'users' ? 'scale-110 text-indigo-600 dark:text-indigo-400' : ''}`} />
+          <span className="text-[10px] mt-1 tracking-tight">Users</span>
+        </button>
+
+        {/* Verification Codes */}
+        <button
+          onClick={() => setActiveTab('codes')}
+          className={`flex-1 py-1.5 px-1 flex flex-col items-center justify-center transition-all cursor-pointer relative ${
+            activeTab === 'codes'
+              ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+              : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+          }`}
+        >
+          <KeyRound className={`w-5 h-5 ${activeTab === 'codes' ? 'scale-110 text-indigo-600 dark:text-indigo-400' : ''}`} />
+          <span className="text-[10px] mt-1 tracking-tight">Codes</span>
+          {verificationCodes.filter((c) => c.status === 'pending').length > 0 && (
+            <span className="absolute top-1 right-2 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold bg-amber-500 text-white animate-pulse">
+              {verificationCodes.filter((c) => c.status === 'pending').length}
+            </span>
+          )}
+        </button>
+
+        {/* More Menu (Opens Drawer) */}
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          className="flex-1 py-1.5 px-1 flex flex-col items-center justify-center text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-all cursor-pointer relative"
+        >
+          <Menu className="w-5 h-5" />
+          <span className="text-[10px] mt-1 tracking-tight">More</span>
+          {recoveries.filter((r) => r.status === 'pending' || r.status === 'partial').length > 0 && (
+            <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-500" />
+          )}
+        </button>
+      </nav>
+
+      {/* ── MOBILE SLIDE-OVER DRAWER MENU ─────────────────────────────────── */}
+      {mobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex animate-fadeIn">
+          {/* Backdrop */}
+          <div
+            onClick={() => setMobileMenuOpen(false)}
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+          />
+
+          {/* Drawer Sheet */}
+          <div className="relative w-4/5 max-w-xs bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col justify-between z-10 border-r border-slate-200 dark:border-slate-800 animate-slideRight">
+            <div>
+              {/* Drawer Header */}
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950/40">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white shadow-xs shrink-0">
+                    <ShieldAlert className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-xs text-slate-900 dark:text-white truncate">Admin Control Center</h3>
+                    <p className="text-[10px] text-slate-400 truncate">All Modules & Settings</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Categorized Navigation in Drawer */}
+              <div className="p-3 overflow-y-auto max-h-[calc(100vh-140px)] space-y-4">
+                {navSections.map((section) => (
+                  <div key={section.label}>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 px-2.5 mb-1">
+                      {section.label}
+                    </p>
+                    <div className="space-y-0.5">
+                      {section.items.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = activeTab === item.id || (item.id === 'groups' && activeTab === 'chats');
+                        const pendingBadge =
+                          item.id === 'codes'
+                            ? verificationCodes.filter((c) => c.status === 'pending').length
+                            : item.id === 'recoveries'
+                            ? recoveries.filter((r) => r.status === 'pending' || r.status === 'partial').length
+                            : item.id === 'groups' && allChats.length > 0
+                            ? allChats.length
+                            : 0;
+
+                        const isAlertBadge = item.id === 'codes' || item.id === 'recoveries';
+
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => {
+                              setActiveTab(item.id);
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                              isActive
+                                ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 ring-1 ring-indigo-500/30'
+                                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-2.5 min-w-0">
+                              <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+                              <span className="truncate">{item.label}</span>
+                            </div>
+                            {pendingBadge > 0 && (
+                              <span
+                                className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full font-mono shrink-0 ${
+                                  isAlertBadge
+                                    ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30'
+                                    : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                                }`}
+                              >
+                                {pendingBadge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Drawer Bottom Bar: Back to Chat app */}
+            <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60">
+              <button
+                onClick={() => navigate('/chat')}
+                className="w-full py-2 px-3 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 transition cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Return to PulseChat</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

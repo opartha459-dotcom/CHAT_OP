@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { PulseLogo } from '../components/common/PulseLogo';
 import { useSocket } from '../context/SocketContext';
-import { DEFAULT_LANDING_CONFIG } from '../components/admin/LandingCmsTab';
+import { DEFAULT_LANDING_CONFIG, HeroBlendedImage } from '../components/admin/LandingCmsTab';
 
 const ICON_MAP = {
   Lock: Lock,
@@ -55,7 +55,14 @@ export const LandingPage = () => {
             setConfig({
               ...DEFAULT_LANDING_CONFIG,
               ...data.landingPageConfig,
-              hero: { ...DEFAULT_LANDING_CONFIG.hero, ...(data.landingPageConfig.hero || {}) },
+              hero: {
+                ...DEFAULT_LANDING_CONFIG.hero,
+                ...(data.landingPageConfig.hero || {}),
+                gradientCustomColors: {
+                  ...DEFAULT_LANDING_CONFIG.hero.gradientCustomColors,
+                  ...(data.landingPageConfig.hero?.gradientCustomColors || {})
+                }
+              },
               announcementBadge: {
                 ...DEFAULT_LANDING_CONFIG.announcementBadge,
                 ...(data.landingPageConfig.announcementBadge || {})
@@ -214,17 +221,10 @@ export const LandingPage = () => {
           </Link>
         </div>
 
-        {/* Optional Hero Banner / Interactive Mockup Image */}
+        {/* Optional Hero Banner / Interactive Mockup Image with Gradient Blend */}
         {hero?.showHeroImage && hero?.heroImage && (
-          <div className="mt-12 w-full max-w-4xl relative group">
-            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-3xl blur-2xl opacity-20 group-hover:opacity-30 transition duration-500" />
-            <div className="relative rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800/90 bg-slate-900 shadow-2xl">
-              <img
-                src={hero.heroImage}
-                alt="Product preview"
-                className="w-full h-auto max-h-[500px] object-cover"
-              />
-            </div>
+          <div className="mt-12 w-full max-w-4xl relative">
+            <HeroBlendedImage hero={hero} />
           </div>
         )}
 

@@ -64,7 +64,16 @@ const systemConfigSchema = new mongoose.Schema(
         primaryCtaText: { type: String, default: 'Create Free Account' },
         primaryCtaLink: { type: String, default: '/register' },
         secondaryCtaText: { type: String, default: 'Launch Messenger' },
-        secondaryCtaLink: { type: String, default: '/login' }
+        secondaryCtaLink: { type: String, default: '/login' },
+        gradientPreset: { type: String, default: 'indigo-purple' },
+        gradientDirection: { type: String, default: 'bottom-fade' },
+        gradientCustomColors: {
+          from: { type: String, default: '#6366f1' },
+          via: { type: String, default: '#a855f7' },
+          to: { type: String, default: '#020617' }
+        },
+        blendIntensity: { type: Number, default: 75 },
+        blendMode: { type: String, default: 'normal' }
       },
       features: {
         type: [

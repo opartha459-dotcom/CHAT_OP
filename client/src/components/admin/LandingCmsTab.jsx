@@ -25,9 +25,250 @@ import {
   Link as LinkIcon,
   Check,
   AlertCircle,
-  Crop
+  Crop,
+  Palette,
+  Wand2,
+  Monitor
 } from 'lucide-react';
 import { ImageCropModal } from '../common/ImageCropModal';
+
+export const GRADIENT_PRESETS = [
+  {
+    id: 'indigo-purple',
+    label: 'Electric Indigo',
+    from: '#6366f1',
+    via: '#a855f7',
+    to: '#020617',
+    cssGradient: 'linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #020617 100%)'
+  },
+  {
+    id: 'midnight-cyan',
+    label: 'Midnight Cyan',
+    from: '#06b6d4',
+    via: '#3b82f6',
+    to: '#020617',
+    cssGradient: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #020617 100%)'
+  },
+  {
+    id: 'emerald-teal',
+    label: 'Neon Emerald',
+    from: '#10b981',
+    via: '#14b8a6',
+    to: '#020617',
+    cssGradient: 'linear-gradient(135deg, #10b981 0%, #14b8a6 50%, #020617 100%)'
+  },
+  {
+    id: 'sunset-rose',
+    label: 'Sunset Flame',
+    from: '#f43f5e',
+    via: '#f59e0b',
+    to: '#020617',
+    cssGradient: 'linear-gradient(135deg, #f43f5e 0%, #f59e0b 50%, #020617 100%)'
+  },
+  {
+    id: 'fuchsia-pink',
+    label: 'Cyberpunk Violet',
+    from: '#d946ef',
+    via: '#ec4899',
+    to: '#020617',
+    cssGradient: 'linear-gradient(135deg, #d946ef 0%, #ec4899 50%, #020617 100%)'
+  },
+  {
+    id: 'dark-slate',
+    label: 'Dark Minimalist',
+    from: '#334155',
+    via: '#1e293b',
+    to: '#020617',
+    cssGradient: 'linear-gradient(135deg, #334155 0%, #1e293b 50%, #020617 100%)'
+  },
+  {
+    id: 'aurora-glow',
+    label: 'Nordic Aurora',
+    from: '#34d399',
+    via: '#818cf8',
+    to: '#c084fc',
+    cssGradient: 'linear-gradient(135deg, #34d399 0%, #818cf8 50%, #c084fc 100%)'
+  },
+  {
+    id: 'custom',
+    label: 'Custom Colors',
+    from: '#6366f1',
+    via: '#a855f7',
+    to: '#020617',
+    cssGradient: 'linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #020617 100%)'
+  }
+];
+
+export const BLEND_DIRECTIONS = [
+  {
+    id: 'bottom-fade',
+    label: 'Bottom Melt (Linear)',
+    description: 'Smoothly dissolves screenshot bottom into dark page background'
+  },
+  {
+    id: 'radial-glow',
+    label: 'Ambient Backlight Aura',
+    description: 'Surrounds image with dynamic multi-colored ambient aura and depth'
+  },
+  {
+    id: 'vignette',
+    label: 'Soft Border Vignette',
+    description: 'Gently blends all 4 borders into the dark background'
+  },
+  {
+    id: 'duotone-overlay',
+    label: 'Color Blend Overlay',
+    description: 'Tints screenshot using the chosen gradient and blend mode'
+  },
+  {
+    id: 'framed-glow',
+    label: 'App Window & Halo',
+    description: 'Browser window frame with frosted glass header and gradient edge glow'
+  },
+  {
+    id: 'none',
+    label: 'Crisp Original',
+    description: 'No gradient blend overlay, crisp original borders'
+  }
+];
+
+export const BLEND_MODES = [
+  { id: 'normal', label: 'Normal (Standard)' },
+  { id: 'overlay', label: 'Overlay (Vibrant)' },
+  { id: 'soft-light', label: 'Soft Light (Subtle)' },
+  { id: 'screen', label: 'Screen (Luminous)' },
+  { id: 'multiply', label: 'Multiply (Moody)' },
+  { id: 'color-dodge', label: 'Color Dodge (High Glow)' }
+];
+
+export const getHeroGradientStyles = (hero = {}) => {
+  const presetId = hero?.gradientPreset || 'indigo-purple';
+  const customColors = hero?.gradientCustomColors || {
+    from: '#6366f1',
+    via: '#a855f7',
+    to: '#020617'
+  };
+
+  let colors;
+  let cssGradient;
+
+  if (presetId === 'custom') {
+    colors = [customColors.from || '#6366f1', customColors.via || '#a855f7', customColors.to || '#020617'];
+    cssGradient = `linear-gradient(135deg, ${colors[0]} 0%, ${colors[1]} 50%, ${colors[2]} 100%)`;
+  } else {
+    const found = GRADIENT_PRESETS.find((p) => p.id === presetId) || GRADIENT_PRESETS[0];
+    colors = [found.from, found.via, found.to];
+    cssGradient = found.cssGradient;
+  }
+
+  const direction = hero?.gradientDirection || 'bottom-fade';
+  const intensity = typeof hero?.blendIntensity === 'number' ? hero.blendIntensity : 75;
+  const blendMode = hero?.blendMode || 'normal';
+
+  return {
+    presetId,
+    colors,
+    cssGradient,
+    direction,
+    intensity,
+    blendMode
+  };
+};
+
+export const HeroBlendedImage = ({ hero, isPreview = false }) => {
+  if (!hero?.heroImage && !isPreview) return null;
+
+  const { colors, cssGradient, direction, intensity, blendMode } = getHeroGradientStyles(hero);
+  const imageSrc = hero?.heroImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80';
+  const opacityRatio = intensity / 100;
+
+  return (
+    <div className="w-full relative group mx-auto">
+      {/* Dynamic Ambient Glow Behind Container */}
+      {direction !== 'none' && (
+        <div
+          className="absolute -inset-1.5 md:-inset-3 rounded-3xl blur-2xl md:blur-3xl transition duration-700 pointer-events-none"
+          style={{
+            background: cssGradient,
+            opacity: Math.max(0.15, opacityRatio * 0.45)
+          }}
+        />
+      )}
+
+      {/* Main Frame Container */}
+      <div className="relative rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800/90 bg-slate-950 shadow-2xl">
+        {/* Optional App Window Header */}
+        {direction === 'framed-glow' && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900/90 border-b border-slate-800 backdrop-blur-md">
+            <div className="flex items-center space-x-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80" />
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80" />
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
+            </div>
+            <div className="text-[10px] font-mono text-slate-400 truncate px-2 py-0.5 rounded-md bg-slate-950/60 border border-slate-800">
+              pulsechat.internal / dashboard
+            </div>
+            <div className="w-8" />
+          </div>
+        )}
+
+        {/* Screenshot Image with Mask */}
+        <div className="relative overflow-hidden">
+          <img
+            src={imageSrc}
+            alt="PulseChat Platform Screenshot"
+            style={{
+              WebkitMaskImage:
+                direction === 'bottom-fade'
+                  ? `linear-gradient(to bottom, rgba(0,0,0,1) ${Math.max(15, 100 - (intensity * 0.75))}%, rgba(0,0,0,0) 100%)`
+                  : undefined,
+              maskImage:
+                direction === 'bottom-fade'
+                  ? `linear-gradient(to bottom, rgba(0,0,0,1) ${Math.max(15, 100 - (intensity * 0.75))}%, rgba(0,0,0,0) 100%)`
+                  : undefined
+            }}
+            className="w-full h-auto max-h-[500px] object-cover block"
+          />
+
+          {/* Bottom Fade Gradient Overlay */}
+          {direction === 'bottom-fade' && (
+            <div
+              className="absolute inset-x-0 bottom-0 pointer-events-none"
+              style={{
+                height: `${Math.max(35, intensity)}%`,
+                background: `linear-gradient(to top, #020617 15%, ${colors[2]}40 60%, transparent 100%)`,
+                opacity: Math.min(1, opacityRatio * 1.1)
+              }}
+            />
+          )}
+
+          {/* Vignette Overlay */}
+          {direction === 'vignette' && (
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background: `radial-gradient(ellipse at center, transparent 35%, #020617 100%)`,
+                opacity: opacityRatio
+              }}
+            />
+          )}
+
+          {/* Duotone Color Blend Overlay */}
+          {direction === 'duotone-overlay' && (
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background: cssGradient,
+                mixBlendMode: blendMode,
+                opacity: opacityRatio * 0.65
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const AVAILABLE_ICONS = [
   { id: 'Lock', label: 'Lock (Security)', icon: Lock },
@@ -60,7 +301,16 @@ export const DEFAULT_LANDING_CONFIG = {
     primaryCtaText: 'Create Free Account',
     primaryCtaLink: '/register',
     secondaryCtaText: 'Launch Messenger',
-    secondaryCtaLink: '/login'
+    secondaryCtaLink: '/login',
+    gradientPreset: 'indigo-purple',
+    gradientDirection: 'bottom-fade',
+    gradientCustomColors: {
+      from: '#6366f1',
+      via: '#a855f7',
+      to: '#020617'
+    },
+    blendIntensity: 75,
+    blendMode: 'normal'
   },
   features: [
     {
@@ -278,7 +528,14 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
           setConfig({
             ...DEFAULT_LANDING_CONFIG,
             ...data.landingPageConfig,
-            hero: { ...DEFAULT_LANDING_CONFIG.hero, ...(data.landingPageConfig.hero || {}) },
+            hero: {
+              ...DEFAULT_LANDING_CONFIG.hero,
+              ...(data.landingPageConfig.hero || {}),
+              gradientCustomColors: {
+                ...DEFAULT_LANDING_CONFIG.hero.gradientCustomColors,
+                ...(data.landingPageConfig.hero?.gradientCustomColors || {})
+              }
+            },
             announcementBadge: {
               ...DEFAULT_LANDING_CONFIG.announcementBadge,
               ...(data.landingPageConfig.announcementBadge || {})
@@ -687,18 +944,274 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
               </div>
 
               {config.hero?.showHeroImage && (
-                <ImageUploader
-                  label="Upload Hero Image or enter Image URL"
-                  value={config.hero?.heroImage}
-                  token={token}
-                  aspectRatio="16:9"
-                  onChange={(url) =>
-                    setConfig((prev) => ({
-                      ...prev,
-                      hero: { ...prev.hero, heroImage: url }
-                    }))
-                  }
-                />
+                <>
+                  <ImageUploader
+                    label="Upload Hero Image or enter Image URL"
+                    value={config.hero?.heroImage}
+                    token={token}
+                    aspectRatio="16:9"
+                    onChange={(url) =>
+                      setConfig((prev) => ({
+                        ...prev,
+                        hero: { ...prev.hero, heroImage: url }
+                      }))
+                    }
+                  />
+
+                  {/* ── Background Gradient & Image Blending Studio ── */}
+                  <div className="mt-5 pt-5 border-t border-slate-200 dark:border-slate-800 space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 shrink-0">
+                          <Palette className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                            <span>Background Gradient &amp; Image Blend Studio</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                              Hero Blend
+                            </span>
+                          </h4>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Choose ambient gradient colors and edge-blend modes to seamlessly merge your screenshot with the landing page.
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfig((prev) => ({
+                            ...prev,
+                            hero: {
+                              ...prev.hero,
+                              gradientPreset: 'indigo-purple',
+                              gradientDirection: 'bottom-fade',
+                              blendIntensity: 75,
+                              blendMode: 'normal'
+                            }
+                          }))
+                        }
+                        className="text-[11px] font-medium text-slate-500 hover:text-indigo-500 transition cursor-pointer self-start sm:self-auto"
+                      >
+                        Reset Blend Defaults
+                      </button>
+                    </div>
+
+                    {/* 1. Gradient Preset Swatches */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        1. Background Gradient Preset
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        {GRADIENT_PRESETS.map((p) => {
+                          const isSelected = (config.hero?.gradientPreset || 'indigo-purple') === p.id;
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() =>
+                                setConfig((prev) => ({
+                                  ...prev,
+                                  hero: { ...prev.hero, gradientPreset: p.id }
+                                }))
+                              }
+                              className={`p-2.5 rounded-xl border text-left transition flex items-center space-x-2.5 cursor-pointer ${
+                                isSelected
+                                  ? 'bg-indigo-50/70 dark:bg-indigo-950/50 border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
+                                  : 'bg-slate-50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                              }`}
+                            >
+                              <span
+                                className="w-5 h-5 rounded-full shrink-0 shadow-inner border border-white/20"
+                                style={{
+                                  background:
+                                    p.id === 'custom'
+                                      ? `linear-gradient(135deg, ${config.hero?.gradientCustomColors?.from || '#6366f1'}, ${config.hero?.gradientCustomColors?.via || '#a855f7'}, ${config.hero?.gradientCustomColors?.to || '#020617'})`
+                                      : p.cssGradient
+                                }}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <span className={`text-[11px] font-bold block truncate ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-700 dark:text-slate-200'}`}>
+                                  {p.label}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Custom Color Pickers (if preset is 'custom') */}
+                      {(config.hero?.gradientPreset === 'custom') && (
+                        <div className="p-3 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 mt-2">
+                          <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+                            Custom Gradient Colors
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {['from', 'via', 'to'].map((key) => {
+                              const currentColor = config.hero?.gradientCustomColors?.[key] || (key === 'from' ? '#6366f1' : key === 'via' ? '#a855f7' : '#020617');
+                              return (
+                                <div key={key} className="flex items-center space-x-2">
+                                  <label className="text-[10px] font-mono uppercase text-slate-400 w-8">{key}:</label>
+                                  <input
+                                    type="color"
+                                    value={currentColor}
+                                    onChange={(e) =>
+                                      setConfig((prev) => ({
+                                        ...prev,
+                                        hero: {
+                                          ...prev.hero,
+                                          gradientCustomColors: {
+                                            ...(prev.hero?.gradientCustomColors || {}),
+                                            [key]: e.target.value
+                                          }
+                                        }
+                                      }))
+                                    }
+                                    className="w-7 h-7 rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent cursor-pointer p-0.5"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={currentColor}
+                                    onChange={(e) =>
+                                      setConfig((prev) => ({
+                                        ...prev,
+                                        hero: {
+                                          ...prev.hero,
+                                          gradientCustomColors: {
+                                            ...(prev.hero?.gradientCustomColors || {}),
+                                            [key]: e.target.value
+                                          }
+                                        }
+                                      }))
+                                    }
+                                    className="flex-1 px-2 py-1 text-[11px] font-mono rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 uppercase"
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 2. Blend Direction / Style */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        2. Blend Style &amp; Edge Mask
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        {BLEND_DIRECTIONS.map((b) => {
+                          const isSelected = (config.hero?.gradientDirection || 'bottom-fade') === b.id;
+                          return (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() =>
+                                setConfig((prev) => ({
+                                  ...prev,
+                                  hero: { ...prev.hero, gradientDirection: b.id }
+                                }))
+                              }
+                              className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                                isSelected
+                                  ? 'bg-indigo-50/70 dark:bg-indigo-950/50 border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
+                                  : 'bg-slate-50 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className={`text-xs font-bold ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-800 dark:text-slate-200'}`}>
+                                  {b.label}
+                                </span>
+                                {isSelected && <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />}
+                              </div>
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                                {b.description}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* 3. Sliders & Advanced Controls */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-slate-50 dark:bg-slate-950/50 rounded-2xl border border-slate-200 dark:border-slate-800">
+                      {/* Intensity Slider */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          <span className="flex items-center space-x-1">
+                            <Sliders className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>Blend / Glow Intensity</span>
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+                            {config.hero?.blendIntensity ?? 75}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={config.hero?.blendIntensity ?? 75}
+                          onChange={(e) =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              hero: { ...prev.hero, blendIntensity: parseInt(e.target.value, 10) }
+                            }))
+                          }
+                          className="w-full accent-indigo-600 cursor-pointer h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg"
+                        />
+                        <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                          <span>0% Subtle</span>
+                          <span>50% Balanced</span>
+                          <span>100% Deep Melt</span>
+                        </div>
+                      </div>
+
+                      {/* Blend Mode Dropdown */}
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          CSS Mix Blend Mode (Overlay tint)
+                        </label>
+                        <select
+                          value={config.hero?.blendMode || 'normal'}
+                          onChange={(e) =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              hero: { ...prev.hero, blendMode: e.target.value }
+                            }))
+                          }
+                          className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer font-medium"
+                        >
+                          {BLEND_MODES.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-slate-400">
+                          Used when 'Color Blend Overlay' mode is active.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 4. Live Interactive Mockup Preview */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
+                          <Monitor className="w-3.5 h-3.5 text-indigo-500" />
+                          <span>Real-Time Hero Screenshot Blend Preview</span>
+                        </span>
+                        <span className="text-[10px] font-mono text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                          Live Render Simulation
+                        </span>
+                      </div>
+
+                      <div className="p-4 sm:p-6 rounded-2xl bg-slate-950 border border-slate-800 relative overflow-hidden">
+                        <HeroBlendedImage hero={config.hero} isPreview={true} />
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </div>
