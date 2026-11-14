@@ -36,6 +36,10 @@ const {
   revokeVerificationCode,
   deleteVerificationCodes,
   runManualRetention,
+  getTrashAccounts,
+  restoreTrashAccount,
+  purgeTrashAccount,
+  purgeExpiredTrashAccounts,
   getMaintenanceSchedules,
   createMaintenanceSchedule,
   updateMaintenanceSchedule,
@@ -68,6 +72,10 @@ router.delete('/audit-logs', deleteAuditLogs);
 // System & Database Management
 router.get('/database/status', getDatabaseStatus);
 router.post('/retention/run', runManualRetention);
+router.get('/trash/accounts', getTrashAccounts);
+router.post('/trash/restore/:id', restoreTrashAccount);
+router.delete('/trash/purge/:id', purgeTrashAccount);
+router.post('/trash/purge-expired', purgeExpiredTrashAccounts);
 router.get('/storage/metrics', getStorageMetrics);
 router.post('/storage/cleanup', runStorageCleanup);
 router.get('/settings', getSystemSettings);

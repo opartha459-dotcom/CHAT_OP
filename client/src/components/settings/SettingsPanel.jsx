@@ -33,9 +33,23 @@ import {
   CheckCircle2,
   ZoomIn,
   ZoomOut,
-  RotateCw
+  RotateCw,
+  MessageSquare,
+  PhoneCall,
+  Image as ImageIcon,
+  Send,
+  Clock,
+  Loader2,
+  ShieldCheck,
+  Archive,
+  Database,
+  Hourglass,
+  ChevronDown,
+  ChevronUp,
+  HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 import { useTheme, THEME_PALETTES, TYPOGRAPHY_FONTS } from '../../context/ThemeContext';
 import { useChat } from '../../context/ChatContext';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
@@ -78,10 +92,14 @@ export const SettingsPanel = ({
   } = useTheme();
   const { conversations } = useChat();
   const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
+  const { socket } = useSocket() || {};
   const { featureFlags, isFeatureEnabled } = useFeatureFlags();
   const canUploadCustomAvatar = isFeatureEnabled
     ? isFeatureEnabled('customAvatarUpload')
     : featureFlags?.customAvatarUpload !== false;
+  const allowOldDataRequests = isFeatureEnabled
+    ? isFeatureEnabled('allowOldDataRequests')
+    : featureFlags?.allowOldDataRequests !== false;
 
   // Avatar upload / crop state
   const [avatarFile, setAvatarFile] = useState(null);
@@ -154,6 +172,18 @@ export const SettingsPanel = ({
   const [deleteError, setDeleteError] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteEmailCooldown, setDeleteEmailCooldown] = useState(0);
+
+  // Old / Deleted account data recovery request state (Profile Tab)
+  const [oldDataStatus, setOldDataStatus] = useState(null);
+  const [oldDataLoading, setOldDataLoading] = useState(false);
+  const [oldDataRequesting, setOldDataRequesting] = useState(false);
+  const [selectedOldItems, setSelectedOldItems] = useState(new Set(['chats', 'contacts', 'call_history', 'media', 'profile']));
+  const [oldDataNote, setOldDataNote] = useState('');
+  const [showManualOldLink, setShowManualOldLink] = useState(false);
+  const [manualOldIdentifier, setManualOldIdentifier] = useState('');
+  const [manualOldPassword, setManualOldPassword] = useState('');
+  const [oldDataSuccessMsg, setOldDataSuccessMsg] = useState('');
+  const [oldDataErrorMsg, setOldDataErrorMsg] = useState('');
 
   const knownContacts = useMemo(() => {
     const map = new Map();
@@ -571,6 +601,95 @@ export const SettingsPanel = ({
   const showFeedback = (text, type = 'success') => {
     setStatusMsg({ text, type });
     setTimeout(() => setStatusMsg({ text: '', type: '' }), 3500);
+  };
+
+  const loadOldDataStatus = useCallback(async () => {
+    if (!token) return;
+    try {
+      setOldDataLoading(true);
+      const res = await fetch('/api/auth/old-data-status', {
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setOldDataStatus(data);
+        if (data.recoveryRequest?.requestedItems?.length) {
+          const keys = data.recoveryRequest.requestedItems.map((i) => i.key);
+          setSelectedOldItems(new Set(keys));
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching old data status:', err);
+    } finally {
+      setOldDataLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (activeTab === 'profile' && allowOldDataRequests) {
+      loadOldDataStatus();
+    }
+  }, [activeTab, allowOldDataRequests, loadOldDataStatus]);
+
+  useEffect(() => {
+    if (!socket || !allowOldDataRequests) return;
+    const handleDecision = () => {
+      loadOldDataStatus();
+    };
+    socket.on('recovery:item_decision', handleDecision);
+    socket.on('recovery:decision', handleDecision);
+    return () => {
+      socket.off('recovery:item_decision', handleDecision);
+      socket.off('recovery:decision', handleDecision);
+    };
+  }, [socket, allowOldDataRequests, loadOldDataStatus]);
+
+  const handleToggleOldItem = (key) => {
+    setSelectedOldItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleRequestOldData = async (e) => {
+    if (e) e.preventDefault();
+    if (selectedOldItems.size === 0) {
+      setOldDataErrorMsg('Please select at least one data category to request.');
+      return;
+    }
+    setOldDataRequesting(true);
+    setOldDataErrorMsg('');
+    setOldDataSuccessMsg('');
+    try {
+      const res = await fetch('/api/auth/request-old-data', {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({
+          items: Array.from(selectedOldItems),
+          userNote: oldDataNote.trim(),
+          oldIdentifier: manualOldIdentifier.trim(),
+          oldPassword: manualOldPassword
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setOldDataSuccessMsg(data.message || 'Request submitted successfully!');
+        setManualOldIdentifier('');
+        setManualOldPassword('');
+        setShowManualOldLink(false);
+        loadOldDataStatus();
+      } else {
+        setOldDataErrorMsg(data.message || 'Failed to submit request.');
+      }
+    } catch (err) {
+      setOldDataErrorMsg('Network connection error. Please try again.');
+    } finally {
+      setOldDataRequesting(false);
+    }
   };
 
   const handleSaveProfile = async (e) => {
@@ -1140,7 +1259,8 @@ export const SettingsPanel = ({
           )}
 
           {activeTab === 'profile' && (
-            <form onSubmit={handleSaveProfile} className="space-y-4">
+            <div className="space-y-6">
+              <form onSubmit={handleSaveProfile} className="space-y-4">
               {/* Avatar section */}
               <div className="flex items-start space-x-4">
                 <div className="relative flex-shrink-0">
@@ -1565,7 +1685,406 @@ export const SettingsPanel = ({
                 </button>
               </div>
             </form>
-          )}
+
+            {/* Request Old / Deleted Account Data Section (until admin turns off visibility) */}
+            {allowOldDataRequests && (
+              <div className="pt-6 mt-6 border-t border-slate-800/80 space-y-4">
+                <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-indigo-950/30 via-slate-900/60 to-purple-950/20 border border-indigo-500/30 shadow-xl space-y-4">
+                  {/* Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-indigo-500/20">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center shrink-0 shadow-sm">
+                        <RotateCcw className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-2 flex-wrap">
+                          <h4 className="text-sm font-bold text-white tracking-wide">
+                            Request Old Account Data
+                          </h4>
+                          {oldDataStatus?.recoveryRequest ? (
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border ${
+                                oldDataStatus.recoveryRequest.status === 'approved'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                  : oldDataStatus.recoveryRequest.status === 'partial'
+                                  ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
+                                  : oldDataStatus.recoveryRequest.status === 'rejected'
+                                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                              }`}
+                            >
+                              {oldDataStatus.recoveryRequest.status === 'approved'
+                                ? '✅ Approved'
+                                : oldDataStatus.recoveryRequest.status === 'partial'
+                                ? '⚡ Partially Approved'
+                                : oldDataStatus.recoveryRequest.status === 'rejected'
+                                ? '❌ Rejected'
+                                : '⏳ Under Review'}
+                            </span>
+                          ) : oldDataStatus?.hasOldAccount ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">
+                              📦 Import Skipped • Available
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Request chats, media, calls, and contacts from a previous or deleted account
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={loadOldDataStatus}
+                      disabled={oldDataLoading}
+                      className="self-start sm:self-auto px-2.5 py-1 text-[11px] font-medium bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 rounded-lg transition flex items-center space-x-1 cursor-pointer"
+                      title="Refresh status"
+                    >
+                      <RotateCcw className={`w-3 h-3 ${oldDataLoading ? 'animate-spin text-indigo-400' : ''}`} />
+                      <span>Refresh</span>
+                    </button>
+                  </div>
+
+                  {/* Loading State */}
+                  {oldDataLoading && !oldDataStatus ? (
+                    <div className="py-6 flex items-center justify-center space-x-2 text-xs text-slate-400">
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                      <span>Checking retention store for previous accounts...</span>
+                    </div>
+                  ) : null}
+
+                  {/* Case 1: Account detected in retention store / has request */}
+                  {oldDataStatus?.hasOldAccount && (
+                    <div className="space-y-4">
+                      {/* Old account banner */}
+                      <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center space-x-2.5 min-w-0">
+                          <Archive className="w-4 h-4 text-amber-400 shrink-0" />
+                          <div className="min-w-0">
+                            <span className="text-slate-400 text-[11px]">Archived Profile: </span>
+                            <span className="font-bold text-white">
+                              @{oldDataStatus.oldAccount?.username || oldDataStatus.recoveryRequest?.originalUsername || 'previous_user'}
+                            </span>
+                            <span className="text-slate-500 text-[11px] ml-1.5 truncate">
+                              ({oldDataStatus.oldAccount?.email || oldDataStatus.recoveryRequest?.originalEmail || user?.email})
+                            </span>
+                          </div>
+                        </div>
+
+                        {(() => {
+                          const deadlineStr = oldDataStatus.oldAccount?.recoveryDeadline;
+                          if (!deadlineStr) return null;
+                          const d = new Date(deadlineStr);
+                          const days = Math.max(0, Math.ceil((d - new Date()) / (1000 * 60 * 60 * 24)));
+                          return (
+                            <div className="flex items-center space-x-1.5 text-[11px] text-amber-300 font-mono shrink-0">
+                              <Clock className="w-3.5 h-3.5 text-amber-400" />
+                              <span>{days} day{days !== 1 ? 's' : ''} left in retention</span>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Notice for skipped import */}
+                      {!oldDataStatus?.recoveryRequest && (
+                        <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-800/40 text-xs text-indigo-200 leading-relaxed flex items-start space-x-2.5">
+                          <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold text-white">You skipped importing your old data.</p>
+                            <p className="text-[11px] text-indigo-300/90 mt-0.5">
+                              Select which data categories you want to recover. An administrator will review and migrate each requested item to your current account.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* If request exists and has an admin note */}
+                      {oldDataStatus?.recoveryRequest?.adminDecisionReason && (
+                        <div className="p-3 rounded-xl bg-slate-900 border border-indigo-500/30 text-xs space-y-1">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">
+                            Administrator Remark
+                          </div>
+                          <p className="text-slate-200 text-xs italic">
+                            "{oldDataStatus.recoveryRequest.adminDecisionReason}"
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Items Checklist / Selector */}
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                          Choose Data Categories to Request
+                        </label>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {[
+                            { key: 'chats', label: 'Chat History', icon: MessageSquare, desc: 'Previous 1-on-1 private messages & groups' },
+                            { key: 'contacts', label: 'Contacts & Friends', icon: Users, desc: 'Friend list and conversation contacts' },
+                            { key: 'call_history', label: 'Call History', icon: PhoneCall, desc: 'Voice and video peer call logs' },
+                            { key: 'media', label: 'Shared Media & Files', icon: ImageIcon, desc: 'Photos, videos, audio, and attachments' },
+                            { key: 'profile', label: 'Profile Info & Bio', icon: User, desc: 'Previous bio, status, and display name' }
+                          ].map(({ key, label, icon: Icon, desc }) => {
+                            const existingItem = oldDataStatus.recoveryRequest?.requestedItems?.find((i) => i.key === key);
+                            const isChecked = selectedOldItems.has(key);
+                            const itemStatus = existingItem?.status;
+
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => handleToggleOldItem(key)}
+                                className={`p-3 rounded-xl border text-left transition flex items-start space-x-3 cursor-pointer ${
+                                  isChecked
+                                    ? 'bg-indigo-600/20 border-indigo-500/70 text-white shadow-xs'
+                                    : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                                }`}
+                              >
+                                <div
+                                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                                    isChecked ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'
+                                  }`}
+                                >
+                                  <Icon className="w-4 h-4" />
+                                </div>
+
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <p className="text-xs font-bold truncate">{label}</p>
+                                    {itemStatus && (
+                                      <span
+                                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider shrink-0 ${
+                                          itemStatus === 'approved'
+                                            ? 'bg-emerald-500/20 text-emerald-400'
+                                            : itemStatus === 'rejected'
+                                            ? 'bg-rose-500/20 text-rose-400'
+                                            : 'bg-amber-500/20 text-amber-400'
+                                        }`}
+                                      >
+                                        {itemStatus}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 leading-tight mt-0.5 line-clamp-2">
+                                    {desc}
+                                  </p>
+                                  {existingItem?.adminNote && (
+                                    <p className="text-[10px] text-rose-300 italic mt-1 truncate">
+                                      Note: {existingItem.adminNote}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div
+                                  className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition mt-1 ${
+                                    isChecked ? 'border-indigo-400 bg-indigo-500' : 'border-slate-600'
+                                  }`}
+                                >
+                                  {isChecked && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Optional user note input */}
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                          Note to Administrator (Optional)
+                        </label>
+                        <textarea
+                          rows={2}
+                          maxLength={300}
+                          value={oldDataNote}
+                          onChange={(e) => setOldDataNote(e.target.value)}
+                          placeholder="Add any specific context about your previous account or why you need this data..."
+                          className="w-full px-3 py-2 text-xs bg-slate-950/80 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none font-sans"
+                        />
+                      </div>
+
+                      {/* Feedback messages */}
+                      {oldDataSuccessMsg && (
+                        <div className="p-3 bg-emerald-950/50 border border-emerald-800/80 rounded-xl text-xs text-emerald-300 flex items-center space-x-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>{oldDataSuccessMsg}</span>
+                        </div>
+                      )}
+                      {oldDataErrorMsg && (
+                        <div className="p-3 bg-rose-950/50 border border-rose-800/80 rounded-xl text-xs text-rose-300 flex items-center space-x-2">
+                          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                          <span>{oldDataErrorMsg}</span>
+                        </div>
+                      )}
+
+                      {/* Submit button */}
+                      <div className="flex items-center justify-between gap-3 pt-1">
+                        <span className="text-[11px] text-slate-400">
+                          {selectedOldItems.size} categor{selectedOldItems.size === 1 ? 'y' : 'ies'} selected
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleRequestOldData}
+                          disabled={oldDataRequesting || selectedOldItems.size === 0}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl transition flex items-center space-x-2 text-xs shadow-md shadow-indigo-600/30 cursor-pointer"
+                        >
+                          {oldDataRequesting ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Submitting...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-3.5 h-3.5" />
+                              <span>
+                                {oldDataStatus.recoveryRequest
+                                  ? 'Update / Re-request Data'
+                                  : 'Submit Data Request'}
+                              </span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Case 2: No account automatically detected under same email - allow linking previous account */}
+                  {!oldDataStatus?.hasOldAccount && !oldDataLoading && (
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-800">
+                        <div className="flex items-start space-x-3">
+                          <HelpCircle className="w-4 h-4 text-indigo-400 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-xs font-semibold text-white">
+                              Have an old deleted account under another username or email?
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              You can link your previous account and request its retained chats and media.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowManualOldLink(!showManualOldLink)}
+                          className="text-xs font-bold text-indigo-400 hover:text-indigo-300 flex items-center space-x-1 shrink-0 cursor-pointer"
+                        >
+                          <span>{showManualOldLink ? 'Cancel' : 'Link Account'}</span>
+                          {showManualOldLink ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+
+                      {showManualOldLink && (
+                        <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3 animate-in fade-in duration-200">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                                Previous Username or Email
+                              </label>
+                              <input
+                                type="text"
+                                value={manualOldIdentifier}
+                                onChange={(e) => setManualOldIdentifier(e.target.value)}
+                                placeholder="e.g. old_username or old@email.com"
+                                className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                                Previous Password (Optional / Verification)
+                              </label>
+                              <input
+                                type="password"
+                                value={manualOldPassword}
+                                onChange={(e) => setManualOldPassword(e.target.value)}
+                                placeholder="Previous account password"
+                                className="w-full px-3 py-2 text-xs bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 pt-1">
+                            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                              Select Data to Request
+                            </label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {[
+                                { key: 'chats', label: 'Chat History', icon: MessageSquare, desc: 'Previous 1-on-1 private messages & groups' },
+                                { key: 'contacts', label: 'Contacts & Friends', icon: Users, desc: 'Friend list and conversation contacts' },
+                                { key: 'call_history', label: 'Call History', icon: PhoneCall, desc: 'Voice and video peer call logs' },
+                                { key: 'media', label: 'Shared Media & Files', icon: ImageIcon, desc: 'Photos, videos, audio, and attachments' },
+                                { key: 'profile', label: 'Profile Info & Bio', icon: User, desc: 'Previous bio, status, and display name' }
+                              ].map(({ key, label, icon: Icon, desc }) => {
+                                const isChecked = selectedOldItems.has(key);
+                                return (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => handleToggleOldItem(key)}
+                                    className={`p-2.5 rounded-xl border text-left transition flex items-center space-x-2.5 cursor-pointer ${
+                                      isChecked
+                                        ? 'bg-indigo-600/20 border-indigo-500/70 text-white'
+                                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                                    }`}
+                                  >
+                                    <Icon className="w-4 h-4 text-indigo-400 shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-semibold truncate">{label}</p>
+                                      <p className="text-[10px] text-slate-400 truncate">{desc}</p>
+                                    </div>
+                                    <div
+                                      className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center ${
+                                        isChecked ? 'border-indigo-400 bg-indigo-500' : 'border-slate-600'
+                                      }`}
+                                    >
+                                      {isChecked && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {oldDataSuccessMsg && (
+                            <div className="p-3 bg-emerald-950/50 border border-emerald-800/80 rounded-xl text-xs text-emerald-300 flex items-center space-x-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                              <span>{oldDataSuccessMsg}</span>
+                            </div>
+                          )}
+                          {oldDataErrorMsg && (
+                            <div className="p-3 bg-rose-950/50 border border-rose-800/80 rounded-xl text-xs text-rose-300 flex items-center space-x-2">
+                              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                              <span>{oldDataErrorMsg}</span>
+                            </div>
+                          )}
+
+                          <div className="flex justify-end pt-2">
+                            <button
+                              type="button"
+                              onClick={handleRequestOldData}
+                              disabled={oldDataRequesting || !manualOldIdentifier.trim() || selectedOldItems.size === 0}
+                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl transition flex items-center space-x-2 text-xs shadow-md shadow-indigo-600/30 cursor-pointer"
+                            >
+                              {oldDataRequesting ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Linking...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="w-3.5 h-3.5" />
+                                  <span>Submit Request</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
           {activeTab === 'privacy' && (
             <div className="space-y-4">

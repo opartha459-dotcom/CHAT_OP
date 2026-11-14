@@ -19,7 +19,8 @@ const systemConfigSchema = new mongoose.Schema(
       pollsEnabled: { type: Boolean, default: true },
       announcementsEnabled: { type: Boolean, default: true },
       e2eeEnabled: { type: Boolean, default: true },
-      customAvatarUpload: { type: Boolean, default: true }
+      customAvatarUpload: { type: Boolean, default: true },
+      allowOldDataRequests: { type: Boolean, default: true }
     },
     defaultTheme: {
       accentColor: { type: String, default: 'indigo' },

@@ -124,6 +124,15 @@ export const AdminDashboard = () => {
   const [dbStatus, setDbStatus] = useState(null);
   const [systemSettings, setSystemSettings] = useState(null);
 
+  // Trash DB Retention State
+  const [trashAccounts, setTrashAccounts] = useState([]);
+  const [trashStats, setTrashStats] = useState(null);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [trashFilter, setTrashFilter] = useState('all'); // 'all' | 'admin_deleted' | 'self_deleted'
+  const [trashSearch, setTrashSearch] = useState('');
+  const [purgingTrashId, setPurgingTrashId] = useState(null);
+  const [restoringTrashId, setRestoringTrashId] = useState(null);
+
   // Dynamic Theme & Typography State
   const { adminTheme, updateAdminDefaultTheme } = useTheme();
   const [themeForm, setThemeForm] = useState(() => ({
@@ -273,6 +282,97 @@ export const AdminDashboard = () => {
     }
   };
 
+  const loadTrashAccounts = async () => {
+    setTrashLoading(true);
+    try {
+      const res = await fetch('/api/admin/trash/accounts', {
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.success) {
+          setTrashAccounts(d.trashAccounts || []);
+          setTrashStats(d.stats || null);
+        }
+      }
+    } catch (e) {
+      console.warn('Error loading trash accounts', e);
+    } finally {
+      setTrashLoading(false);
+    }
+  };
+
+  const handleRestoreTrashAccount = async (acc) => {
+    if (!window.confirm(`Restore account @${acc.username} back to active status?`)) return;
+    setRestoringTrashId(acc._id);
+    try {
+      const res = await fetch(`/api/admin/trash/restore/${acc._id}`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg(d.message);
+        loadTrashAccounts();
+        loadUsers();
+        loadStats();
+      } else {
+        showMsg(d.message || 'Failed to restore account.');
+      }
+    } catch (e) {
+      showMsg('Network error restoring account.');
+    } finally {
+      setRestoringTrashId(null);
+    }
+  };
+
+  const handlePurgeTrashAccount = async (acc) => {
+    if (!window.confirm(`Permanently and irreversibly wipe @${acc.username} from the database? This cannot be undone.`)) return;
+    setPurgingTrashId(acc._id);
+    try {
+      const res = await fetch(`/api/admin/trash/purge/${acc._id}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg(d.message);
+        loadTrashAccounts();
+        loadStats();
+      } else {
+        showMsg(d.message || 'Failed to purge account.');
+      }
+    } catch (e) {
+      showMsg('Network error purging account.');
+    } finally {
+      setPurgingTrashId(null);
+    }
+  };
+
+  const handlePurgeExpiredTrash = async () => {
+    if (!window.confirm('Run automated purge on all accounts that have passed their 14-day retention window?')) return;
+    try {
+      const res = await fetch('/api/admin/trash/purge-expired', {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg(d.message || 'Expired retention purge executed.');
+        loadTrashAccounts();
+        loadStats();
+      } else {
+        showMsg(d.message || 'Failed to run purge.');
+      }
+    } catch (e) {
+      showMsg('Network error running purge.');
+    }
+  };
+
   const loadSystemSettings = async () => {
     try {
       const res = await fetch('/api/admin/settings', { headers: authHeaders(), credentials: 'include' });
@@ -343,6 +443,7 @@ export const AdminDashboard = () => {
     await Promise.allSettled([
       loadStats(),
       loadDbStatus(),
+      loadTrashAccounts(),
       loadSystemSettings(),
       loadUsers(),
       loadGroups(),
@@ -447,7 +548,11 @@ export const AdminDashboard = () => {
     }
     else if (activeTab === 'groups') loadGroups();
     else if (activeTab === 'announcements') loadAnnouncements();
-    else if (activeTab === 'databases') loadDbStatus();
+    else if (activeTab === 'databases') {
+      loadDbStatus();
+      loadTrashAccounts();
+      loadSystemSettings();
+    }
     else if (activeTab === 'audit') loadAuditLogs();
     else if (activeTab === 'settings') loadSystemSettings();
     else if (activeTab === 'recoveries') loadRecoveries();
@@ -534,8 +639,9 @@ export const AdminDashboard = () => {
         setUsers((prev) => prev.filter((u) => u._id !== deleteUserModal.user._id));
         setDeleteUserModal(null);
         setDeleteReason('');
-        showMsg(`User @${deleteUserModal.user.username} permanently deleted.`);
+        showMsg(d.message || `User @${deleteUserModal.user.username} deleted and moved to Trash DB.`);
         loadStats();
+        loadTrashAccounts();
       } else {
         showMsg(d.message || 'Failed to delete user.');
       }
@@ -2785,6 +2891,307 @@ export const AdminDashboard = () => {
                   </div>
                 </div>
               </div>
+
+              {/* TRASH DB: DELETED ACCOUNTS & RETENTION STORE */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs p-5 space-y-5">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400 flex items-center justify-center font-bold shrink-0">
+                      <Trash2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
+                          Deleted-Account Retention Store (Trash DB)
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+                          {trashStats?.totalInTrash ?? trashAccounts.length} Retained
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Accounts removed by administrators or self-deleted. Retained for 14 days before automated purge, with admin messages and one-click restoration.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+                    <button
+                      onClick={loadTrashAccounts}
+                      disabled={trashLoading}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-xl text-xs flex items-center space-x-1.5 transition cursor-pointer"
+                      title="Refresh Trash DB"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${trashLoading ? 'animate-spin text-rose-500' : ''}`} />
+                      <span>Refresh Trash</span>
+                    </button>
+
+                    <button
+                      onClick={handlePurgeExpiredTrash}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl text-xs flex items-center space-x-1.5 transition cursor-pointer shadow-xs"
+                      title="Purge all accounts past their 14-day retention deadline"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Purge Expired</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Key Metrics Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/50 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block font-mono">
+                      Total in Trash
+                    </span>
+                    <span className="text-2xl font-black text-rose-600 dark:text-rose-400">
+                      {trashStats?.totalInTrash ?? trashAccounts.length}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">Retained accounts</span>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/50 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block font-mono">
+                      Deleted by Admin
+                    </span>
+                    <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                      {trashStats?.totalAdminDeleted ?? trashAccounts.filter(a => a.deletionStatus === 'deleted_by_admin').length}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">With admin messages</span>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/50 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block font-mono">
+                      User Self-Deleted
+                    </span>
+                    <span className="text-2xl font-black text-amber-600 dark:text-amber-400">
+                      {trashStats?.totalSelfDeleted ?? trashAccounts.filter(a => a.deletionStatus !== 'deleted_by_admin').length}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">Self-service queue</span>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-950/50 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block font-mono">
+                      Retention Policy
+                    </span>
+                    <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                      14 Days
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5 font-mono">isolated_retention</span>
+                  </div>
+                </div>
+
+                {/* Profile Data Request Visibility Quick-Toggle */}
+                {(() => {
+                  const isOldDataEnabled = systemSettings?.featureFlags?.allowOldDataRequests !== false;
+                  return (
+                    <div className="p-3.5 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200/80 dark:border-indigo-800/40 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-start sm:items-center space-x-3">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+                          <RotateCcw className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-2 flex-wrap">
+                            <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                              User Profile "Request Old Data" Option
+                            </h4>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              isOldDataEnabled
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                            }`}>
+                              {isOldDataEnabled ? 'Active (Visible in Profile)' : 'Off (Hidden from Profiles)'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            Allows users who delete their account, create a new one, and skip import to still request their historical data from their profile settings. Turn off anytime to hide the option from all users.
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFeature('allowOldDataRequests', isOldDataEnabled)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer flex items-center space-x-1.5 ${
+                          isOldDataEnabled
+                            ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-800'
+                            : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-xs'
+                        }`}
+                        title={isOldDataEnabled ? 'Click to hide the Request Old Data option from user profiles' : 'Click to show the Request Old Data option in user profiles'}
+                      >
+                        <span>{isOldDataEnabled ? 'Hide from User Profiles' : 'Enable in User Profiles'}</span>
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {/* Search & Filter Bar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={trashSearch}
+                      onChange={(e) => setTrashSearch(e.target.value)}
+                      placeholder="Search trash by username, email, or admin reason..."
+                      className="w-full text-xs bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/30 font-medium"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
+                    {[
+                      { id: 'all', label: 'All Trash' },
+                      { id: 'admin_deleted', label: 'Admin Deleted' },
+                      { id: 'self_deleted', label: 'Self Deleted' }
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setTrashFilter(tab.id)}
+                        className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer ${
+                          trashFilter === tab.id
+                            ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-xs'
+                            : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Accounts List */}
+                {(() => {
+                  const filteredTrash = trashAccounts.filter((acc) => {
+                    if (trashFilter === 'admin_deleted' && acc.deletionStatus !== 'deleted_by_admin') return false;
+                    if (trashFilter === 'self_deleted' && acc.deletionStatus === 'deleted_by_admin') return false;
+                    if (trashSearch.trim()) {
+                      const q = trashSearch.toLowerCase();
+                      const match =
+                        (acc.username && acc.username.toLowerCase().includes(q)) ||
+                        (acc.email && acc.email.toLowerCase().includes(q)) ||
+                        (acc.deletionReason && acc.deletionReason.toLowerCase().includes(q));
+                      if (!match) return false;
+                    }
+                    return true;
+                  });
+
+                  if (trashLoading) {
+                    return (
+                      <div className="py-12 flex flex-col items-center justify-center space-y-2 text-slate-400 text-xs font-mono">
+                        <RefreshCw className="w-6 h-6 animate-spin text-rose-500" />
+                        <span>Loading Trash DB records...</span>
+                      </div>
+                    );
+                  }
+
+                  if (filteredTrash.length === 0) {
+                    return (
+                      <div className="py-12 px-4 text-center bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+                        <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">Trash Database is Clean</h4>
+                        <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                          {trashSearch || trashFilter !== 'all'
+                            ? 'No retained accounts match the active search or filter.'
+                            : 'No user accounts are currently retained in the trash database. Deleted users will be held here for 14 days.'}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-3">
+                      {filteredTrash.map((acc) => {
+                        const isAdminDeleted = acc.deletionStatus === 'deleted_by_admin';
+                        const isRestoring = restoringTrashId === acc._id;
+                        const isPurging = purgingTrashId === acc._id;
+
+                        return (
+                          <div
+                            key={acc._id}
+                            className="p-4 bg-slate-50/80 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/90 rounded-2xl shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+                          >
+                            <div className="space-y-2.5 min-w-0 flex-1">
+                              {/* Top identity & badges */}
+                              <div className="flex items-center space-x-3 min-w-0">
+                                <Avatar src={acc.avatar} name={acc.username} size="md" />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                      @{acc.username}
+                                    </span>
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${
+                                        isAdminDeleted
+                                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-900'
+                                          : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-900'
+                                      }`}
+                                    >
+                                      {isAdminDeleted ? 'Deleted by Admin' : 'Self-Requested'}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                    {acc.email}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Admin Reason Box */}
+                              <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800/80 text-xs">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block font-mono">
+                                  Message / Reason Left for User:
+                                </span>
+                                <p className="text-slate-900 dark:text-slate-200 font-medium text-xs mt-0.5 leading-relaxed">
+                                  "{acc.deletionReason || 'Account removed by administrator.'}"
+                                </p>
+                              </div>
+
+                              {/* Timestamps & Retention Info */}
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 font-mono">
+                                <span>
+                                  Deleted: {acc.deletedAt ? new Date(acc.deletedAt).toLocaleDateString() : 'Recent'}
+                                </span>
+                                {acc.deletedByAdmin && (
+                                  <span>
+                                    By: <strong className="text-slate-700 dark:text-slate-300">@{acc.deletedByAdmin.username}</strong>
+                                  </span>
+                                )}
+                                <span className={`flex items-center space-x-1 ${acc.daysLeft <= 2 ? 'text-rose-500 font-bold' : 'text-amber-500'}`}>
+                                  <Clock className="w-3 h-3" />
+                                  <span>
+                                    {acc.daysLeft <= 0 ? 'Retention expired (ready to purge)' : `${acc.daysLeft} days remaining in Trash DB`}
+                                  </span>
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-200 dark:border-slate-800">
+                              <button
+                                onClick={() => handleRestoreTrashAccount(acc)}
+                                disabled={isRestoring || isPurging}
+                                className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-600 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-xl font-bold text-xs flex items-center space-x-1.5 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                                title="Restore account back to active status"
+                              >
+                                <RotateCcw className={`w-3.5 h-3.5 ${isRestoring ? 'animate-spin' : ''}`} />
+                                <span>{isRestoring ? 'Restoring...' : 'Restore Account'}</span>
+                              </button>
+
+                              <button
+                                onClick={() => handlePurgeTrashAccount(acc)}
+                                disabled={isRestoring || isPurging}
+                                className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-xl font-bold text-xs flex items-center space-x-1.5 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                                title="Permanently wipe from database immediately"
+                              >
+                                <Trash2 className={`w-3.5 h-3.5 ${isPurging ? 'animate-spin' : ''}`} />
+                                <span>{isPurging ? 'Purging...' : 'Purge Permanently'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
           )}
 
@@ -4179,6 +4586,11 @@ export const AdminDashboard = () => {
                       key: 'announcementsEnabled',
                       label: 'Admin Broadcast Announcements',
                       desc: 'Global announcement banner and interactive polls displayed on user dashboards'
+                    },
+                    {
+                      key: 'allowOldDataRequests',
+                      label: 'User Profile: Request Old/Deleted Account Data',
+                      desc: 'Allows users with deleted or archived accounts in retention to request their historical data (chats, media, contacts) directly from their profile settings even after skipping initial onboarding import. When disabled, this option is completely hidden from user profiles.'
                     }
                   ]
                 }
@@ -5144,18 +5556,18 @@ export const AdminDashboard = () => {
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              This will <span className="text-red-300 font-semibold">permanently remove</span> the account, revoke all sessions, and send the user a deletion email with an appeal link. This action cannot be undone.
+              This will immediately <span className="text-red-300 font-semibold">force-logout the user</span>, revoke active sessions, record your reason, and move the account to the <span className="text-amber-300 font-semibold">Trash DB (14-day retention)</span>. When the user attempts to log in with their old credentials, they will be shown your deletion reason.
             </p>
 
             <div>
               <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                Reason for Deletion <span className="text-red-400">*</span>
+                Reason for Deletion (shown to user on login) <span className="text-red-400">*</span>
               </label>
               <textarea
                 rows={3}
                 value={deleteReason}
                 onChange={(e) => setDeleteReason(e.target.value)}
-                placeholder="e.g. Repeated violation of community guidelines, spam, harassment..."
+                placeholder="e.g. Repeated violation of community guidelines, spamming groups, offensive language..."
                 className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500"
               />
             </div>
@@ -5164,10 +5576,10 @@ export const AdminDashboard = () => {
               <button
                 onClick={handleDeleteUser}
                 disabled={deleteLoading || !deleteReason.trim()}
-                className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2"
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer"
               >
                 {deleteLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                <span>{deleteLoading ? 'Deleting...' : 'Permanently Delete'}</span>
+                <span>{deleteLoading ? 'Deleting...' : 'Delete & Move to Trash DB'}</span>
               </button>
               <button
                 onClick={() => setDeleteUserModal(null)}

@@ -154,10 +154,27 @@ const userSchema = new mongoose.Schema(
         'active',
         'pending_deletion',
         'deleted',
-        'retained'
+        'retained',
+        'deleted_by_admin',
+        'confirmed_pending_purge',
+        'purged'
       ],
       default: 'active',
       index: true
+    },
+
+    deletionReason: {
+      type: String,
+      default: ''
+    },
+
+    deletedByAdmin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+
+    deletedAt: {
+      type: Date
     },
 
     deletionRequestedAt: {

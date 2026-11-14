@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { User, KeyRound, AlertCircle, ArrowRight, Mail, Send } from 'lucide-react';
+import { User, KeyRound, AlertCircle, ArrowRight, Mail, Send, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { PulseLogo } from '../components/common/PulseLogo';
 
@@ -8,6 +8,10 @@ export const LoginPage = () => {
   const { login, resendVerification } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const searchParams = new URLSearchParams(location.search);
+  const forceDeleted = searchParams.get('deleted') === '1';
+  const forceReason = searchParams.get('reason');
 
   let from = '/chat';
   if (location.state?.from) {
@@ -25,6 +29,15 @@ export const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [adminDeletionNotice, setAdminDeletionNotice] = useState(() => {
+    if (forceDeleted) {
+      return {
+        reason: forceReason ? decodeURIComponent(forceReason) : 'Your account was deleted by an administrator.',
+        appealUrl: '/deletion-appeal'
+      };
+    }
+    return null;
+  });
   const [unverifiedEmail, setUnverifiedEmail] = useState('');
   const [resendStatus, setResendStatus] = useState({ loading: false, msg: '', type: '' });
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -32,6 +45,7 @@ export const LoginPage = () => {
   const handleSubmit = async (e) => {
     e?.preventDefault();
     setError('');
+    setAdminDeletionNotice(null);
     setUnverifiedEmail('');
     setResendStatus({ loading: false, msg: '', type: '' });
     setLoading(true);
@@ -40,6 +54,16 @@ export const LoginPage = () => {
       await login(identifier, password);
       navigate(from, { replace: true });
     } catch (err) {
+      if (err.isDeletedByAdmin) {
+        setAdminDeletionNotice({
+          reason: err.deletionReason || err.adminMessage || 'Your account was deleted by an administrator.',
+          deletedAt: err.deletedAt,
+          recoveryDeadline: err.recoveryDeadline,
+          appealUrl: err.appealUrl || `/deletion-appeal?email=${encodeURIComponent(err.email || identifier)}`
+        });
+        setError('');
+        return;
+      }
       if (err.requiresRecovery) {
         navigate('/account-recovery', {
           state: {
@@ -90,6 +114,38 @@ export const LoginPage = () => {
           <h2 className="text-xl font-bold text-white tracking-tight">Welcome Back</h2>
           <p className="text-xs text-slate-400 mt-1">Sign in to your encrypted chat workspace</p>
         </div>
+
+        {adminDeletionNotice && (
+          <div className="mb-5 p-4 bg-rose-950/70 border-2 border-rose-600/70 rounded-2xl text-xs space-y-3 animate-in fade-in shadow-lg shadow-rose-950/50">
+            <div className="flex items-center space-x-2 text-rose-300 font-bold">
+              <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+              <span className="text-sm">Account Deleted by Administrator</span>
+            </div>
+            
+            <div className="p-3 bg-slate-950/80 rounded-xl border border-rose-900/60 space-y-1">
+              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                Message Left by Administrator:
+              </span>
+              <p className="text-white font-semibold text-xs leading-relaxed">
+                "{adminDeletionNotice.reason}"
+              </p>
+            </div>
+
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              Your account has been deactivated and moved to Trash DB retention. If you believe this action was taken in error or want to appeal, you can submit a deletion appeal.
+            </p>
+
+            <div className="pt-1 flex items-center gap-2">
+              <Link
+                to={adminDeletionNotice.appealUrl || '/deletion-appeal'}
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold text-xs transition flex items-center space-x-1.5 shadow-sm cursor-pointer"
+              >
+                <span>Submit Deletion Appeal</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-3 bg-rose-950/60 border border-rose-900 text-rose-400 rounded-2xl text-xs flex items-center space-x-2">

@@ -90,6 +90,18 @@ export const AuthProvider = ({ children }) => {
 
     const data = await res.json();
     if (!data.success) {
+      if (data.isDeletedByAdmin) {
+        const err = new Error(data.message || 'Your account was deleted by an administrator.');
+        err.isDeletedByAdmin = true;
+        err.adminMessage = data.adminMessage || data.deletionReason;
+        err.deletionReason = data.deletionReason || data.adminMessage;
+        err.deletedAt = data.deletedAt;
+        err.recoveryDeadline = data.recoveryDeadline;
+        err.appealUrl = data.appealUrl;
+        err.email = data.email;
+        err.username = data.username;
+        throw err;
+      }
       if (data.requiresRecovery) {
         const err = new Error(data.message || 'Account is currently pending deletion.');
         err.requiresRecovery = true;
@@ -124,6 +136,18 @@ export const AuthProvider = ({ children }) => {
 
     const data = await res.json();
     if (!data.success) {
+      if (data.isDeletedByAdmin) {
+        const err = new Error(data.message || 'Your account was deleted by an administrator.');
+        err.isDeletedByAdmin = true;
+        err.adminMessage = data.adminMessage || data.deletionReason;
+        err.deletionReason = data.deletionReason || data.adminMessage;
+        err.deletedAt = data.deletedAt;
+        err.recoveryDeadline = data.recoveryDeadline;
+        err.appealUrl = data.appealUrl;
+        err.email = data.email;
+        err.username = data.username;
+        throw err;
+      }
       if (data.requiresRecovery) {
         const err = new Error(data.message || 'An account with this email is pending deletion.');
         err.requiresRecovery = true;

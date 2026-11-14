@@ -12,7 +12,8 @@ const DEFAULT_FLAGS = {
   pollsEnabled: true,
   announcementsEnabled: true,
   e2eeEnabled: true,
-  customAvatarUpload: true
+  customAvatarUpload: true,
+  allowOldDataRequests: true
 };
 
 const FeatureFlagsContext = createContext({
@@ -83,7 +84,9 @@ export const FeatureFlagsProvider = ({ children }) => {
         polls: 'pollsEnabled',
         announcements: 'announcementsEnabled',
         e2ee: 'e2eeEnabled',
-        customAvatarUpload: 'customAvatarUpload'
+        customAvatarUpload: 'customAvatarUpload',
+        allowOldDataRequests: 'allowOldDataRequests',
+        oldDataRequests: 'allowOldDataRequests'
       };
       const key = aliasMap[featureKey] || featureKey;
       return featureFlags[key] !== false;

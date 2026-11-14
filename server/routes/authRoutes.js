@@ -13,6 +13,8 @@ const {
   submitAccountRecovery,
   createAlternativeAccount,
   requestDataItems,
+  getOldDataStatus,
+  requestOldData,
   deletionAppeal,
   logout,
   logoutAll,
@@ -44,5 +46,7 @@ router.post('/change-password', protect, changePassword);
 router.post('/deactivate', protect, deactivateAccount);
 router.post('/request-deletion', protect, requestAccountDeletion);
 router.post('/request-data-items', protect, requestDataItems);
+router.get('/old-data-status', protect, getOldDataStatus);
+router.post('/request-old-data', protect, requestOldData);
 
 module.exports = router;

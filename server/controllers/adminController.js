@@ -56,6 +56,11 @@ const getUsers = async (req, res) => {
     if (role) filter.role = role;
     if (isBanned !== undefined) filter.isBanned = isBanned === 'true';
 
+    // Exclude accounts moved to Trash DB unless specifically requested
+    if (!req.query.includeDeleted) {
+      filter.deletionStatus = { $nin: ['deleted_by_admin', 'purged'] };
+    }
+
     const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
     const [users, total] = await Promise.all([
       User.find(filter)
@@ -375,8 +380,16 @@ const deleteUser = async (req, res) => {
       }
     );
 
-    // Delete user
-    await User.findByIdAndDelete(id);
+    // Move user into Trash DB retention with Admin Deletion Reason and 14-day recovery window
+    const deadline = new Date(Date.now() + 14 * 24 * 3600 * 1000);
+    targetUser.deletionStatus = 'deleted_by_admin';
+    targetUser.deletionReason = reason.trim() || 'Account removed by administrator';
+    targetUser.deletedByAdmin = adminUser._id;
+    targetUser.deletedAt = new Date();
+    targetUser.recoveryDeadline = deadline;
+    targetUser.isDeactivated = true;
+    targetUser.status = 'offline';
+    await targetUser.save();
 
     // Send deletion email with reason and appeal link (non-blocking)
     const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
@@ -391,17 +404,174 @@ const deleteUser = async (req, res) => {
       action: 'USER_DELETE',
       targetType: 'User',
       targetId: userId,
-      details: { username, email, role: targetUser.role, reason },
+      details: { username, email, role: targetUser.role, reason: targetUser.deletionReason },
       ipAddress: req.ip
     });
 
     return res.json({
       success: true,
-      message: `User @${username} has been permanently deleted.`
+      message: `User @${username} has been deleted and moved to Trash DB retention (14 days). Reason recorded.`
     });
   } catch (error) {
     console.error('[Admin Delete User Error]', error);
     return res.status(500).json({ success: false, message: 'Error deleting user.' });
+  }
+};
+
+// @desc Get all deleted/retained accounts currently stored in the Trash DB
+// @route GET /api/admin/trash/accounts
+const getTrashAccounts = async (req, res) => {
+  try {
+    const { query, type = 'all', page = 1, limit = 50 } = req.query;
+    const filter = {
+      deletionStatus: { $in: ['deleted_by_admin', 'pending_deletion', 'retained', 'confirmed_pending_purge'] }
+    };
+
+    if (type === 'admin_deleted') {
+      filter.deletionStatus = 'deleted_by_admin';
+    } else if (type === 'self_deleted') {
+      filter.deletionStatus = { $in: ['pending_deletion', 'retained', 'confirmed_pending_purge'] };
+    }
+
+    if (query) {
+      filter.$or = [
+        { username: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } },
+        { deletionReason: { $regex: query, $options: 'i' } }
+      ];
+    }
+
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const [accounts, total, totalAdminDeleted, totalSelfDeleted] = await Promise.all([
+      User.find(filter)
+        .populate('deletedByAdmin', 'username nickname email avatar')
+        .sort({ deletedAt: -1, updatedAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit, 10))
+        .lean(),
+      User.countDocuments(filter),
+      User.countDocuments({ deletionStatus: 'deleted_by_admin' }),
+      User.countDocuments({ deletionStatus: { $in: ['pending_deletion', 'retained', 'confirmed_pending_purge'] } })
+    ]);
+
+    const now = Date.now();
+    const enrichedAccounts = accounts.map((acc) => {
+      const deadline = acc.recoveryDeadline ? new Date(acc.recoveryDeadline).getTime() : now;
+      const msLeft = Math.max(0, deadline - now);
+      const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+      return {
+        ...acc,
+        daysLeft,
+        isExpired: msLeft <= 0
+      };
+    });
+
+    return res.json({
+      success: true,
+      trashAccounts: enrichedAccounts,
+      stats: {
+        totalInTrash: total,
+        totalAdminDeleted,
+        totalSelfDeleted,
+        retentionPolicyDays: 14,
+        targetDatabase: 'isolated_retention'
+      },
+      page: parseInt(page, 10),
+      pages: Math.ceil(total / parseInt(limit, 10))
+    });
+  } catch (error) {
+    console.error('[Get Trash Accounts Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve trash database records.' });
+  }
+};
+
+// @desc Restore a deleted user account from the Trash DB back to active status
+// @route POST /api/admin/trash/restore/:id
+const restoreTrashAccount = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminUser = req.user;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Trash account not found.' });
+    }
+
+    user.deletionStatus = 'active';
+    user.isDeactivated = false;
+    user.deletionReason = '';
+    user.deletedByAdmin = undefined;
+    user.deletedAt = undefined;
+    user.recoveryDeadline = undefined;
+    await user.save();
+
+    await AuditLog.create({
+      actor: adminUser._id,
+      action: 'USER_RESTORE_FROM_TRASH',
+      targetType: 'User',
+      targetId: user._id,
+      details: { username: user.username, email: user.email, restoredBy: adminUser.username },
+      ipAddress: req.ip
+    });
+
+    return res.json({
+      success: true,
+      message: `Account @${user.username} successfully restored from Trash DB to active status.`
+    });
+  } catch (error) {
+    console.error('[Restore Trash Account Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to restore account from trash.' });
+  }
+};
+
+// @desc Permanently purge a deleted user account from the Trash DB immediately
+// @route DELETE /api/admin/trash/purge/:id
+const purgeTrashAccount = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminUser = req.user;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Trash account not found.' });
+    }
+
+    const { username, email } = user;
+    await User.findByIdAndDelete(id);
+
+    await AuditLog.create({
+      actor: adminUser._id,
+      action: 'USER_PERMANENT_PURGE',
+      targetType: 'User',
+      targetId: id,
+      details: { username, email, purgedBy: adminUser.username },
+      ipAddress: req.ip
+    });
+
+    return res.json({
+      success: true,
+      message: `Account @${username} permanently purged from database.`
+    });
+  } catch (error) {
+    console.error('[Purge Trash Account Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to purge account from trash.' });
+  }
+};
+
+// @desc Purge all expired accounts from Trash DB
+// @route POST /api/admin/trash/purge-expired
+const purgeExpiredTrashAccounts = async (req, res) => {
+  try {
+    const { runRetentionPurge } = require('../jobs/retentionJob');
+    const result = await runRetentionPurge();
+    return res.json({
+      success: true,
+      message: 'Expired trash accounts purged successfully.',
+      report: result.report
+    });
+  } catch (error) {
+    console.error('[Purge Expired Trash Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to execute expired trash purge.' });
   }
 };
 
@@ -960,7 +1130,8 @@ const getPublicFeatureFlags = async (req, res) => {
       pollsEnabled: true,
       announcementsEnabled: true,
       e2eeEnabled: true,
-      customAvatarUpload: true
+      customAvatarUpload: true,
+      allowOldDataRequests: true
     };
 
     return res.json({
@@ -985,7 +1156,8 @@ const getPublicFeatureFlags = async (req, res) => {
         pollsEnabled: true,
         announcementsEnabled: true,
         e2eeEnabled: true,
-        customAvatarUpload: true
+        customAvatarUpload: true,
+        allowOldDataRequests: true
       }
     });
   }
@@ -2301,6 +2473,10 @@ module.exports = {
   revokeVerificationCode,
   deleteVerificationCodes,
   runManualRetention,
+  getTrashAccounts,
+  restoreTrashAccount,
+  purgeTrashAccount,
+  purgeExpiredTrashAccounts,
   getMaintenanceSchedules,
   createMaintenanceSchedule,
   updateMaintenanceSchedule,

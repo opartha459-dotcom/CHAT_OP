@@ -458,6 +458,23 @@ const login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
+    // Check if account was deleted by an administrator (Trash DB retention)
+    if (user.deletionStatus === 'deleted_by_admin') {
+      const reasonText = user.deletionReason || 'Your account was deleted by an administrator.';
+      return res.status(403).json({
+        success: false,
+        isDeletedByAdmin: true,
+        message: `Account deleted by administrator: "${reasonText}"`,
+        adminMessage: reasonText,
+        deletionReason: reasonText,
+        deletedAt: user.deletedAt || user.updatedAt,
+        recoveryDeadline: user.recoveryDeadline,
+        email: user.email,
+        username: user.username,
+        appealUrl: `/deletion-appeal?email=${encodeURIComponent(user.email)}`
+      });
+    }
+
     // MANDATORY STATE 3: Check if account is pending deletion or in retention!
     if (user.deletionStatus === 'pending_deletion' || user.deletionStatus === 'retained') {
       return res.status(403).json({
@@ -1119,6 +1136,238 @@ const deactivateAccount = async (req, res) => {
   }
 };
 
+// @desc Get status of old retained data & migration requests for current logged-in user
+// @route GET /api/auth/old-data-status
+const getOldDataStatus = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    const config = await SystemConfig.findOne({ key: 'system_settings' });
+    const isEnabled = config?.featureFlags?.allowOldDataRequests !== false;
+
+    if (!isEnabled) {
+      return res.json({
+        success: true,
+        isEnabled: false,
+        message: 'Old data request feature is currently disabled by administrator.'
+      });
+    }
+
+    // 1. Check if there is an existing data_migration request for this user's account
+    let recoveryReq = await AccountRecoveryRequest.findOne({
+      $or: [
+        { newAccount: req.user._id, requestType: 'data_migration' },
+        { originalEmail: req.user.email, requestType: 'data_migration' }
+      ]
+    })
+      .populate('user', 'username email deletionStatus recoveryDeadline deletionReason deletedAt createdAt')
+      .sort({ createdAt: -1 });
+
+    let oldAccount = null;
+
+    if (recoveryReq) {
+      oldAccount = recoveryReq.user;
+    } else {
+      // 2. Check if an archived/retained account exists under this email or archivedEmail
+      oldAccount = await User.findOne({
+        $or: [
+          { archivedEmail: req.user.email },
+          { email: req.user.email }
+        ],
+        _id: { $ne: req.user._id },
+        deletionStatus: { $in: ['pending_deletion', 'retained', 'deleted_by_admin', 'confirmed_pending_purge'] }
+      }).select('username email deletionStatus recoveryDeadline deletionReason deletedAt createdAt');
+    }
+
+    return res.json({
+      success: true,
+      isEnabled: true,
+      hasOldAccount: !!oldAccount || !!recoveryReq,
+      oldAccount: oldAccount ? {
+        _id: oldAccount._id,
+        username: oldAccount.username || recoveryReq?.originalUsername,
+        email: recoveryReq?.originalEmail || oldAccount.email,
+        deletionStatus: oldAccount.deletionStatus,
+        recoveryDeadline: oldAccount.recoveryDeadline,
+        deletionReason: oldAccount.deletionReason,
+        deletedAt: oldAccount.deletedAt
+      } : null,
+      recoveryRequest: recoveryReq ? {
+        _id: recoveryReq._id,
+        status: recoveryReq.status,
+        requestedItems: recoveryReq.requestedItems || [],
+        userNote: recoveryReq.userNote,
+        adminDecisionReason: recoveryReq.adminDecisionReason,
+        createdAt: recoveryReq.createdAt,
+        decidedAt: recoveryReq.decidedAt
+      } : null
+    });
+  } catch (error) {
+    console.error('[Get Old Data Status Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve old data status.' });
+  }
+};
+
+// @desc Request old account data items from profile
+// @route POST /api/auth/request-old-data
+const requestOldData = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    const config = await SystemConfig.findOne({ key: 'system_settings' });
+    if (config?.featureFlags?.allowOldDataRequests === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'Old data request feature is currently disabled by administrator.'
+      });
+    }
+
+    const { items, userNote, oldIdentifier, oldPassword } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please select at least one data item to request.' });
+    }
+
+    const ALLOWED_ITEMS = {
+      chats:        'Chat History',
+      contacts:     'Contacts & Friends',
+      call_history: 'Call History',
+      media:        'Shared Media & Files',
+      profile:      'Profile Info & Bio'
+    };
+
+    // 1. Check existing request for this user
+    let recoveryReq = await AccountRecoveryRequest.findOne({
+      $or: [
+        { newAccount: req.user._id, requestType: 'data_migration' },
+        { originalEmail: req.user.email, requestType: 'data_migration' }
+      ]
+    });
+
+    let oldAccount = null;
+
+    if (!recoveryReq) {
+      // Find archived user
+      if (oldIdentifier) {
+        const cleanOld = oldIdentifier.trim().toLowerCase();
+        oldAccount = await User.findOne({
+          $or: [
+            { username: cleanOld },
+            { email: cleanOld },
+            { archivedEmail: cleanOld }
+          ],
+          _id: { $ne: req.user._id },
+          deletionStatus: { $in: ['pending_deletion', 'retained', 'deleted_by_admin', 'confirmed_pending_purge'] }
+        }).select('+password');
+
+        if (oldAccount && oldPassword) {
+          const isMatch = await oldAccount.matchPassword(oldPassword);
+          if (!isMatch) {
+            return res.status(401).json({ success: false, message: 'Invalid password for the previous account.' });
+          }
+        }
+      }
+
+      if (!oldAccount) {
+        oldAccount = await User.findOne({
+          $or: [
+            { archivedEmail: req.user.email },
+            { email: req.user.email }
+          ],
+          _id: { $ne: req.user._id },
+          deletionStatus: { $in: ['pending_deletion', 'retained', 'deleted_by_admin', 'confirmed_pending_purge'] }
+        });
+      }
+
+      if (!oldAccount) {
+        return res.status(404).json({
+          success: false,
+          message: 'No retained or deleted account found matching your profile. If you have an account under a different username or email, please provide its credentials.'
+        });
+      }
+
+      // Create new recovery request
+      recoveryReq = await AccountRecoveryRequest.create({
+        user: oldAccount._id,
+        newAccount: req.user._id,
+        requestType: 'data_migration',
+        email: oldAccount.archivedEmail || req.user.email,
+        originalEmail: oldAccount.archivedEmail || req.user.email,
+        originalUsername: oldAccount.username,
+        requestedItems: [],
+        userNote: userNote || `User requested old data via Profile (@${req.user.username})`,
+        ipAddress: req.ip
+      });
+    }
+
+    // Merge requested items
+    const existingMap = new Map((recoveryReq.requestedItems || []).map(i => [i.key, i]));
+    const updatedItems = [...(recoveryReq.requestedItems || [])];
+
+    items.forEach(key => {
+      if (ALLOWED_ITEMS[key]) {
+        if (!existingMap.has(key)) {
+          updatedItems.push({
+            key,
+            label: ALLOWED_ITEMS[key],
+            status: 'pending'
+          });
+        } else {
+          // If was rejected, reset to pending
+          const item = existingMap.get(key);
+          if (item.status === 'rejected') {
+            item.status = 'pending';
+            item.adminNote = '';
+            item.decidedAt = undefined;
+          }
+        }
+      }
+    });
+
+    recoveryReq.requestedItems = updatedItems;
+    recoveryReq.status = 'pending';
+    recoveryReq.newAccount = req.user._id;
+    if (userNote) {
+      recoveryReq.userNote = userNote;
+    }
+
+    await recoveryReq.save();
+
+    // Notify admins via socket in real-time
+    const io = req.app.get('io');
+    if (io) {
+      const payload = {
+        _id: recoveryReq._id.toString(),
+        requestType: 'data_migration',
+        originalUsername: recoveryReq.originalUsername,
+        originalEmail: recoveryReq.originalEmail,
+        newAccount: {
+          _id: req.user._id,
+          username: req.user.username,
+          email: req.user.email
+        },
+        requestedItems: recoveryReq.requestedItems,
+        status: 'pending',
+        userNote: recoveryReq.userNote,
+        createdAt: recoveryReq.createdAt
+      };
+      io.to('admin:room').emit('admin:new_recovery_request', payload);
+      io.emit('admin:new_recovery_request', payload);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Old data request submitted successfully! An administrator will review your requested items.',
+      recoveryRequest: {
+        _id: recoveryReq._id,
+        status: recoveryReq.status,
+        requestedItems: recoveryReq.requestedItems,
+        userNote: recoveryReq.userNote
+      }
+    });
+  } catch (error) {
+    console.error('[Request Old Data Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to submit old data request.' });
+  }
+};
+
 module.exports = {
   register,
   verifyEmail,
@@ -1132,6 +1381,8 @@ module.exports = {
   submitAccountRecovery,
   createAlternativeAccount,
   requestDataItems,
+  getOldDataStatus,
+  requestOldData,
   deletionAppeal,
   logout,
   logoutAll,
