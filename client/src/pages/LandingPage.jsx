@@ -128,228 +128,315 @@ export const LandingPage = () => {
     footer
   } = config;
 
+  const hasHeroImage = Boolean(hero?.showHeroImage && hero?.heroImage);
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
-      {/* Top Navbar */}
-      <header className="px-6 lg:px-12 py-4 border-b border-slate-800/80 flex items-center justify-between backdrop-blur-md sticky top-0 z-50 bg-slate-950/80">
-        <div className="flex items-center space-x-3">
-          <Link to="/" className="group hover:opacity-90 transition flex items-center space-x-2.5">
-            {brandLogo ? (
-              <img
-                src={brandLogo}
-                alt={brandName}
-                className="h-8 max-w-[140px] object-contain rounded-lg"
-              />
-            ) : (
-              <PulseLogo size="md" animated={true} />
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white relative overflow-x-hidden">
+      {/* Architectural Background Grid & Ambient Glow */}
+      <div
+        className="fixed inset-0 pointer-events-none opacity-[0.12]"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, #334155 1px, transparent 1px), linear-gradient(to bottom, #334155 1px, transparent 1px)',
+          backgroundSize: '40px 40px'
+        }}
+      />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1100px] h-[500px] bg-gradient-to-b from-indigo-600/20 via-purple-600/10 to-transparent rounded-full blur-[160px] pointer-events-none" />
+
+      {/* ================= FLOATING GLASS NAVBAR ================= */}
+      <div className="sticky top-0 z-50 px-4 sm:px-6 pt-4">
+        <header className="max-w-6xl mx-auto h-16 px-5 sm:px-8 rounded-2xl border border-slate-800/80 bg-slate-950/80 backdrop-blur-xl shadow-2xl shadow-black/50 flex items-center justify-between">
+          {/* Brand Identity */}
+          <div className="flex items-center space-x-3">
+            <Link to="/" className="group hover:opacity-90 transition flex items-center space-x-2.5">
+              {brandLogo ? (
+                <>
+                  <img
+                    src={brandLogo}
+                    alt={brandName}
+                    className="h-8 max-w-[130px] object-contain rounded-lg"
+                  />
+                  <span className="text-base font-extrabold text-white tracking-tight">
+                    {brandName}
+                  </span>
+                </>
+              ) : (
+                <PulseLogo size="md" animated={true} />
+              )}
+            </Link>
+
+            {brandTagline && (
+              <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 text-[10px] font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 rounded-md font-mono tracking-wider">
+                {brandTagline}
+              </span>
             )}
-            <span className="text-base font-extrabold text-white tracking-tight hidden xs:inline">
-              {brandName}
-            </span>
-          </Link>
+          </div>
 
-          {brandTagline && (
-            <span className="hidden sm:inline-flex px-2 py-0.5 text-[10px] font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 rounded-full font-mono">
-              {brandTagline}
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center space-x-3 text-xs font-semibold">
-          <Link
-            to={hero?.secondaryCtaLink || '/login'}
-            className="px-4 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-900 transition"
-          >
-            Sign In
-          </Link>
-          <Link
-            to={hero?.primaryCtaLink || '/register'}
-            className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition hover:scale-105 active:scale-95"
-          >
-            {hero?.primaryCtaText || 'Get Started'}
-          </Link>
-        </div>
-      </header>
-
-      {/* Main Container */}
-      <main className="flex-1 flex flex-col items-center justify-center px-6 py-12 md:py-16 text-center max-w-6xl mx-auto relative overflow-hidden w-full">
-        {/* Ambient background glow */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-indigo-600/15 rounded-full blur-[140px] pointer-events-none" />
-
-        {/* Announcement Badge Chip */}
-        {announcementBadge?.enabled && announcementBadge?.text && (
-          <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs text-indigo-400 font-medium mb-6 shadow-md backdrop-blur-md">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
-            {announcementBadge.link ? (
-              <a
-                href={announcementBadge.link}
-                className="hover:underline flex items-center space-x-1"
-              >
-                <span>{announcementBadge.text}</span>
-                <ArrowRight className="w-3 h-3 opacity-60" />
+          {/* Section Navigation */}
+          <nav className="hidden md:flex items-center space-x-8 text-xs font-semibold text-slate-400">
+            {features.length > 0 && (
+              <a href="#features" className="hover:text-white transition">
+                Capabilities
               </a>
-            ) : (
-              <span>{announcementBadge.text}</span>
             )}
+            {previewSection?.enabled && (
+              <a href="#showcase" className="hover:text-white transition">
+                Interface
+              </a>
+            )}
+            {stats.length > 0 && (
+              <a href="#metrics" className="hover:text-white transition">
+                Performance
+              </a>
+            )}
+          </nav>
+
+          {/* Auth Actions */}
+          <div className="flex items-center space-x-2.5 text-xs font-semibold">
+            <Link
+              to={hero?.secondaryCtaLink || '/login'}
+              className="px-4 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-900 transition whitespace-nowrap"
+            >
+              Sign In
+            </Link>
+            <Link
+              to={hero?.primaryCtaLink || '/register'}
+              className="px-4.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap"
+            >
+              {hero?.primaryCtaText || 'Get Started'}
+            </Link>
           </div>
-        )}
+        </header>
+      </div>
 
-        {/* Hero Headline & Subheadline */}
-        <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-white max-w-4xl leading-tight">
-          {hero?.headline || 'Next-Generation Encrypted Real-Time Messaging.'}
-        </h1>
+      {/* Main Content */}
+      <main className="flex-1 relative z-10">
+        {/* ================= HERO SECTION ================= */}
+        <section className="max-w-6xl mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col items-center text-center">
+          {/* Announcement Pill */}
+          {announcementBadge?.enabled && announcementBadge?.text && (
+            <div className="inline-flex items-center space-x-2 px-4 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs text-indigo-400 font-medium mb-8 shadow-xl backdrop-blur-md">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-pulse shrink-0" />
+              {announcementBadge.link ? (
+                <a
+                  href={announcementBadge.link}
+                  className="hover:underline flex items-center space-x-1.5"
+                >
+                  <span>{announcementBadge.text}</span>
+                  <ArrowRight className="w-3 h-3 opacity-70" />
+                </a>
+              ) : (
+                <span>{announcementBadge.text}</span>
+              )}
+            </div>
+          )}
 
-        <p className="mt-5 text-sm md:text-base text-slate-400 max-w-2xl mx-auto leading-relaxed">
-          {hero?.subheadline ||
-            'Experience frictionless instant private chats, rich group collaboration, media sharing, and verifiable End-to-End Encryption with full data sovereignty.'}
-        </p>
+          {/* Main Headline */}
+          <h1 className="text-4xl sm:text-6xl lg:text-[68px] font-extrabold tracking-tight text-white max-w-4xl leading-[1.08]">
+            {hero?.headline || 'Next-Generation Encrypted Real-Time Messaging.'}
+          </h1>
 
-        {/* Hero Call to Action Buttons */}
-        <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-md">
-          <Link
-            to={hero?.primaryCtaLink || '/register'}
-            className="w-full sm:w-auto px-7 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-xl shadow-indigo-600/25 flex items-center justify-center space-x-2 transition hover:scale-105 active:scale-95"
-          >
-            <span>{hero?.primaryCtaText || 'Create Free Account'}</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-          <Link
-            to={hero?.secondaryCtaLink || '/login'}
-            className="w-full sm:w-auto px-7 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800/80 border border-slate-800 text-slate-200 font-semibold text-sm flex items-center justify-center space-x-2 transition"
-          >
-            <span>{hero?.secondaryCtaText || 'Launch Messenger'}</span>
-          </Link>
-        </div>
+          {/* Subheadline */}
+          <p className="mt-6 text-sm sm:text-base md:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed font-normal">
+            {hero?.subheadline ||
+              'Experience frictionless instant private chats, rich group collaboration, media sharing, and verifiable End-to-End Encryption with full data sovereignty.'}
+          </p>
 
-        {/* Optional Hero Banner / Interactive Mockup Image with Gradient Blend */}
-        {hero?.showHeroImage && hero?.heroImage && (
-          <div className="mt-12 w-full max-w-4xl relative">
-            <HeroBlendedImage hero={hero} />
+          {/* Primary & Secondary CTA Buttons */}
+          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-lg">
+            <Link
+              to={hero?.primaryCtaLink || '/register'}
+              className="w-full sm:w-auto px-7.5 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-xl shadow-indigo-600/30 flex items-center justify-center space-x-2 transition hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap"
+            >
+              <span>{hero?.primaryCtaText || 'Create Free Account'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+            <Link
+              to={hero?.secondaryCtaLink || '/login'}
+              className="w-full sm:w-auto px-7.5 py-4 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-200 font-semibold text-sm flex items-center justify-center space-x-2 transition whitespace-nowrap"
+            >
+              <span>{hero?.secondaryCtaText || 'Launch Messenger'}</span>
+            </Link>
           </div>
-        )}
 
-        {/* Dynamic Stats Banner */}
-        {stats && stats.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-14 w-full max-w-4xl">
-            {stats.map((st, idx) => (
-              <div
-                key={idx}
-                className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-md flex flex-col items-center justify-center text-center shadow-lg"
-              >
-                <span className="text-2xl md:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
-                  {st.value}
-                </span>
-                <span className="text-xs font-bold text-slate-200 mt-1">{st.label}</span>
-                {st.description && (
-                  <span className="text-[11px] text-slate-500 mt-0.5">{st.description}</span>
-                )}
+          {/* Trust Highlights Directly Under CTAs */}
+          {highlightPoints && highlightPoints.length > 0 && (
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-xs text-slate-400 font-medium">
+              {highlightPoints.map((pt, idx) => (
+                <div key={idx} className="flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{pt}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Hero Visual Stage Directly Below Text Block */}
+          {hasHeroImage && (
+            <div className="mt-14 w-full max-w-5xl relative">
+              <div className="absolute -inset-4 bg-indigo-500/10 rounded-3xl blur-3xl pointer-events-none" />
+              <div className="relative">
+                <HeroBlendedImage hero={hero} />
               </div>
-            ))}
-          </div>
+            </div>
+          )}
+        </section>
+
+        {/* ================= METRICS / STATS BAND ================= */}
+        {stats && stats.length > 0 && (
+          <section id="metrics" className="max-w-6xl mx-auto px-6 pb-20 md:pb-28">
+            <div className="rounded-3xl bg-slate-900/60 border border-slate-800/80 p-8 md:p-10 shadow-2xl backdrop-blur-md">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-6 divide-y sm:divide-y-0 sm:divide-x divide-slate-800/80">
+                {stats.map((st, idx) => (
+                  <div
+                    key={idx}
+                    className="pt-6 sm:pt-0 sm:px-8 first:pt-0 sm:first:pl-2 sm:last:pr-2 flex flex-col items-center sm:items-start text-center sm:text-left"
+                  >
+                    <span className="text-3xl md:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 tracking-tight">
+                      {st.value}
+                    </span>
+                    <span className="text-xs font-bold text-white mt-2 uppercase tracking-wider">
+                      {st.label}
+                    </span>
+                    {st.description && (
+                      <span className="text-xs text-slate-400 mt-1 leading-relaxed">
+                        {st.description}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
         )}
 
-        {/* Dynamic Features Grid */}
+        {/* ================= FEATURES ARCHITECTURE GRID ================= */}
         {features && features.length > 0 && (
-          <div className="w-full mt-16 text-left">
-            <div className="text-center mb-10">
-              <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+          <section id="features" className="max-w-6xl mx-auto px-6 py-16 md:py-24">
+            <div className="text-center max-w-2xl mx-auto mb-16">
+              <span className="px-3.5 py-1 rounded-full bg-indigo-950/80 border border-indigo-800/60 text-[10px] font-mono font-bold uppercase tracking-widest text-indigo-400">
+                Core Capabilities
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mt-4">
                 Built for security, engineered for scale.
               </h2>
-              <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-                Discover the enterprise-grade foundation powering real-time conversations.
+              <p className="text-xs sm:text-sm text-slate-400 mt-3 leading-relaxed">
+                Discover the enterprise-grade foundation powering real-time conversations with zero compromise.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
               {features.map((feat, idx) => (
                 <div
                   key={idx}
-                  className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700/80 transition flex flex-col justify-between shadow-lg hover:shadow-indigo-500/5 group"
+                  className="relative p-8 rounded-3xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 transition-all duration-300 flex flex-col justify-between group overflow-hidden shadow-lg hover:shadow-indigo-500/5"
                 >
+                  {/* Top Highlight Accent on Hover */}
+                  <div className="absolute top-0 inset-x-8 h-px bg-gradient-to-r from-transparent via-indigo-500/0 group-hover:via-indigo-400/80 to-transparent transition-all duration-300" />
+
                   <div>
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-6">
                       {feat.image ? (
                         <img
                           src={feat.image}
                           alt={feat.title}
-                          className="w-10 h-10 object-contain rounded-xl border border-slate-800"
+                          className="w-12 h-12 object-contain rounded-2xl border border-slate-800 bg-slate-950 p-1.5 shadow-md"
                         />
                       ) : (
-                        <div className="w-10 h-10 rounded-xl bg-indigo-950/80 border border-indigo-800/60 text-indigo-400 flex items-center justify-center">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-950/90 border border-indigo-800/60 text-indigo-400 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
                           {renderIcon(feat.icon)}
                         </div>
                       )}
+
                       {feat.badge && (
-                        <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-800 text-indigo-400 border border-slate-700/60 rounded-md">
+                        <span className="px-3 py-1 text-[10px] font-mono font-bold bg-slate-950 text-indigo-400 border border-slate-800 rounded-lg">
                           {feat.badge}
                         </span>
                       )}
                     </div>
-                    <h3 className="text-base font-bold text-white mb-2">{feat.title}</h3>
-                    <p className="text-xs text-slate-400 leading-relaxed">{feat.description}</p>
+
+                    <h3 className="text-base sm:text-lg font-bold text-white mb-2.5 tracking-tight">
+                      {feat.title}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                      {feat.description}
+                    </p>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         )}
 
-        {/* Dynamic App Showcase / Preview Section */}
+        {/* ================= APP INTERFACE SHOWCASE ================= */}
         {previewSection?.enabled && (
-          <div className="w-full mt-20 p-8 md:p-12 rounded-3xl bg-gradient-to-b from-slate-900/80 to-slate-950/80 border border-slate-800/80 text-center relative overflow-hidden">
-            <div className="max-w-2xl mx-auto space-y-3">
-              <span className="px-3 py-1 bg-indigo-950/80 text-indigo-400 border border-indigo-800/60 text-[10px] font-bold rounded-full uppercase tracking-wider">
-                Full-Featured Experience
-              </span>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
-                {previewSection.title}
-              </h2>
-              <p className="text-xs md:text-sm text-slate-400 leading-relaxed">
-                {previewSection.description}
-              </p>
+          <section id="showcase" className="max-w-6xl mx-auto px-6 py-16 md:py-24">
+            <div className="rounded-[2.5rem] bg-gradient-to-b from-slate-900/90 to-slate-950 border border-slate-800/90 p-8 sm:p-14 lg:p-16 relative overflow-hidden shadow-2xl text-center">
+              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent" />
+
+              <div className="max-w-2xl mx-auto space-y-4">
+                <span className="inline-flex items-center px-3.5 py-1 bg-indigo-950/80 text-indigo-400 border border-indigo-800/60 text-[10px] font-bold rounded-full uppercase tracking-widest">
+                  Full-Featured Experience
+                </span>
+                <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                  {previewSection.title}
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                  {previewSection.description}
+                </p>
+              </div>
+
+              {previewSection.imageUrl && (
+                <div className="mt-12 max-w-5xl mx-auto rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 shadow-2xl">
+                  {/* Browser / Encrypted Session Top Bar */}
+                  <div className="px-4 py-3 bg-slate-900/95 border-b border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-700" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-700" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-700" />
+                    </div>
+                    <div className="flex items-center space-x-1.5 text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-3 py-0.5 rounded-full">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>{brandTagline || 'END-TO-END ENCRYPTED'}</span>
+                    </div>
+                    <div className="w-10" />
+                  </div>
+
+                  <img
+                    src={previewSection.imageUrl}
+                    alt="App Showcase"
+                    className="w-full h-auto max-h-[520px] object-cover"
+                  />
+                </div>
+              )}
             </div>
-
-            {previewSection.imageUrl && (
-              <div className="mt-8 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl max-w-4xl mx-auto">
-                <img
-                  src={previewSection.imageUrl}
-                  alt="App Showcase"
-                  className="w-full h-auto max-h-[460px] object-cover"
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Trust Highlights Checkmarks */}
-        {highlightPoints && highlightPoints.length > 0 && (
-          <div className="mt-14 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
-            {highlightPoints.map((pt, idx) => (
-              <div key={idx} className="flex items-center space-x-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>{pt}</span>
-              </div>
-            ))}
-          </div>
+          </section>
         )}
       </main>
 
-      {/* Dynamic Footer */}
-      <footer className="py-8 px-6 border-t border-slate-800/60 bg-slate-950 text-center text-xs text-slate-500 space-y-3">
-        {footer?.links && footer.links.length > 0 && (
-          <div className="flex flex-wrap items-center justify-center gap-5 text-slate-400">
-            {footer.links.map((lnk, idx) => (
-              <a
-                key={idx}
-                href={lnk.url || '#'}
-                className="hover:text-indigo-400 transition"
-              >
-                {lnk.label}
-              </a>
-            ))}
+      {/* ================= FOOTER ================= */}
+      <footer className="border-t border-slate-800/80 bg-slate-950 relative z-10 mt-12">
+        <div className="max-w-6xl mx-auto px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-6 text-xs text-slate-500">
+          <div className="flex items-center space-x-3">
+            <span className="font-bold text-slate-200">{brandName}</span>
+            <span className="text-slate-700">•</span>
+            <span>{footer?.copyrightText || 'PulseChat © 2026. All rights reserved.'}</span>
           </div>
-        )}
-        <p>{footer?.copyrightText || 'PulseChat © 2026. All rights reserved.'}</p>
+
+          {footer?.links && footer.links.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-6 text-slate-400">
+              {footer.links.map((lnk, idx) => (
+                <a
+                  key={idx}
+                  href={lnk.url || '#'}
+                  className="hover:text-indigo-400 transition"
+                >
+                  {lnk.label}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
       </footer>
     </div>
   );
