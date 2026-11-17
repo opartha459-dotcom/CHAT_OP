@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -131,8 +132,8 @@ export const LandingPage = () => {
   const hasHeroImage = Boolean(hero?.showHeroImage && hero?.heroImage);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white relative overflow-x-hidden">
-      {/* Architectural Background Grid & Ambient Glow */}
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center selection:bg-indigo-500 selection:text-white relative overflow-x-hidden w-full">
+      {/* Background Texture & Top Spotlight */}
       <div
         className="fixed inset-0 pointer-events-none opacity-[0.12]"
         style={{
@@ -143,9 +144,9 @@ export const LandingPage = () => {
       />
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1100px] h-[500px] bg-gradient-to-b from-indigo-600/20 via-purple-600/10 to-transparent rounded-full blur-[160px] pointer-events-none" />
 
-      {/* ================= FLOATING GLASS NAVBAR ================= */}
-      <div className="sticky top-0 z-50 px-4 sm:px-6 pt-4">
-        <header className="max-w-6xl mx-auto h-16 px-5 sm:px-8 rounded-2xl border border-slate-800/80 bg-slate-950/80 backdrop-blur-xl shadow-2xl shadow-black/50 flex items-center justify-between">
+      {/* ================= AUTO-CENTERED FLOATING GLASS NAVBAR ================= */}
+      <div className="sticky top-0 z-50 w-full px-4 sm:px-6 pt-4 flex justify-center">
+        <header className="w-full max-w-6xl mx-auto h-16 px-5 sm:px-8 rounded-2xl border border-slate-800/80 bg-slate-950/80 backdrop-blur-xl shadow-2xl shadow-black/50 flex items-center justify-between">
           {/* Brand Identity */}
           <div className="flex items-center space-x-3">
             <Link to="/" className="group hover:opacity-90 transition flex items-center space-x-2.5">
@@ -209,13 +210,13 @@ export const LandingPage = () => {
         </header>
       </div>
 
-      {/* Main Content */}
-      <main className="flex-1 relative z-10">
-        {/* ================= HERO SECTION ================= */}
-        <section className="max-w-6xl mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col items-center text-center">
+      {/* Main Content Container */}
+      <main className="flex-1 relative z-10 w-full flex flex-col items-center">
+        {/* ================= HERO SECTION (AUTO-CENTERED) ================= */}
+        <section className="w-full max-w-6xl mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col items-center text-center">
           {/* Announcement Pill */}
           {announcementBadge?.enabled && announcementBadge?.text && (
-            <div className="inline-flex items-center space-x-2 px-4 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs text-indigo-400 font-medium mb-8 shadow-xl backdrop-blur-md">
+            <div className="inline-flex items-center justify-center space-x-2 px-4 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs text-indigo-400 font-medium mb-8 shadow-xl backdrop-blur-md mx-auto">
               <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-pulse shrink-0" />
               {announcementBadge.link ? (
                 <a
@@ -232,18 +233,18 @@ export const LandingPage = () => {
           )}
 
           {/* Main Headline */}
-          <h1 className="text-4xl sm:text-6xl lg:text-[68px] font-extrabold tracking-tight text-white max-w-4xl leading-[1.08]">
+          <h1 className="text-4xl sm:text-6xl lg:text-[68px] font-extrabold tracking-tight text-white max-w-4xl mx-auto leading-[1.08] text-center">
             {hero?.headline || 'Next-Generation Encrypted Real-Time Messaging.'}
           </h1>
 
           {/* Subheadline */}
-          <p className="mt-6 text-sm sm:text-base md:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed font-normal">
+          <p className="mt-6 text-sm sm:text-base md:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed font-normal text-center">
             {hero?.subheadline ||
               'Experience frictionless instant private chats, rich group collaboration, media sharing, and verifiable End-to-End Encryption with full data sovereignty.'}
           </p>
 
           {/* Primary & Secondary CTA Buttons */}
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-lg">
+          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-lg mx-auto">
             <Link
               to={hero?.primaryCtaLink || '/register'}
               className="w-full sm:w-auto px-7.5 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-xl shadow-indigo-600/30 flex items-center justify-center space-x-2 transition hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap"
@@ -261,7 +262,7 @@ export const LandingPage = () => {
 
           {/* Trust Highlights Directly Under CTAs */}
           {highlightPoints && highlightPoints.length > 0 && (
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-xs text-slate-400 font-medium">
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-xs text-slate-400 font-medium mx-auto">
               {highlightPoints.map((pt, idx) => (
                 <div key={idx} className="flex items-center space-x-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -273,24 +274,24 @@ export const LandingPage = () => {
 
           {/* Hero Visual Stage Directly Below Text Block */}
           {hasHeroImage && (
-            <div className="mt-14 w-full max-w-5xl relative">
+            <div className="mt-14 w-full max-w-5xl mx-auto relative flex justify-center">
               <div className="absolute -inset-4 bg-indigo-500/10 rounded-3xl blur-3xl pointer-events-none" />
-              <div className="relative">
+              <div className="relative w-full">
                 <HeroBlendedImage hero={hero} />
               </div>
             </div>
           )}
         </section>
 
-        {/* ================= METRICS / STATS BAND ================= */}
+        {/* ================= METRICS / STATS BAND (AUTO-CENTERED) ================= */}
         {stats && stats.length > 0 && (
-          <section id="metrics" className="max-w-6xl mx-auto px-6 pb-20 md:pb-28">
-            <div className="rounded-3xl bg-slate-900/60 border border-slate-800/80 p-8 md:p-10 shadow-2xl backdrop-blur-md">
+          <section id="metrics" className="w-full max-w-6xl mx-auto px-6 pb-20 md:pb-28 flex justify-center">
+            <div className="w-full rounded-3xl bg-slate-900/60 border border-slate-800/80 p-8 md:p-10 shadow-2xl backdrop-blur-md mx-auto">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-6 divide-y sm:divide-y-0 sm:divide-x divide-slate-800/80">
                 {stats.map((st, idx) => (
                   <div
                     key={idx}
-                    className="pt-6 sm:pt-0 sm:px-8 first:pt-0 sm:first:pl-2 sm:last:pr-2 flex flex-col items-center sm:items-start text-center sm:text-left"
+                    className="pt-6 sm:pt-0 sm:px-8 first:pt-0 sm:first:pl-2 sm:last:pr-2 flex flex-col items-center sm:items-start text-center sm:text-left mx-auto sm:mx-0 w-full"
                   >
                     <span className="text-3xl md:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 tracking-tight">
                       {st.value}
@@ -310,26 +311,26 @@ export const LandingPage = () => {
           </section>
         )}
 
-        {/* ================= FEATURES ARCHITECTURE GRID ================= */}
+        {/* ================= FEATURES ARCHITECTURE GRID (AUTO-CENTERED) ================= */}
         {features && features.length > 0 && (
-          <section id="features" className="max-w-6xl mx-auto px-6 py-16 md:py-24">
-            <div className="text-center max-w-2xl mx-auto mb-16">
-              <span className="px-3.5 py-1 rounded-full bg-indigo-950/80 border border-indigo-800/60 text-[10px] font-mono font-bold uppercase tracking-widest text-indigo-400">
+          <section id="features" className="w-full max-w-6xl mx-auto px-6 py-16 md:py-24 flex flex-col items-center">
+            <div className="text-center max-w-2xl mx-auto mb-16 flex flex-col items-center">
+              <span className="px-3.5 py-1 rounded-full bg-indigo-950/80 border border-indigo-800/60 text-[10px] font-mono font-bold uppercase tracking-widest text-indigo-400 mx-auto">
                 Core Capabilities
               </span>
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mt-4">
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mt-4 text-center">
                 Built for security, engineered for scale.
               </h2>
-              <p className="text-xs sm:text-sm text-slate-400 mt-3 leading-relaxed">
+              <p className="text-xs sm:text-sm text-slate-400 mt-3 leading-relaxed text-center">
                 Discover the enterprise-grade foundation powering real-time conversations with zero compromise.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full mx-auto text-left">
               {features.map((feat, idx) => (
                 <div
                   key={idx}
-                  className="relative p-8 rounded-3xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 transition-all duration-300 flex flex-col justify-between group overflow-hidden shadow-lg hover:shadow-indigo-500/5"
+                  className="relative p-8 rounded-3xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 transition-all duration-300 flex flex-col justify-between group overflow-hidden shadow-lg hover:shadow-indigo-500/5 mx-auto w-full"
                 >
                   {/* Top Highlight Accent on Hover */}
                   <div className="absolute top-0 inset-x-8 h-px bg-gradient-to-r from-transparent via-indigo-500/0 group-hover:via-indigo-400/80 to-transparent transition-all duration-300" />
@@ -368,20 +369,20 @@ export const LandingPage = () => {
           </section>
         )}
 
-        {/* ================= APP INTERFACE SHOWCASE ================= */}
+        {/* ================= APP INTERFACE SHOWCASE (AUTO-CENTERED) ================= */}
         {previewSection?.enabled && (
-          <section id="showcase" className="max-w-6xl mx-auto px-6 py-16 md:py-24">
-            <div className="rounded-[2.5rem] bg-gradient-to-b from-slate-900/90 to-slate-950 border border-slate-800/90 p-8 sm:p-14 lg:p-16 relative overflow-hidden shadow-2xl text-center">
+          <section id="showcase" className="w-full max-w-6xl mx-auto px-6 py-16 md:py-24 flex justify-center">
+            <div className="w-full rounded-[2.5rem] bg-gradient-to-b from-slate-900/90 to-slate-950 border border-slate-800/90 p-8 sm:p-14 lg:p-16 relative overflow-hidden shadow-2xl text-center mx-auto">
               <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent" />
 
-              <div className="max-w-2xl mx-auto space-y-4">
-                <span className="inline-flex items-center px-3.5 py-1 bg-indigo-950/80 text-indigo-400 border border-indigo-800/60 text-[10px] font-bold rounded-full uppercase tracking-widest">
+              <div className="max-w-2xl mx-auto space-y-4 flex flex-col items-center">
+                <span className="inline-flex items-center justify-center px-3.5 py-1 bg-indigo-950/80 text-indigo-400 border border-indigo-800/60 text-[10px] font-bold rounded-full uppercase tracking-widest mx-auto">
                   Full-Featured Experience
                 </span>
-                <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight text-center">
                   {previewSection.title}
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                <p className="text-xs sm:text-sm text-slate-400 leading-relaxed text-center">
                   {previewSection.description}
                 </p>
               </div>
@@ -405,7 +406,7 @@ export const LandingPage = () => {
                   <img
                     src={previewSection.imageUrl}
                     alt="App Showcase"
-                    className="w-full h-auto max-h-[520px] object-cover"
+                    className="w-full h-auto max-h-[520px] object-cover mx-auto"
                   />
                 </div>
               )}
@@ -414,17 +415,17 @@ export const LandingPage = () => {
         )}
       </main>
 
-      {/* ================= FOOTER ================= */}
-      <footer className="border-t border-slate-800/80 bg-slate-950 relative z-10 mt-12">
-        <div className="max-w-6xl mx-auto px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-6 text-xs text-slate-500">
-          <div className="flex items-center space-x-3">
+      {/* ================= AUTO-CENTERED FOOTER ================= */}
+      <footer className="border-t border-slate-800/80 bg-slate-950 relative z-10 mt-12 w-full flex justify-center">
+        <div className="max-w-6xl w-full mx-auto px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-6 text-xs text-slate-500">
+          <div className="flex items-center space-x-3 mx-auto sm:mx-0">
             <span className="font-bold text-slate-200">{brandName}</span>
             <span className="text-slate-700">•</span>
             <span>{footer?.copyrightText || 'PulseChat © 2026. All rights reserved.'}</span>
           </div>
 
           {footer?.links && footer.links.length > 0 && (
-            <div className="flex flex-wrap items-center justify-center gap-6 text-slate-400">
+            <div className="flex flex-wrap items-center justify-center gap-6 text-slate-400 mx-auto sm:mx-0">
               {footer.links.map((lnk, idx) => (
                 <a
                   key={idx}
@@ -441,3 +442,4 @@ export const LandingPage = () => {
     </div>
   );
 };
+
