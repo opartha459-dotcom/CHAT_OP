@@ -1745,16 +1745,16 @@ export const AdminDashboard = () => {
           </button>
 
           {/* Admin Avatar Pill */}
-          <div className="hidden md:flex items-center space-x-2.5 pl-2 border-l border-violet-900/30">
+          <div className="hidden md:flex items-center space-x-2.5 pl-2.5 border-l border-violet-900/30 shrink-0">
             <Avatar
               src={user?.avatar}
               name={user?.username}
               size="sm"
-              ringClass="ring-2 ring-violet-500/50 shadow-[0_0_8px_rgba(168,85,247,0.4)]"
+              ringClass="ring-1 ring-violet-500/60"
             />
-            <div className="text-left text-xs">
-              <div className="font-semibold text-white truncate max-w-[100px]">{user?.username}</div>
-              <div className="text-[10px] text-violet-400/70 uppercase font-mono">Super Admin</div>
+            <div className="text-left text-xs shrink-0">
+              <div className="font-semibold text-white truncate max-w-[110px] leading-tight">{user?.username}</div>
+              <div className="text-[10px] text-violet-400/80 uppercase font-mono font-medium leading-tight">Super Admin</div>
             </div>
           </div>
         </div>
@@ -1907,7 +1907,7 @@ export const AdminDashboard = () => {
 
           {/* TAB 1: OVERVIEW — CRAVEAT SIGNATURE DASHBOARD */}
           {activeTab === 'overview' && (
-            <div className="space-y-6 max-w-6xl">
+            <div className="space-y-6 w-full">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-bold text-white flex items-center space-x-2">
@@ -2056,6 +2056,7 @@ export const AdminDashboard = () => {
                 allChats={allChats}
                 users={users}
                 setActiveTab={setActiveTab}
+                authHeaders={authHeaders}
               />
 
               {/* Quick Navigation Cards */}
@@ -2113,7 +2114,7 @@ export const AdminDashboard = () => {
 
           {/* TAB: CODE DISPATCH (MANUAL VERIFICATION) */}
           {activeTab === 'codes' && (
-            <div className="max-w-6xl space-y-5">
+            <div className="w-full space-y-5">
               {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
@@ -2574,7 +2575,7 @@ export const AdminDashboard = () => {
 
           {/* TAB 2: USERS */}
           {activeTab === 'users' && (
-            <div className="max-w-6xl">
+            <div className="w-full">
               <GridListView
                 title="User Accounts"
                 subtitle="Search, inspect, and manage system user accounts"
@@ -2712,7 +2713,7 @@ export const AdminDashboard = () => {
 
           {/* TAB 4: ANNOUNCEMENTS */}
           {activeTab === 'announcements' && (
-            <div className="max-w-6xl">
+            <div className="w-full">
               <GridListView
                 title="Announcements Feed"
                 subtitle="Create, publish, and manage notifications broadcast to all users"
@@ -2939,7 +2940,7 @@ export const AdminDashboard = () => {
 
           {/* TAB 5: DATABASES */}
           {activeTab === 'databases' && (
-            <div className="space-y-6 max-w-5xl">
+            <div className="space-y-6 w-full">
               <div>
                 <h2 className="text-xl font-bold text-white flex items-center space-x-2">
                   <Database className="w-5 h-5 text-violet-400" />
@@ -3341,7 +3342,7 @@ export const AdminDashboard = () => {
 
           {/* TAB: ACCOUNT RECOVERIES */}
           {activeTab === 'recoveries' && (
-            <div className="max-w-5xl space-y-6">
+            <div className="w-full space-y-6">
               {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
@@ -3774,7 +3775,7 @@ export const AdminDashboard = () => {
 
           {/* TAB 6: AUDIT LOGS */}
           {activeTab === 'audit' && (
-            <div className="max-w-6xl">
+            <div className="w-full">
               <GridListView
                 title="Audit Trail"
                 subtitle="Administrative action history, moderation telemetry, and security events"
@@ -3893,7 +3894,7 @@ export const AdminDashboard = () => {
 
           {/* TAB: MAINTENANCE & DOWNTIME MANAGER */}
           {activeTab === 'maintenance' && (
-            <div className="space-y-6 max-w-5xl">
+            <div className="space-y-6 w-full">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-bold text-white flex items-center space-x-2">
@@ -4189,7 +4190,7 @@ export const AdminDashboard = () => {
 
           {/* TAB: THEME & TYPOGRAPHY MANAGEMENT */}
           {activeTab === 'theme' && (
-            <div className="space-y-8 max-w-5xl">
+            <div className="space-y-8 w-full">
               {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
                 <div>
@@ -4665,7 +4666,7 @@ export const AdminDashboard = () => {
 
           {/* TAB 7: SETTINGS & FEATURE FLAGS */}
           {activeTab === 'settings' && (
-            <div className="space-y-6 max-w-4xl">
+            <div className="space-y-6 w-full">
               <div>
                 <h2 className="text-xl font-bold text-white flex items-center space-x-2">
                   <Sliders className="w-5 h-5 text-violet-400" />

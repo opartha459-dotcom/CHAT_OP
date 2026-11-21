@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   getDashboardStats,
+  getAnalytics,
   getUsers,
   deleteUser,
   banUser,
@@ -58,6 +59,7 @@ router.use(protect);
 router.use(requireAdmin);
 
 router.get('/stats', getDashboardStats);
+router.get('/analytics', getAnalytics);
 router.get('/users', getUsers);
 router.put('/users/:id', updateUserAdmin);
 router.delete('/users/:id', deleteUser);

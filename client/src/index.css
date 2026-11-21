@@ -227,3 +227,63 @@ html.dark body {
   animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   animation-fill-mode: both;
 }
+
+/* ================= QUANTIX ANIMATED CYBER GRID ================= */
+@keyframes cyberGridScroll {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 60px;
+  }
+}
+
+@keyframes cyberLaserScan {
+  0% {
+    top: -10%;
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.8;
+  }
+  80% {
+    opacity: 0.8;
+  }
+  100% {
+    top: 110%;
+    opacity: 0;
+  }
+}
+
+@keyframes cyberGlowPulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.08);
+  }
+}
+
+.quantix-animated-grid {
+  background-image: 
+    linear-gradient(to right, rgba(168, 85, 247, 0.13) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(168, 85, 247, 0.13) 1px, transparent 1px);
+  background-size: 50px 50px;
+  animation: cyberGridScroll 16s linear infinite;
+}
+
+.quantix-animated-dots {
+  background-image: radial-gradient(circle at 1px 1px, rgba(192, 132, 252, 0.25) 1.5px, transparent 0);
+  background-size: 25px 25px;
+  animation: cyberGridScroll 22s linear infinite;
+}
+
+.quantix-laser-scanline {
+  animation: cyberLaserScan 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.quantix-glow-pulse {
+  animation: cyberGlowPulse 7s ease-in-out infinite;
+}

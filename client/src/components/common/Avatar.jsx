@@ -57,18 +57,18 @@ export const Avatar = ({
   const appliedRing = ringClass || defaultRing;
 
   return (
-    <div className="relative inline-flex flex-shrink-0">
+    <div className="relative inline-flex items-center justify-center flex-shrink-0">
       {src ? (
         <img
           src={src}
           alt={name}
-          className={`${sizeClasses[size] || sizeClasses.md} rounded-full object-cover ${appliedRing}`}
+          className={`${sizeClasses[size] || sizeClasses.md} rounded-full object-cover shrink-0 aspect-square ${appliedRing}`}
         />
       ) : (
         <div
           className={`${sizeClasses[size] || sizeClasses.md} ${getColorForName(
             name
-          )} text-white font-semibold rounded-full flex items-center justify-center select-none shadow-sm ${appliedRing}`}
+          )} text-white font-semibold rounded-full flex items-center justify-center select-none shadow-sm shrink-0 aspect-square ${appliedRing}`}
         >
           {initials}
         </div>

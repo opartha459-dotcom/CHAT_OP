@@ -31,9 +31,19 @@ import {
   Monitor,
   History,
   Copy,
-  CheckCheck
+  CheckCheck,
+  Share2,
+  ChevronUp,
+  ChevronDown,
+  HelpCircle
 } from 'lucide-react';
 import { ImageCropModal } from '../common/ImageCropModal';
+import {
+  SocialBrandIcon,
+  detectSocialPlatform,
+  getAutoFaviconUrl,
+  SOCIAL_PLATFORMS
+} from '../common/SocialBrandIcon';
 
 export const GRADIENT_PRESETS = [
   {
@@ -374,6 +384,50 @@ export const DEFAULT_LANDING_CONFIG = {
       { label: 'Terms of Service', url: '#' },
       { label: 'Security Whitepaper', url: '#' }
     ]
+  },
+  socialLinks: [
+    { platform: 'github', label: 'GitHub', url: 'https://github.com', iconUrl: '', autoFetch: true, enabled: true },
+    { platform: 'x', label: 'X (Twitter)', url: 'https://x.com', iconUrl: '', autoFetch: true, enabled: true },
+    { platform: 'discord', label: 'Discord', url: 'https://discord.gg', iconUrl: '', autoFetch: true, enabled: true },
+    { platform: 'telegram', label: 'Telegram', url: 'https://t.me', iconUrl: '', autoFetch: true, enabled: true }
+  ],
+  faqs: [
+    {
+      question: 'How does client-side End-to-End Encryption (E2EE) work?',
+      answer: 'Your messages and call sessions are encrypted directly on your local device using standard Web Crypto API with AES-256-GCM. The encryption keys never leave your browser, meaning the backend servers, database, and internet service providers only ever transmit opaque, mathematically unbreakable ciphertext.',
+      enabled: true
+    },
+    {
+      question: 'Can the database administrator or server read my conversations?',
+      answer: 'No. The backend operates on a strict zero-knowledge architecture. Without your device private keys, stored payloads in MongoDB are meaningless cryptographic blobs. Even in the event of an infrastructure compromise, your plaintext remains mathematically protected.',
+      enabled: true
+    },
+    {
+      question: 'Are peer-to-peer (P2P) voice and video calls encrypted?',
+      answer: 'Yes. Voice and video streams establish direct WebRTC peer-to-peer connections secured by DTLS-SRTP encryption. Audio and video packets stream directly between call participants without relaying through centralized media servers whenever possible.',
+      enabled: true
+    },
+    {
+      question: 'Can I export my chat history and account data?',
+      answer: 'Absolutely. PulseChat includes built-in GDPR compliant data portability. You can export complete, unredacted transcripts in HTML, JSON, or plain text formats, or perform instant cryptographic shredding to purge your data permanently.',
+      enabled: true
+    },
+    {
+      question: 'Is there a limit on group size or file attachment transfers?',
+      answer: 'No artificial caps. You can create public or private channels, assign granular administrative privileges (Owners, Admins, Members), and securely upload images, voice notes, audio files, and documents with client-side thumbnail generation.',
+      enabled: true
+    }
+  ],
+  ctaBanner: {
+    enabled: true,
+    imageUrl: '',
+    badgeText: 'Get Started in Under 30 Seconds',
+    title: 'Ready to Experience Truly Sovereign Communication?',
+    subtitle: 'Create your account with instant client-side key generation. No phone number required, zero tracking cookies, pure cryptographic privacy.',
+    primaryButtonText: 'Create Free Account',
+    primaryButtonLink: '/register',
+    secondaryButtonText: 'Launch Messenger',
+    secondaryButtonLink: '/login'
   }
 };
 
@@ -842,7 +896,17 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
             },
             highlightPoints: Array.isArray(data.landingPageConfig.highlightPoints)
               ? data.landingPageConfig.highlightPoints
-              : DEFAULT_LANDING_CONFIG.highlightPoints
+              : DEFAULT_LANDING_CONFIG.highlightPoints,
+            socialLinks: Array.isArray(data.landingPageConfig.socialLinks)
+              ? data.landingPageConfig.socialLinks
+              : DEFAULT_LANDING_CONFIG.socialLinks,
+            faqs: Array.isArray(data.landingPageConfig.faqs)
+              ? data.landingPageConfig.faqs
+              : DEFAULT_LANDING_CONFIG.faqs,
+            ctaBanner: {
+              ...DEFAULT_LANDING_CONFIG.ctaBanner,
+              ...(data.landingPageConfig.ctaBanner || {})
+            }
           };
           setConfig(merged);
           setSavedConfig(merged);
@@ -1033,6 +1097,111 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
     }));
   };
 
+  // Social Links helpers with Logo Auto-Fetch
+  const handleAddSocialLink = (preset = null) => {
+    const newLink = preset || {
+      platform: 'github',
+      label: 'GitHub',
+      url: 'https://github.com',
+      iconUrl: '',
+      autoFetch: true,
+      enabled: true
+    };
+    setConfig((prev) => ({
+      ...prev,
+      socialLinks: [...(prev.socialLinks || []), newLink]
+    }));
+  };
+
+  const handleUpdateSocialLink = (index, field, val) => {
+    setConfig((prev) => {
+      const list = [...(prev.socialLinks || [])];
+      const item = { ...list[index], [field]: val };
+
+      // If user edits URL and autoFetch is on, automatically detect platform and suggested label
+      if (field === 'url' && item.autoFetch && val) {
+        const detected = detectSocialPlatform(val);
+        if (detected.platform && detected.platform !== 'other') {
+          item.platform = detected.platform;
+          const currentLabel = (item.label || '').trim().toLowerCase();
+          const isGeneric = !currentLabel || ['github', 'x', 'twitter', 'discord', 'telegram', 'youtube', 'instagram', 'linkedin', 'facebook', 'reddit', 'twitch', 'tiktok', 'new link', 'social link'].includes(currentLabel);
+          if (isGeneric) {
+            item.label = detected.label;
+          }
+        }
+      } else if (field === 'platform' && val) {
+        const plat = SOCIAL_PLATFORMS.find((p) => p.id === val);
+        if (plat && (!item.label || item.label === 'New Link')) {
+          item.label = plat.label;
+        }
+      }
+
+      list[index] = item;
+      return { ...prev, socialLinks: list };
+    });
+  };
+
+  const handleDeleteSocialLink = (index) => {
+    setConfig((prev) => ({
+      ...prev,
+      socialLinks: (prev.socialLinks || []).filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleMoveSocialLink = (index, direction) => {
+    setConfig((prev) => {
+      const list = [...(prev.socialLinks || [])];
+      const target = index + direction;
+      if (target < 0 || target >= list.length) return prev;
+      const temp = list[index];
+      list[index] = list[target];
+      list[target] = temp;
+      return { ...prev, socialLinks: list };
+    });
+  };
+
+  // FAQ helpers
+  const handleAddFaq = () => {
+    setConfig((prev) => ({
+      ...prev,
+      faqs: [
+        ...(prev.faqs || []),
+        {
+          question: 'New Question',
+          answer: 'Enter clear explanation regarding privacy, technology, or encryption.',
+          enabled: true
+        }
+      ]
+    }));
+  };
+
+  const handleUpdateFaq = (index, field, val) => {
+    setConfig((prev) => {
+      const list = [...(prev.faqs || [])];
+      list[index] = { ...list[index], [field]: val };
+      return { ...prev, faqs: list };
+    });
+  };
+
+  const handleDeleteFaq = (index) => {
+    setConfig((prev) => ({
+      ...prev,
+      faqs: (prev.faqs || []).filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleMoveFaq = (index, direction) => {
+    setConfig((prev) => {
+      const list = [...(prev.faqs || [])];
+      const target = index + direction;
+      if (target < 0 || target >= list.length) return prev;
+      const temp = list[index];
+      list[index] = list[target];
+      list[target] = temp;
+      return { ...prev, faqs: list };
+    });
+  };
+
   if (loading) {
     return (
       <div className="py-16 flex flex-col items-center justify-center space-y-3">
@@ -1045,15 +1214,18 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
   const SECTIONS = [
     { id: 'hero', label: 'Hero Section', icon: Sparkles },
     { id: 'brand', label: 'Branding & Badge', icon: Globe },
-    { id: 'features', label: 'Features Grid', icon: Layers },
+    { id: 'features', label: 'Features Bento Grid', icon: Layers },
     { id: 'preview', label: 'App Showcase', icon: ImageIcon },
     { id: 'stats', label: 'Stats & Metrics', icon: BarChart3 },
     { id: 'highlights', label: 'Trust Highlights', icon: CheckCircle2 },
+    { id: 'social', label: 'Social & Community', icon: Share2 },
+    { id: 'faqs', label: 'Architecture FAQ', icon: HelpCircle },
+    { id: 'cta', label: 'Call to Action Banner', icon: Zap },
     { id: 'footer', label: 'Footer & Legal', icon: LinkIcon }
   ];
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full">
       {/* Top Header & Action Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
         <div>
@@ -1120,7 +1292,7 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
       </div>
 
       {/* Navigation Pills */}
-      <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200/80 dark:border-slate-800/80">
+      <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100/80 dark:bg-[#110A22] border border-slate-200 dark:border-violet-900/40 rounded-2xl shadow-xs">
         {SECTIONS.map((sec) => {
           const Icon = sec.icon;
           const isActive = activeSection === sec.id;
@@ -1128,13 +1300,13 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
             <button
               key={sec.id}
               onClick={() => setActiveSection(sec.id)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center space-x-2 transition cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer shrink-0 ${
                 isActive
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-900/40 font-bold'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-violet-300/70 dark:hover:text-white hover:bg-white dark:hover:bg-violet-900/30'
               }`}
             >
-              <Icon className="w-3.5 h-3.5" />
+              <Icon className="w-3.5 h-3.5 shrink-0" />
               <span>{sec.label}</span>
             </button>
           );
@@ -1752,31 +1924,79 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Icon
-                  </label>
-                  <select
-                    value={feat.icon || 'Zap'}
-                    onChange={(e) => handleUpdateFeature(idx, 'icon', e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                  >
-                    {AVAILABLE_ICONS.map((ic) => (
-                      <option key={ic.id} value={ic.id}>
-                        {ic.label}
-                      </option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Icon
+                    </label>
+                    <select
+                      value={feat.icon || 'Zap'}
+                      onChange={(e) => handleUpdateFeature(idx, 'icon', e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      {AVAILABLE_ICONS.map((ic) => (
+                        <option key={ic.id} value={ic.id}>
+                          {ic.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Card Grid Span
+                    </label>
+                    <select
+                      value={feat.colSpan || 'auto'}
+                      onChange={(e) => handleUpdateFeature(idx, 'colSpan', e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer font-medium"
+                    >
+                      <option value="auto">Auto Balanced (Smart)</option>
+                      <option value="wide">Wide (2 Columns)</option>
+                      <option value="normal">Standard (1 Column)</option>
+                      <option value="full">Full Width (3 Columns)</option>
+                    </select>
+                  </div>
                 </div>
 
-                <ImageUploader
-                  label="Custom Feature Image (Optional)"
-                  value={feat.image}
-                  token={token}
-                  aspectRatio="1:1"
-                  onChange={(url) => handleUpdateFeature(idx, 'image', url)}
-                  placeholder="Optional custom graphic URL"
-                />
+                <div className="space-y-2">
+                  <ImageUploader
+                    label="Custom Feature Image / Visual Banner"
+                    value={feat.image}
+                    token={token}
+                    aspectRatio="16:9"
+                    onChange={(url) => handleUpdateFeature(idx, 'image', url)}
+                    placeholder="Upload or paste image URL"
+                  />
+
+                  {feat.image && (
+                    <div className="pt-1">
+                      <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Image Display Format
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5 text-xs">
+                        {[
+                          { id: 'banner', label: 'Full Banner' },
+                          { id: 'medium', label: 'Medium Graphic' },
+                          { id: 'icon', label: 'Compact Icon' }
+                        ].map((fmt) => (
+                          <button
+                            key={fmt.id}
+                            type="button"
+                            onClick={() => handleUpdateFeature(idx, 'imageSize', fmt.id)}
+                            className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border text-center transition cursor-pointer ${
+                              (feat.imageSize || 'banner') === fmt.id
+                                ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            {fmt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -2025,6 +2245,611 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* SECTION: SOCIAL & COMMUNITY LINKS (WITH LOGO AUTO-FETCH) */}
+      {activeSection === 'social' && (
+        <div className="p-6 bg-[#1E1833] border border-violet-900/40 rounded-2xl shadow-xs space-y-6 text-white">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-violet-900/30">
+            <div>
+              <div className="flex items-center space-x-2">
+                <Share2 className="w-4 h-4 text-violet-400" />
+                <h3 className="text-sm font-bold text-white">Social & Community Links</h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-violet-600/30 text-violet-300 border border-violet-500/30">
+                  Logo Auto-Fetch
+                </span>
+              </div>
+              <p className="text-xs text-violet-300/60 mt-1">
+                Add links to GitHub, X (Twitter), Discord, Telegram, YouTube, and any community channels. Icons and platform names are auto-detected instantly from the URL.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2 shrink-0">
+              <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-[#19142B] border border-violet-900/40 text-violet-300">
+                {(config.socialLinks || []).length} Link{(config.socialLinks || []).length !== 1 ? 's' : ''}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleAddSocialLink()}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition shadow-md shadow-violet-900/30 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Link</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Platform Presets Bar */}
+          <div className="space-y-2">
+            <span className="text-[11px] font-semibold text-violet-300/80">Quick One-Click Add:</span>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { platform: 'github', label: 'GitHub', url: 'https://github.com' },
+                { platform: 'x', label: 'X (Twitter)', url: 'https://x.com' },
+                { platform: 'discord', label: 'Discord', url: 'https://discord.gg' },
+                { platform: 'telegram', label: 'Telegram', url: 'https://t.me' },
+                { platform: 'youtube', label: 'YouTube', url: 'https://youtube.com' },
+                { platform: 'instagram', label: 'Instagram', url: 'https://instagram.com' },
+                { platform: 'linkedin', label: 'LinkedIn', url: 'https://linkedin.com' },
+                { platform: 'reddit', label: 'Reddit', url: 'https://reddit.com' },
+              ].map((preset) => (
+                <button
+                  key={preset.platform}
+                  type="button"
+                  onClick={() => handleAddSocialLink({ ...preset, iconUrl: '', autoFetch: true, enabled: true })}
+                  className="px-2.5 py-1 rounded-lg bg-[#231C38] hover:bg-violet-900/40 border border-violet-900/30 hover:border-violet-500/50 text-[11px] text-violet-200 flex items-center space-x-1.5 transition cursor-pointer"
+                >
+                  <SocialBrandIcon platform={preset.platform} url={preset.url} className="w-3.5 h-3.5" />
+                  <span>+ {preset.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* List of Configured Social Links */}
+          <div className="space-y-3">
+            {(config.socialLinks || []).map((lnk, idx) => (
+              <div
+                key={idx}
+                className={`p-4 rounded-2xl border transition ${
+                  lnk.enabled
+                    ? 'bg-[#231C38] border-violet-900/40 hover:border-violet-700/60'
+                    : 'bg-[#19142B]/60 border-violet-950/40 opacity-70'
+                }`}
+              >
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-violet-900/20">
+                  {/* Left: Reorder, Icon preview, Platform badge */}
+                  <div className="flex items-center space-x-2.5 min-w-0">
+                    <div className="flex flex-col space-y-0.5">
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => handleMoveSocialLink(idx, -1)}
+                        className="p-1 text-violet-400 hover:text-white disabled:opacity-30 disabled:hover:text-violet-400 transition cursor-pointer"
+                        title="Move Up"
+                      >
+                        <ChevronUp className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === (config.socialLinks || []).length - 1}
+                        onClick={() => handleMoveSocialLink(idx, 1)}
+                        className="p-1 text-violet-400 hover:text-white disabled:opacity-30 disabled:hover:text-violet-400 transition cursor-pointer"
+                        title="Move Down"
+                      >
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {/* Live Brand Icon Avatar */}
+                    <div className="w-9 h-9 rounded-xl bg-[#19142B] border border-violet-900/50 flex items-center justify-center text-white p-1.5 shadow-inner shrink-0 relative">
+                      <SocialBrandIcon
+                        platform={lnk.platform}
+                        url={lnk.url}
+                        iconUrl={lnk.iconUrl}
+                        autoFetch={lnk.autoFetch}
+                        fallbackName={lnk.label}
+                        className="w-5 h-5"
+                      />
+                      {lnk.autoFetch && (
+                        <span
+                          className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-[#231C38]"
+                          title="Auto-fetch active"
+                        />
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-xs text-white truncate">
+                          {lnk.label || 'Unnamed Link'}
+                        </span>
+                        <span className="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-violet-950/80 text-violet-300 border border-violet-800/40">
+                          {lnk.platform || 'Custom'}
+                        </span>
+                      </div>
+                      {lnk.url && (
+                        <p className="text-[11px] font-mono text-violet-300/60 truncate max-w-xs sm:max-w-md">
+                          {lnk.url}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right: Actions (Toggle, Delete, Test Link) */}
+                  <div className="flex items-center space-x-2 shrink-0 self-end md:self-auto">
+                    {lnk.url && (
+                      <a
+                        href={lnk.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 text-violet-300 hover:text-white hover:bg-violet-900/30 rounded-lg transition"
+                        title="Test Link"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateSocialLink(idx, 'enabled', !lnk.enabled)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono transition cursor-pointer border ${
+                        lnk.enabled
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-violet-950/40 text-violet-400/60 border-violet-900/40'
+                      }`}
+                    >
+                      {lnk.enabled ? 'ACTIVE' : 'MUTED'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSocialLink(idx)}
+                      className="p-1.5 text-violet-400 hover:text-rose-400 hover:bg-rose-950/30 rounded-lg transition cursor-pointer"
+                      title="Delete Social Link"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Form fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-3 text-xs">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-violet-300/80 mb-1">
+                      URL / Profile Address
+                    </label>
+                    <input
+                      type="text"
+                      value={lnk.url || ''}
+                      onChange={(e) => handleUpdateSocialLink(idx, 'url', e.target.value)}
+                      placeholder="https://github.com/..."
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-400/30 focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-violet-300/80 mb-1">
+                      Display Label
+                    </label>
+                    <input
+                      type="text"
+                      value={lnk.label || ''}
+                      onChange={(e) => handleUpdateSocialLink(idx, 'label', e.target.value)}
+                      placeholder="e.g. Join Our Discord"
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-400/30 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-violet-300/80 mb-1">
+                      Platform Category
+                    </label>
+                    <select
+                      value={lnk.platform || 'other'}
+                      onChange={(e) => handleUpdateSocialLink(idx, 'platform', e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white focus:outline-none focus:ring-2 focus:ring-violet-500 cursor-pointer"
+                    >
+                      {SOCIAL_PLATFORMS.map((plat) => (
+                        <option key={plat.id} value={plat.id}>
+                          {plat.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Logo Auto-Fetch Toggle & Custom Icon URL Override */}
+                  <div className="sm:col-span-2 lg:col-span-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
+                    <label className="flex items-center space-x-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={lnk.autoFetch !== false}
+                        onChange={(e) => handleUpdateSocialLink(idx, 'autoFetch', e.target.checked)}
+                        className="w-4 h-4 rounded text-violet-600 bg-[#19142B] border-violet-800 focus:ring-violet-500 focus:ring-offset-0 cursor-pointer"
+                      />
+                      <span className="text-xs text-violet-200">
+                        Auto-fetch brand logo from domain
+                      </span>
+                    </label>
+
+                    <div className="flex items-center space-x-2 w-full sm:w-auto flex-1 max-w-md">
+                      <span className="text-[11px] text-violet-400/70 shrink-0">Custom Icon URL:</span>
+                      <input
+                        type="text"
+                        value={lnk.iconUrl || ''}
+                        onChange={(e) => handleUpdateSocialLink(idx, 'iconUrl', e.target.value)}
+                        placeholder="Optional override https://.../logo.png"
+                        className="w-full px-2.5 py-1 text-[11px] rounded-lg bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-400/30 focus:outline-none focus:ring-1 focus:ring-violet-500 font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {(!config.socialLinks || config.socialLinks.length === 0) && (
+              <div className="py-10 text-center bg-[#19142B]/50 rounded-2xl border border-dashed border-violet-900/40 text-violet-300/60 text-xs space-y-3">
+                <Share2 className="w-8 h-8 text-violet-500/40 mx-auto" />
+                <p className="font-medium text-white">No social links configured yet.</p>
+                <p className="text-[11px] text-violet-300/60 max-w-sm mx-auto">
+                  Add links to your Discord server, GitHub organization, X handle, or custom community pages.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleAddSocialLink()}
+                  className="px-4 py-2 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-md shadow-violet-900/30 hover:brightness-110 transition"
+                >
+                  + Add First Social Link
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Live Preview Dock of Social Links on Landing Page */}
+          {(config.socialLinks || []).filter((l) => l.enabled).length > 0 && (
+            <div className="mt-6 pt-5 border-t border-violet-900/30 space-y-3">
+              <span className="text-xs font-bold text-violet-200 uppercase tracking-wider font-mono">
+                Live Homepage Preview:
+              </span>
+              <div className="p-4 rounded-2xl bg-[#161226] border border-violet-900/40 flex flex-wrap items-center gap-2.5">
+                {(config.socialLinks || [])
+                  .filter((l) => l.enabled)
+                  .map((lnk, idx) => (
+                    <a
+                      key={idx}
+                      href={lnk.url || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-[#231C38] hover:bg-violet-900/40 border border-violet-900/40 text-xs font-semibold text-white transition hover:scale-105 shadow-sm"
+                    >
+                      <SocialBrandIcon
+                        platform={lnk.platform}
+                        url={lnk.url}
+                        iconUrl={lnk.iconUrl}
+                        autoFetch={lnk.autoFetch}
+                        className="w-4 h-4"
+                      />
+                      <span>{lnk.label || 'Link'}</span>
+                      <ExternalLink className="w-2.5 h-2.5 text-violet-400/60" />
+                    </a>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SECTION: ARCHITECTURE & SECURITY FAQ */}
+      {activeSection === 'faqs' && (
+        <div className="p-6 bg-[#1E1833] border border-violet-900/40 rounded-2xl shadow-xs space-y-6 text-white">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-violet-900/30">
+            <div>
+              <div className="flex items-center space-x-2">
+                <HelpCircle className="w-4 h-4 text-violet-400" />
+                <h3 className="text-sm font-bold text-white">Architecture & Security FAQs</h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-violet-600/30 text-violet-300 border border-violet-500/30">
+                  Interactive Accordion
+                </span>
+              </div>
+              <p className="text-xs text-violet-300/60 mt-1">
+                Customize common questions and answers displayed in the accordion on your public homepage.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2 shrink-0">
+              <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-[#19142B] border border-violet-900/40 text-violet-300">
+                {(config.faqs || []).length} Question{(config.faqs || []).length !== 1 ? 's' : ''}
+              </span>
+              <button
+                type="button"
+                onClick={handleAddFaq}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition shadow-md shadow-violet-900/30 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Question</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {(config.faqs || []).map((faq, idx) => (
+              <div
+                key={idx}
+                className={`p-4 rounded-2xl border transition ${
+                  faq.enabled !== false
+                    ? 'bg-[#231C38] border-violet-900/40 hover:border-violet-700/60'
+                    : 'bg-[#19142B]/60 border-violet-950/40 opacity-70'
+                }`}
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-violet-900/20">
+                  <div className="flex items-center space-x-2.5 flex-1 min-w-0 mr-3">
+                    <div className="flex flex-col space-y-0.5">
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => handleMoveFaq(idx, -1)}
+                        className="p-1 text-violet-400 hover:text-white disabled:opacity-30 disabled:hover:text-violet-400 transition cursor-pointer"
+                        title="Move Up"
+                      >
+                        <ChevronUp className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === (config.faqs || []).length - 1}
+                        onClick={() => handleMoveFaq(idx, 1)}
+                        className="p-1 text-violet-400 hover:text-white disabled:opacity-30 disabled:hover:text-violet-400 transition cursor-pointer"
+                        title="Move Down"
+                      >
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    <span className="w-6 h-6 rounded-lg bg-[#19142B] border border-violet-900/40 flex items-center justify-center text-[10px] font-mono text-violet-300 shrink-0">
+                      Q{idx + 1}
+                    </span>
+
+                    <span className="font-bold text-xs text-white truncate flex-1">
+                      {faq.question || 'Empty Question'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateFaq(idx, 'enabled', faq.enabled === false ? true : false)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono transition cursor-pointer border ${
+                        faq.enabled !== false
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-violet-950/40 text-violet-400/60 border-violet-900/40'
+                      }`}
+                    >
+                      {faq.enabled !== false ? 'ACTIVE' : 'MUTED'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteFaq(idx)}
+                      className="p-1.5 text-violet-400 hover:text-rose-400 hover:bg-rose-950/30 rounded-lg transition cursor-pointer"
+                      title="Delete Question"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-3 text-xs">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-violet-300/80 mb-1">
+                      Question Heading
+                    </label>
+                    <input
+                      type="text"
+                      value={faq.question || ''}
+                      onChange={(e) => handleUpdateFaq(idx, 'question', e.target.value)}
+                      placeholder="e.g. How does client-side E2EE work?"
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-400/30 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-violet-300/80 mb-1">
+                      Detailed Answer
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={faq.answer || ''}
+                      onChange={(e) => handleUpdateFaq(idx, 'answer', e.target.value)}
+                      placeholder="Enter detailed technical or privacy answer..."
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-400/30 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {(!config.faqs || config.faqs.length === 0) && (
+              <div className="py-10 text-center bg-[#19142B]/50 rounded-2xl border border-dashed border-violet-900/40 text-violet-300/60 text-xs space-y-3">
+                <HelpCircle className="w-8 h-8 text-violet-500/40 mx-auto" />
+                <p className="font-medium text-white">No FAQ items configured yet.</p>
+                <button
+                  type="button"
+                  onClick={handleAddFaq}
+                  className="px-4 py-2 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-md shadow-violet-900/30"
+                >
+                  + Add First Question
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SECTION: FINAL CALL TO ACTION (CTA) BANNER */}
+      {activeSection === 'cta' && (
+        <div className="p-6 bg-[#1E1833] border border-violet-900/40 rounded-2xl shadow-xs space-y-6 text-white">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-violet-900/30">
+            <div>
+              <div className="flex items-center space-x-2">
+                <Zap className="w-4 h-4 text-violet-400" />
+                <h3 className="text-sm font-bold text-white">Final Call to Action Banner</h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-violet-600/30 text-violet-300 border border-violet-500/30">
+                  Bottom Conversion Block
+                </span>
+              </div>
+              <p className="text-xs text-violet-300/60 mt-1">
+                Customize the high-converting closing banner placed right before the footer.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                setConfig((prev) => ({
+                  ...prev,
+                  ctaBanner: {
+                    ...prev.ctaBanner,
+                    enabled: prev.ctaBanner?.enabled === false ? true : false
+                  }
+                }))
+              }
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition cursor-pointer border ${
+                config.ctaBanner?.enabled !== false
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  : 'bg-violet-950/40 text-violet-400/60 border-violet-900/40'
+              }`}
+            >
+              {config.ctaBanner?.enabled !== false ? 'BANNER ENABLED' : 'BANNER DISABLED'}
+            </button>
+          </div>
+
+          <div className="space-y-4 text-xs">
+            <ImageUploader
+              label="Banner Background Image (Replaces Plain Gradient)"
+              value={config.ctaBanner?.imageUrl}
+              token={token}
+              aspectRatio="16:9"
+              onChange={(url) =>
+                setConfig((prev) => ({
+                  ...prev,
+                  ctaBanner: { ...prev.ctaBanner, imageUrl: url }
+                }))
+              }
+              placeholder="Optional image URL for the bottom conversion banner"
+            />
+
+            <div>
+              <label className="block text-[11px] font-semibold text-violet-300/80 mb-1">
+                Pill Badge Text
+              </label>
+              <input
+                type="text"
+                value={config.ctaBanner?.badgeText || ''}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    ctaBanner: { ...prev.ctaBanner, badgeText: e.target.value }
+                  }))
+                }
+                placeholder="e.g. Get Started in Under 30 Seconds"
+                className="w-full px-3.5 py-2 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-400/30 focus:outline-none focus:ring-2 focus:ring-violet-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-violet-300/80 mb-1">
+                Main Headline
+              </label>
+              <input
+                type="text"
+                value={config.ctaBanner?.title || ''}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    ctaBanner: { ...prev.ctaBanner, title: e.target.value }
+                  }))
+                }
+                placeholder="e.g. Ready to Experience Truly Sovereign Communication?"
+                className="w-full px-3.5 py-2 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-400/30 focus:outline-none focus:ring-2 focus:ring-violet-500 font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-violet-300/80 mb-1">
+                Subtitle Prose
+              </label>
+              <textarea
+                rows={3}
+                value={config.ctaBanner?.subtitle || ''}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    ctaBanner: { ...prev.ctaBanner, subtitle: e.target.value }
+                  }))
+                }
+                placeholder="Description of security, instant onboarding, or key capabilities..."
+                className="w-full px-3.5 py-2 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-400/30 focus:outline-none focus:ring-2 focus:ring-violet-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div className="space-y-2">
+                <span className="text-[11px] font-bold text-violet-200">Primary Button</span>
+                <input
+                  type="text"
+                  value={config.ctaBanner?.primaryButtonText || ''}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      ctaBanner: { ...prev.ctaBanner, primaryButtonText: e.target.value }
+                    }))
+                  }
+                  placeholder="Button Label (e.g. Create Free Account)"
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-400/30 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+                <input
+                  type="text"
+                  value={config.ctaBanner?.primaryButtonLink || ''}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      ctaBanner: { ...prev.ctaBanner, primaryButtonLink: e.target.value }
+                    }))
+                  }
+                  placeholder="Link URL (e.g. /register)"
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-400/30 focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-[11px] font-bold text-violet-200">Secondary Button</span>
+                <input
+                  type="text"
+                  value={config.ctaBanner?.secondaryButtonText || ''}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      ctaBanner: { ...prev.ctaBanner, secondaryButtonText: e.target.value }
+                    }))
+                  }
+                  placeholder="Button Label (e.g. Launch Messenger)"
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-400/30 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+                <input
+                  type="text"
+                  value={config.ctaBanner?.secondaryButtonLink || ''}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      ctaBanner: { ...prev.ctaBanner, secondaryButtonLink: e.target.value }
+                    }))
+                  }
+                  placeholder="Link URL (e.g. /login)"
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-400/30 focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono"
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -187,6 +187,71 @@ const systemConfigSchema = new mongoose.Schema(
             { label: 'Security Whitepaper', url: '#' }
           ]
         }
+      },
+      socialLinks: {
+        type: [
+          {
+            platform: { type: String, default: 'other' },
+            label: { type: String, default: '' },
+            url: { type: String, default: '' },
+            iconUrl: { type: String, default: '' },
+            autoFetch: { type: Boolean, default: true },
+            enabled: { type: Boolean, default: true }
+          }
+        ],
+        default: [
+          { platform: 'github', label: 'GitHub', url: 'https://github.com', iconUrl: '', autoFetch: true, enabled: true },
+          { platform: 'x', label: 'X (Twitter)', url: 'https://x.com', iconUrl: '', autoFetch: true, enabled: true },
+          { platform: 'discord', label: 'Discord', url: 'https://discord.gg', iconUrl: '', autoFetch: true, enabled: true },
+          { platform: 'telegram', label: 'Telegram', url: 'https://t.me', iconUrl: '', autoFetch: true, enabled: true }
+        ]
+      },
+      faqs: {
+        type: [
+          {
+            question: { type: String, default: '' },
+            answer: { type: String, default: '' },
+            enabled: { type: Boolean, default: true }
+          }
+        ],
+        default: [
+          {
+            question: 'How does client-side End-to-End Encryption (E2EE) work?',
+            answer: 'Your messages and call sessions are encrypted directly on your local device using standard Web Crypto API with AES-256-GCM. The encryption keys never leave your browser, meaning the backend servers, database, and internet service providers only ever transmit opaque, mathematically unbreakable ciphertext.',
+            enabled: true
+          },
+          {
+            question: 'Can the database administrator or server read my conversations?',
+            answer: 'No. The backend operates on a strict zero-knowledge architecture. Without your device private keys, stored payloads in MongoDB are meaningless cryptographic blobs. Even in the event of an infrastructure compromise, your plaintext remains mathematically protected.',
+            enabled: true
+          },
+          {
+            question: 'Are peer-to-peer (P2P) voice and video calls encrypted?',
+            answer: 'Yes. Voice and video streams establish direct WebRTC peer-to-peer connections secured by DTLS-SRTP encryption. Audio and video packets stream directly between call participants without relaying through centralized media servers whenever possible.',
+            enabled: true
+          },
+          {
+            question: 'Can I export my chat history and account data?',
+            answer: 'Absolutely. PulseChat includes built-in GDPR compliant data portability. You can export complete, unredacted transcripts in HTML, JSON, or plain text formats, or perform instant cryptographic shredding to purge your data permanently.',
+            enabled: true
+          },
+          {
+            question: 'Is there a limit on group size or file attachment transfers?',
+            answer: 'No artificial caps. You can create public or private channels, assign granular administrative privileges (Owners, Admins, Members), and securely upload images, voice notes, audio files, and documents with client-side thumbnail generation.',
+            enabled: true
+          }
+        ]
+      },
+      ctaBanner: {
+        enabled: { type: Boolean, default: true },
+        imageUrl: { type: String, default: '' },
+        badgeText: { type: String, default: 'Get Started in Under 30 Seconds' },
+        title: { type: String, default: 'Ready to Experience Truly Sovereign Communication?' },
+        subtitle: { type: String, default: 'Create your account with instant client-side key generation. No phone number required, zero tracking cookies, pure cryptographic privacy.' },
+        primaryButtonText: { type: String, default: 'Create Free Account' },
+        primaryButtonLink: { type: String, default: '/register' },
+        secondaryButtonText: { type: String, default: 'Launch Messenger' },
+        secondaryButtonLink: { type: String, default: '/login' }
       }
     },
     officialContact: {

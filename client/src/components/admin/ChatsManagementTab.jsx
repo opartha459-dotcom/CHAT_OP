@@ -168,7 +168,7 @@ export const ChatsManagementTab = ({
   const totalMsgs = allChats.reduce((acc, c) => acc + (c.messageCount || 0), 0);
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-6 w-full">
       {/* ── TOP KPI SUMMARY CARDS ────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {/* Total Chats */}
