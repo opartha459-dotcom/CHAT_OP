@@ -185,8 +185,8 @@ export const GridListView = ({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         {(title || subtitle) && (
           <div>
-            {title && <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">{title}</h2>}
-            {subtitle && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{subtitle}</p>}
+            {title && <h2 className="text-xl font-bold text-white tracking-tight">{title}</h2>}
+            {subtitle && <p className="text-xs text-violet-300/70 mt-0.5">{subtitle}</p>}
           </div>
         )}
 
@@ -194,13 +194,13 @@ export const GridListView = ({
           {headerActions}
 
           {/* View Mode Toggle Button */}
-          <div className="inline-flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+          <div className="inline-flex items-center p-1 bg-[#19142B] rounded-xl border border-violet-900/40">
             <button
               onClick={() => handleToggleView('list')}
               className={`p-1.5 rounded-lg transition text-xs flex items-center space-x-1 cursor-pointer ${
                 viewMode === 'list'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs font-semibold'
-                  : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                  ? 'bg-violet-600/30 text-white border border-violet-500/30 shadow-xs font-semibold'
+                  : 'text-violet-400/70 hover:text-white'
               }`}
               title="List View"
             >
@@ -211,8 +211,8 @@ export const GridListView = ({
               onClick={() => handleToggleView('grid')}
               className={`p-1.5 rounded-lg transition text-xs flex items-center space-x-1 cursor-pointer ${
                 viewMode === 'grid'
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs font-semibold'
-                  : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                  ? 'bg-violet-600/30 text-white border border-violet-500/30 shadow-xs font-semibold'
+                  : 'text-violet-400/70 hover:text-white'
               }`}
               title="Grid View"
             >
@@ -224,21 +224,21 @@ export const GridListView = ({
       </div>
 
       {/* Controls Bar: Search, Filters, Sorting */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-3 bg-[#231C38] border border-violet-900/30 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
         {/* Search Input */}
         <div className="relative flex-1 min-w-[220px]">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-4 h-4 text-violet-400/70 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder={searchPlaceholder}
-            className="w-full pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition"
+            className="w-full pl-9 pr-8 py-2 bg-[#19142B] border border-violet-900/40 rounded-xl text-xs text-white placeholder-violet-400/50 focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500 transition"
           />
           {searchTerm && (
             <button
               onClick={() => setSearchTerm('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 cursor-pointer"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-violet-400 hover:text-white p-0.5 cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -252,7 +252,7 @@ export const GridListView = ({
               <select
                 value={activeFilters[filter.key] !== undefined ? activeFilters[filter.key] : 'all'}
                 onChange={(e) => handleFilterChange(filter.key, e.target.value)}
-                className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-700 dark:text-slate-300 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 cursor-pointer font-medium"
+                className="text-xs bg-[#19142B] border border-violet-900/40 rounded-xl px-3 py-2 text-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-500/40 cursor-pointer font-medium"
               >
                 <option value="all">{filter.label}: All</option>
                 {filter.options.map((opt) => (
@@ -267,22 +267,22 @@ export const GridListView = ({
           {/* Date Range Filter */}
           {dateKey && (
             <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
-              <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <Calendar className="w-3.5 h-3.5 text-violet-400 shrink-0" />
               <input
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
                 title="From date"
-                className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer font-medium max-w-[135px] sm:max-w-none"
+                className="text-xs bg-[#19142B] border border-violet-900/40 rounded-xl px-2 py-1.5 text-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-500/40 cursor-pointer font-medium max-w-[135px] sm:max-w-none"
               />
-              <span className="text-slate-400 text-xs">–</span>
+              <span className="text-violet-400 text-xs">–</span>
               <input
                 type="date"
                 value={dateTo}
                 min={dateFrom || undefined}
                 onChange={(e) => setDateTo(e.target.value)}
                 title="To date"
-                className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer font-medium max-w-[135px] sm:max-w-none"
+                className="text-xs bg-[#19142B] border border-violet-900/40 rounded-xl px-2 py-1.5 text-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-500/40 cursor-pointer font-medium max-w-[135px] sm:max-w-none"
               />
             </div>
           )}
@@ -296,7 +296,7 @@ export const GridListView = ({
                   const [key, direction] = e.target.value.split(':');
                   setCurrentSort({ key, direction });
                 }}
-                className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-700 dark:text-slate-300 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 cursor-pointer font-medium"
+                className="text-xs bg-[#19142B] border border-violet-900/40 rounded-xl px-3 py-2 text-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-500/40 cursor-pointer font-medium"
               >
                 {sortOptions.map((sort) => (
                   <option key={`${sort.key}:${sort.direction}`} value={`${sort.key}:${sort.direction}`}>
@@ -311,7 +311,7 @@ export const GridListView = ({
           {hasActiveFilters && (
             <button
               onClick={handleClearFilters}
-              className="text-xs px-2.5 py-2 text-slate-500 hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400 font-medium transition cursor-pointer flex items-center space-x-1"
+              className="text-xs px-2.5 py-2 text-violet-300 hover:text-rose-400 font-medium transition cursor-pointer flex items-center space-x-1"
             >
               <X className="w-3.5 h-3.5" />
               <span>Reset</span>
@@ -322,23 +322,23 @@ export const GridListView = ({
 
       {/* Content Rendering: Loading, Empty, Grid or List */}
       {loading ? (
-        <div className="py-20 flex flex-col items-center justify-center space-y-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
-          <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-          <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Loading data records...</p>
+        <div className="py-20 flex flex-col items-center justify-center space-y-3 bg-[#231C38] border border-violet-900/30 rounded-2xl sm:rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
+          <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
+          <p className="text-xs text-violet-300/70 font-mono">Loading data records...</p>
         </div>
       ) : paginatedItems.length === 0 ? (
-        <div className="py-16 px-4 flex flex-col items-center justify-center text-center space-y-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
-          <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+        <div className="py-16 px-4 flex flex-col items-center justify-center text-center space-y-3 bg-[#231C38] border border-violet-900/30 rounded-2xl sm:rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
+          <div className="w-12 h-12 rounded-2xl bg-violet-900/30 border border-violet-700/30 flex items-center justify-center text-violet-400">
             <Inbox className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-white">{emptyTitle}</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm">{emptyDescription}</p>
+            <h3 className="text-sm font-semibold text-white">{emptyTitle}</h3>
+            <p className="text-xs text-violet-300/70 mt-1 max-w-sm">{emptyDescription}</p>
           </div>
           {hasActiveFilters && (
             <button
               onClick={handleClearFilters}
-              className="mt-2 text-xs font-semibold px-3 py-1.5 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition cursor-pointer"
+              className="mt-2 text-xs font-semibold px-3 py-1.5 bg-violet-600/30 text-violet-300 border border-violet-500/30 rounded-xl hover:bg-violet-600/50 transition cursor-pointer"
             >
               Clear filters
             </button>
@@ -356,8 +356,8 @@ export const GridListView = ({
               {renderItem
                 ? renderItem(item, 'grid')
                 : (
-                  <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs hover:border-indigo-400 dark:hover:border-indigo-500 transition">
-                    <pre className="text-xs text-slate-700 dark:text-slate-300 overflow-x-auto">
+                  <div className="p-4 bg-[#231C38] border border-violet-900/30 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.3)] hover:border-violet-500/50 transition">
+                    <pre className="text-xs text-violet-200 overflow-x-auto">
                       {JSON.stringify(item, null, 2)}
                     </pre>
                   </div>
@@ -367,9 +367,9 @@ export const GridListView = ({
         </div>
       ) : (
         /* LIST VIEW */
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
+        <div className="bg-[#231C38] border border-violet-900/30 rounded-2xl sm:rounded-3xl shadow-[0_4px_24px_rgba(0,0,0,0.3)] overflow-hidden">
           {renderRow ? (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            <div className="divide-y divide-violet-950/60">
               {paginatedItems.map((item, index) => (
                 <div
                   key={item._id || item.id || index}
@@ -383,27 +383,27 @@ export const GridListView = ({
           ) : columns.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                <thead className="bg-[#1C1630] text-violet-300/80 font-semibold uppercase tracking-wider border-b border-violet-900/40">
                   <tr>
                     {columns.map((col) => (
                       <th
                         key={col.key}
-                        className={`px-4 py-3 ${col.className || ''}`}
+                        className={`px-4 py-3.5 ${col.className || ''}`}
                       >
                         {col.label}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                <tbody className="divide-y divide-violet-950/60">
                   {paginatedItems.map((item, idx) => (
                     <tr
                       key={item._id || item.id || idx}
                       onClick={() => onItemClick && onItemClick(item)}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition"
+                      className="hover:bg-violet-900/20 transition"
                     >
                       {columns.map((col) => (
-                        <td key={col.key} className={`px-4 py-3.5 text-slate-700 dark:text-slate-300 ${col.cellClassName || ''}`}>
+                        <td key={col.key} className={`px-4 py-3.5 text-violet-200 ${col.cellClassName || ''}`}>
                           {col.render ? col.render(item) : item[col.key] || '-'}
                         </td>
                       ))}
@@ -413,15 +413,15 @@ export const GridListView = ({
               </table>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            <div className="divide-y divide-violet-950/60">
               {paginatedItems.map((item, index) => (
                 <div
                   key={item._id || item.id || index}
                   onClick={() => onItemClick && onItemClick(item)}
-                  className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition"
+                  className="p-4 hover:bg-violet-900/20 transition"
                 >
                   {renderItem ? renderItem(item, 'list') : (
-                    <div className="text-xs text-slate-800 dark:text-slate-200">
+                    <div className="text-xs text-violet-200">
                       {JSON.stringify(item)}
                     </div>
                   )}
@@ -435,30 +435,30 @@ export const GridListView = ({
       {/* Pagination Bar */}
       {totalPages > 1 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2 py-1 select-none">
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            Showing <span className="font-semibold text-slate-800 dark:text-white">{(currentPage - 1) * pageSize + 1}</span> to{' '}
-            <span className="font-semibold text-slate-800 dark:text-white">{Math.min(currentPage * pageSize, totalItems)}</span> of{' '}
-            <span className="font-semibold text-slate-800 dark:text-white">{totalItems}</span> results
+          <div className="text-xs text-violet-300/70">
+            Showing <span className="font-semibold text-white">{(currentPage - 1) * pageSize + 1}</span> to{' '}
+            <span className="font-semibold text-white">{Math.min(currentPage * pageSize, totalItems)}</span> of{' '}
+            <span className="font-semibold text-white">{totalItems}</span> results
           </div>
 
           <div className="flex items-center space-x-1">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
+              className="p-2 rounded-xl bg-[#231C38] border border-violet-900/40 text-violet-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-violet-900/30 transition cursor-pointer"
               title="Previous page"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <span className="px-3 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <span className="px-3 py-1 text-xs font-semibold text-violet-200">
               Page {currentPage} of {totalPages}
             </span>
 
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
+              className="p-2 rounded-xl bg-[#231C38] border border-violet-900/40 text-violet-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-violet-900/30 transition cursor-pointer"
               title="Next page"
             >
               <ChevronRight className="w-4 h-4" />

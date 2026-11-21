@@ -455,6 +455,7 @@ const updateChatSettings = async (req, res) => {
 
     if (resetToDefault === true) {
       user.chatSettings.isCustomTheme = false;
+      user.chatSettings.customTheme = undefined;
     } else {
       if (isCustomTheme !== undefined) {
         user.chatSettings.isCustomTheme = Boolean(isCustomTheme);

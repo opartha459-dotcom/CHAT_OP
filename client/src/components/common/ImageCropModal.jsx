@@ -11,7 +11,8 @@ import {
   RefreshCw,
   Crop,
   Layers,
-  Sparkles
+  Sparkles,
+  Maximize2
 } from 'lucide-react';
 
 export const ImageCropModal = ({
@@ -30,6 +31,8 @@ export const ImageCropModal = ({
   const [dragging, setDragging] = useState(false);
   const [naturalSize, setNaturalSize] = useState({ width: 800, height: 600 });
   const [uploading, setUploading] = useState(false);
+  const [resolvedSrc, setResolvedSrc] = useState('');
+  const [errorNotice, setErrorNotice] = useState('');
 
   const imgRef = useRef(null);
   const boxRef = useRef(null);
@@ -37,7 +40,7 @@ export const ImageCropModal = ({
   const pinchStartDistRef = useRef(null);
   const pinchStartScaleRef = useRef(1);
 
-  // Sync aspect ratio whenever modal opens
+  // Sync aspect ratio and reset state whenever modal opens
   useEffect(() => {
     if (isOpen) {
       setAspectRatio(initialAspectRatio);
@@ -45,12 +48,52 @@ export const ImageCropModal = ({
       setRotation(0);
       setOffset({ x: 0, y: 0 });
       setDragging(false);
+      setErrorNotice('');
     }
   }, [isOpen, initialAspectRatio]);
 
+  // Cleanly resolve image source as blob object URL when possible to avoid canvas CORS tainting
+  useEffect(() => {
+    if (!imageSrc) {
+      setResolvedSrc('');
+      return;
+    }
+
+    let active = true;
+    let localBlobUrl = null;
+
+    if (imageSrc.startsWith('blob:') || imageSrc.startsWith('data:')) {
+      setResolvedSrc(imageSrc);
+    } else {
+      // For remote or local /uploads/ URLs, try fetching as blob so canvas is always origin-clean
+      fetch(imageSrc, { mode: 'cors' })
+        .then((res) => {
+          if (!res.ok) throw new Error('Fetch status ' + res.status);
+          return res.blob();
+        })
+        .then((blob) => {
+          if (!active) return;
+          localBlobUrl = URL.createObjectURL(blob);
+          setResolvedSrc(localBlobUrl);
+        })
+        .catch(() => {
+          if (!active) return;
+          // Fallback to direct URL with crossOrigin
+          setResolvedSrc(imageSrc);
+        });
+    }
+
+    return () => {
+      active = false;
+      if (localBlobUrl) {
+        URL.revokeObjectURL(localBlobUrl);
+      }
+    };
+  }, [imageSrc]);
+
   // Probe natural image dimensions
   useEffect(() => {
-    if (!imageSrc) return;
+    if (!resolvedSrc) return;
     const probe = new Image();
     probe.crossOrigin = 'anonymous';
     probe.onload = () => {
@@ -62,12 +105,11 @@ export const ImageCropModal = ({
     probe.onerror = () => {
       setNaturalSize({ width: 800, height: 600 });
     };
-    probe.src = imageSrc;
-  }, [imageSrc]);
+    probe.src = resolvedSrc;
+  }, [resolvedSrc]);
 
   // Determine viewport box dimensions based on chosen aspect ratio
   const getBoxDimensions = () => {
-    const maxWidth = 380;
     if (aspectRatio === '1:1') {
       return { width: 300, height: 300, outputW: 600, outputH: 600, rounded: 'rounded-2xl' };
     }
@@ -180,122 +222,188 @@ export const ImageCropModal = ({
     };
   }, [dragging, baseWidth, baseHeight, boxWidth, boxHeight, scale]);
 
+  // Helper to extract canvas blob reliably
+  const extractCanvasBlob = (canvas) => {
+    return new Promise((resolve, reject) => {
+      try {
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              // Fallback via dataURL
+              try {
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                const parts = dataUrl.split(',');
+                const byteString = atob(parts[1]);
+                const mimeString = parts[0].split(':')[1].split(';')[0];
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                for (let i = 0; i < byteString.length; i++) {
+                  ia[i] = byteString.charCodeAt(i);
+                }
+                resolve(new Blob([ab], { type: mimeString }));
+              } catch (e) {
+                reject(e);
+              }
+            }
+          },
+          'image/jpeg',
+          0.92
+        );
+      } catch (err) {
+        try {
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+          const parts = dataUrl.split(',');
+          const byteString = atob(parts[1]);
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+          }
+          resolve(new Blob([ab], { type: 'image/jpeg' }));
+        } catch (fallbackErr) {
+          reject(fallbackErr);
+        }
+      }
+    });
+  };
+
   // Apply crop & upload
-  const handleApply = () => {
+  const handleApply = async () => {
     const imgEl = imgRef.current;
     if (!imgEl) return;
 
-    const canvas = document.createElement('canvas');
-    canvas.width = outputW;
-    canvas.height = outputH;
-    const ctx = canvas.getContext('2d');
+    setErrorNotice('');
+    setUploading(true);
 
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = outputW;
+      canvas.height = outputH;
+      const ctx = canvas.getContext('2d');
 
-    const displayToCanvasRatio = outputW / boxWidth;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
-    const imgCenterX = outputW / 2 + offset.x * displayToCanvasRatio;
-    const imgCenterY = outputH / 2 + offset.y * displayToCanvasRatio;
+      const displayToCanvasRatio = outputW / boxWidth;
+      const imgCenterX = outputW / 2 + offset.x * displayToCanvasRatio;
+      const imgCenterY = outputH / 2 + offset.y * displayToCanvasRatio;
 
-    const drawW = baseWidth * scale * displayToCanvasRatio;
-    const drawH = baseHeight * scale * displayToCanvasRatio;
+      const drawW = baseWidth * scale * displayToCanvasRatio;
+      const drawH = baseHeight * scale * displayToCanvasRatio;
 
-    ctx.save();
-    ctx.translate(imgCenterX, imgCenterY);
-    if (rotation) {
-      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.save();
+      ctx.translate(imgCenterX, imgCenterY);
+      if (rotation) {
+        ctx.rotate((rotation * Math.PI) / 180);
+      }
+      ctx.drawImage(imgEl, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.restore();
+
+      const blob = await extractCanvasBlob(canvas);
+      if (!blob) {
+        throw new Error('Could not generate cropped image blob.');
+      }
+
+      const timestamp = Date.now();
+      const uniqueFilename = `cropped-${timestamp}.jpg`;
+      const formData = new FormData();
+      formData.append('file', blob, uniqueFilename);
+
+      const storedToken =
+        token ||
+        localStorage.getItem('pulsechat_token') ||
+        sessionStorage.getItem('pulsechat_token');
+      const headers = {};
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+
+      let res = await fetch('/api/admin/upload', {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: formData
+      });
+
+      if (!res.ok && res.status !== 400) {
+        res = await fetch('/api/users/upload', {
+          method: 'POST',
+          headers,
+          credentials: 'include',
+          body: formData
+        });
+      }
+
+      const data = await res.json();
+      const rawUrl = data.url || data.fileUrl || data.file?.url;
+
+      if (data.success && rawUrl) {
+        // Append cache-buster timestamp query so browser immediately renders the cropped version
+        const finalUrl = rawUrl.includes('?') ? `${rawUrl}&t=${timestamp}` : `${rawUrl}?t=${timestamp}`;
+        onCropComplete(finalUrl);
+        onClose();
+      } else {
+        setErrorNotice(data.message || 'Failed to upload cropped image.');
+      }
+    } catch (err) {
+      console.error('Crop upload error:', err);
+      setErrorNotice('Crop failed: ' + (err.message || 'Network error'));
+    } finally {
+      setUploading(false);
     }
-    ctx.drawImage(imgEl, -drawW / 2, -drawH / 2, drawW, drawH);
-    ctx.restore();
-
-    canvas.toBlob(
-      async (blob) => {
-        if (!blob) return;
-        setUploading(true);
-        try {
-          const formData = new FormData();
-          formData.append('file', blob, 'cropped-asset.jpg');
-
-          const storedToken = token || localStorage.getItem('pulsechat_token');
-          const headers = {};
-          if (storedToken) {
-            headers['Authorization'] = `Bearer ${storedToken}`;
-          }
-
-          let res = await fetch('/api/admin/upload', {
-            method: 'POST',
-            headers,
-            credentials: 'include',
-            body: formData
-          });
-
-          if (!res.ok && res.status !== 400) {
-            res = await fetch('/api/users/upload', {
-              method: 'POST',
-              headers,
-              credentials: 'include',
-              body: formData
-            });
-          }
-
-          const data = await res.json();
-          const finalUrl = data.url || data.fileUrl || data.file?.url;
-
-          if (data.success && finalUrl) {
-            onCropComplete(finalUrl);
-            onClose();
-          } else {
-            alert(data.message || 'Failed to upload cropped image.');
-          }
-        } catch (err) {
-          console.error('Crop upload error:', err);
-          alert('Upload failed: ' + (err.message || 'Network error'));
-        } finally {
-          setUploading(false);
-        }
-      },
-      'image/jpeg',
-      0.92
-    );
   };
 
   if (!isOpen || !imageSrc) return null;
 
+  const currentDisplaySrc = resolvedSrc || imageSrc;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200 select-none"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md select-none animate-fadeIn"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg max-h-[94vh] overflow-y-auto rounded-3xl border border-indigo-500/40 bg-[#0B0F19] p-5 sm:p-6 space-y-4 shadow-2xl animate-in zoom-in-95 scrollbar-thin scrollbar-thumb-indigo-900/50 text-slate-100"
+        className="relative w-full max-w-lg max-h-[94vh] overflow-y-auto rounded-3xl border border-violet-900/40 bg-[#1E1833] p-5 sm:p-6 space-y-4 shadow-2xl text-slate-100"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-          <div className="flex items-center gap-2">
-            <Crop className="w-5 h-5 text-indigo-400" />
-            <span className="text-sm font-bold text-white uppercase tracking-wider">{title}</span>
+        <div className="flex items-center justify-between pb-3 border-b border-violet-900/30">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400">
+              <Crop className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-sm font-bold text-white uppercase tracking-wider block">{title}</span>
+              <span className="text-[11px] text-violet-300/60 font-mono">Precision Zoom, Pan &amp; Crop</span>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition cursor-pointer"
+            className="p-1.5 text-violet-300/60 hover:text-white rounded-xl hover:bg-violet-900/30 transition cursor-pointer"
             title="Close"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
+        {errorNotice && (
+          <div className="p-3 bg-rose-950/60 border border-rose-800/50 rounded-xl text-rose-300 text-xs">
+            {errorNotice}
+          </div>
+        )}
+
         {/* Aspect Ratio Switcher Pills */}
-        <div className="flex items-center justify-between gap-2 p-1.5 bg-slate-950/60 rounded-xl border border-slate-800">
-          <span className="text-[11px] font-semibold text-slate-400 pl-1.5 flex items-center gap-1">
-            <Layers className="w-3 h-3 text-indigo-400" /> Aspect Ratio
+        <div className="flex items-center justify-between gap-2 p-1.5 bg-[#161226] rounded-xl border border-violet-900/30">
+          <span className="text-[11px] font-semibold text-violet-300/80 pl-1.5 flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5 text-violet-400" /> Ratio
           </span>
           <div className="flex items-center gap-1">
             {[
               { id: '16:9', label: '16:9 Banner' },
-              { id: '4:3', label: '4:3 Standard' },
+              { id: '4:3', label: '4:3 Box' },
               { id: '1:1', label: '1:1 Square' }
             ].map((ratio) => (
               <button
@@ -307,8 +415,8 @@ export const ImageCropModal = ({
                 }}
                 className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition cursor-pointer ${
                   aspectRatio === ratio.id
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    ? 'bg-violet-600 text-white shadow-xs'
+                    : 'text-violet-300/70 hover:text-white hover:bg-violet-900/30'
                 }`}
               >
                 {ratio.label}
@@ -318,10 +426,10 @@ export const ImageCropModal = ({
         </div>
 
         {/* Crop Viewport Box */}
-        <div className="flex flex-col items-center justify-center py-2">
+        <div className="flex flex-col items-center justify-center py-1">
           <div
             ref={boxRef}
-            className={`relative overflow-hidden border-2 border-indigo-500/70 bg-slate-950 cursor-grab active:cursor-grabbing shadow-2xl touch-none ${rounded}`}
+            className={`relative overflow-hidden border-2 border-violet-500/70 bg-[#161226] cursor-grab active:cursor-grabbing shadow-2xl touch-none ${rounded}`}
             style={{ width: boxWidth, height: boxHeight }}
             onMouseDown={handleMouseDown}
             onTouchStart={handleTouchStart}
@@ -329,7 +437,7 @@ export const ImageCropModal = ({
           >
             <img
               ref={imgRef}
-              src={imageSrc}
+              src={currentDisplaySrc}
               alt="Crop preview"
               crossOrigin="anonymous"
               draggable={false}
@@ -363,25 +471,25 @@ export const ImageCropModal = ({
             </div>
           </div>
 
-          <p className="mt-2 text-[11px] text-slate-400 flex items-center gap-1.5">
-            <Sliders className="w-3 h-3 text-indigo-400" />
+          <p className="mt-2 text-[11px] text-violet-300/60 flex items-center gap-1.5">
+            <Sliders className="w-3 h-3 text-violet-400" />
             <span>Drag image to position &bull; use slider below to zoom &amp; rotate</span>
           </p>
         </div>
 
         {/* Zoom Slider */}
-        <div className="space-y-1.5 bg-[#0E1422] p-3 rounded-xl border border-slate-800">
-          <div className="flex items-center justify-between text-xs text-slate-300">
+        <div className="space-y-1.5 bg-[#19142B] p-3 rounded-xl border border-violet-900/30">
+          <div className="flex items-center justify-between text-xs text-violet-200">
             <span className="font-medium flex items-center gap-1.5">
-              <ZoomIn className="w-3.5 h-3.5 text-indigo-400" /> Zoom Scale
+              <ZoomIn className="w-3.5 h-3.5 text-violet-400" /> Zoom Scale
             </span>
-            <span className="font-mono text-indigo-400 font-semibold">{scale.toFixed(2)}&times;</span>
+            <span className="font-mono text-violet-300 font-semibold">{scale.toFixed(2)}&times;</span>
           </div>
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setScale((s) => Math.max(1, +(s - 0.2).toFixed(2)))}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+              className="p-1.5 rounded-lg bg-[#231C38] hover:bg-[#2A2242] text-violet-300 transition"
               title="Zoom out"
             >
               <ZoomOut className="w-4 h-4" />
@@ -393,12 +501,12 @@ export const ImageCropModal = ({
               step="0.05"
               value={scale}
               onChange={(e) => setScale(parseFloat(e.target.value))}
-              className="flex-1 accent-indigo-500 cursor-pointer"
+              className="flex-1 accent-violet-500 cursor-pointer"
             />
             <button
               type="button"
               onClick={() => setScale((s) => Math.min(4, +(s + 0.2).toFixed(2)))}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+              className="p-1.5 rounded-lg bg-[#231C38] hover:bg-[#2A2242] text-violet-300 transition"
               title="Zoom in"
             >
               <ZoomIn className="w-4 h-4" />
@@ -412,9 +520,9 @@ export const ImageCropModal = ({
             <button
               type="button"
               onClick={() => setRotation((r) => (r + 90) % 360)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-xl transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-violet-200 bg-[#231C38] hover:bg-[#2A2242] border border-violet-900/30 rounded-xl transition cursor-pointer"
             >
-              <RotateCw className="w-3.5 h-3.5 text-indigo-400" />
+              <RotateCw className="w-3.5 h-3.5 text-violet-400" />
               <span>Rotate 90&deg;</span>
             </button>
             <button
@@ -424,23 +532,23 @@ export const ImageCropModal = ({
                 setScale(1);
                 setRotation(0);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-700 rounded-xl transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-violet-300/70 hover:text-white bg-[#231C38]/60 hover:bg-[#2A2242] rounded-xl transition cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Reset</span>
             </button>
           </div>
           {rotation !== 0 && (
-            <span className="text-[11px] text-indigo-400 font-mono">{rotation}&deg;</span>
+            <span className="text-[11px] text-violet-400 font-mono">{rotation}&deg;</span>
           )}
         </div>
 
         {/* Modal Action Buttons */}
-        <div className="flex gap-2.5 pt-2 border-t border-slate-800">
+        <div className="flex gap-2.5 pt-2 border-t border-violet-900/30">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-2.5 text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-xl transition cursor-pointer"
+            className="flex-1 px-4 py-2.5 text-xs font-semibold text-violet-300 bg-[#231C38] hover:bg-[#2A2242] border border-violet-900/30 rounded-xl transition cursor-pointer"
           >
             Cancel
           </button>
@@ -448,7 +556,7 @@ export const ImageCropModal = ({
             type="button"
             onClick={handleApply}
             disabled={uploading}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl transition shadow-lg shadow-indigo-600/30 cursor-pointer disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 rounded-xl transition shadow-lg shadow-violet-900/40 cursor-pointer disabled:opacity-50"
           >
             {uploading ? (
               <>

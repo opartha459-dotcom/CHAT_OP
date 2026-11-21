@@ -80,6 +80,8 @@ export const SettingsPanel = ({
     theme,
     setTheme,
     accentColor,
+    rawAccentColor,
+    selectedThemeId,
     setAccentColor,
     fontSize,
     setFontSize,
@@ -126,6 +128,17 @@ export const SettingsPanel = ({
   const [bio, setBio] = useState(user?.bio || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
 
+  // Saved profile baseline for unsaved-changes detection
+  const [savedProfile, setSavedProfile] = useState({
+    nickname: user?.nickname || '',
+    bio: user?.bio || '',
+    avatar: user?.avatar || ''
+  });
+  const profileHasChanges = useMemo(
+    () => nickname !== savedProfile.nickname || bio !== savedProfile.bio || avatar !== savedProfile.avatar,
+    [nickname, bio, avatar, savedProfile]
+  );
+
   // User's custom uploaded avatars history (persisted in DB + local cache)
   const [uploadedAvatars, setUploadedAvatars] = useState(() => {
     try {
@@ -157,6 +170,29 @@ export const SettingsPanel = ({
   const [readReceipts, setReadReceipts] = useState(user?.privacySettings?.readReceipts ?? true);
   const [typingIndicators, setTypingIndicators] = useState(user?.privacySettings?.typingIndicators ?? true);
   const [blockedUsers, setBlockedUsers] = useState([]);
+
+  // Saved privacy baseline for unsaved-changes detection
+  const [savedPrivacy, setSavedPrivacy] = useState({
+    profileVisibility: user?.privacySettings?.profileVisibility || 'everyone',
+    lastSeenVisibility: user?.privacySettings?.lastSeenVisibility || 'everyone',
+    statusAudience: user?.privacySettings?.statusAudience || 'everyone',
+    statusAllowedUsers: user?.privacySettings?.statusAllowedUsers || [],
+    statusExcludedUsers: user?.privacySettings?.statusExcludedUsers || [],
+    statusViewReceipts: user?.privacySettings?.statusViewReceipts ?? true,
+    readReceipts: user?.privacySettings?.readReceipts ?? true,
+    typingIndicators: user?.privacySettings?.typingIndicators ?? true
+  });
+  const privacyHasChanges = useMemo(() =>
+    profileVisibility !== savedPrivacy.profileVisibility ||
+    lastSeenVisibility !== savedPrivacy.lastSeenVisibility ||
+    statusAudience !== savedPrivacy.statusAudience ||
+    statusViewReceipts !== savedPrivacy.statusViewReceipts ||
+    readReceipts !== savedPrivacy.readReceipts ||
+    typingIndicators !== savedPrivacy.typingIndicators ||
+    JSON.stringify(statusAllowedUsers.map(u => u._id || u)) !== JSON.stringify(savedPrivacy.statusAllowedUsers.map(u => u._id || u)) ||
+    JSON.stringify(statusExcludedUsers.map(u => u._id || u)) !== JSON.stringify(savedPrivacy.statusExcludedUsers.map(u => u._id || u)),
+    [profileVisibility, lastSeenVisibility, statusAudience, statusViewReceipts, readReceipts, typingIndicators, statusAllowedUsers, statusExcludedUsers, savedPrivacy]
+  );
 
   const [sessions, setSessions] = useState([]);
 
@@ -561,6 +597,7 @@ export const SettingsPanel = ({
       setNickname(user.nickname || '');
       setBio(user.bio || '');
       setAvatar(user.avatar || '');
+      setSavedProfile({ nickname: user.nickname || '', bio: user.bio || '', avatar: user.avatar || '' });
       setProfileVisibility(user.privacySettings?.profileVisibility || 'everyone');
       setLastSeenVisibility(user.privacySettings?.lastSeenVisibility || 'everyone');
       setStatusAudience(user.privacySettings?.statusAudience || 'everyone');
@@ -569,6 +606,16 @@ export const SettingsPanel = ({
       setStatusViewReceipts(user.privacySettings?.statusViewReceipts ?? true);
       setReadReceipts(user.privacySettings?.readReceipts ?? true);
       setTypingIndicators(user.privacySettings?.typingIndicators ?? true);
+      setSavedPrivacy({
+        profileVisibility: user.privacySettings?.profileVisibility || 'everyone',
+        lastSeenVisibility: user.privacySettings?.lastSeenVisibility || 'everyone',
+        statusAudience: user.privacySettings?.statusAudience || 'everyone',
+        statusAllowedUsers: user.privacySettings?.statusAllowedUsers || [],
+        statusExcludedUsers: user.privacySettings?.statusExcludedUsers || [],
+        statusViewReceipts: user.privacySettings?.statusViewReceipts ?? true,
+        readReceipts: user.privacySettings?.readReceipts ?? true,
+        typingIndicators: user.privacySettings?.typingIndicators ?? true
+      });
     }
   }, [user]);
 
@@ -709,6 +756,7 @@ export const SettingsPanel = ({
       const data = await res.json();
       if (data.success) {
         updateUser(data.user);
+        setSavedProfile({ nickname, bio, avatar });
         showFeedback('Profile saved successfully!');
       } else {
         showFeedback(data.message || 'Error updating profile', 'error');
@@ -718,6 +766,12 @@ export const SettingsPanel = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCancelProfile = () => {
+    setNickname(savedProfile.nickname);
+    setBio(savedProfile.bio);
+    setAvatar(savedProfile.avatar);
   };
 
   const handleSavePrivacy = async () => {
@@ -759,6 +813,7 @@ export const SettingsPanel = ({
             }
           });
         }
+        setSavedPrivacy({ profileVisibility, lastSeenVisibility, statusAudience, statusAllowedUsers, statusExcludedUsers, statusViewReceipts, readReceipts, typingIndicators });
         showFeedback('Privacy and status viewer preferences saved!');
       } else {
         showFeedback(data.message || 'Error saving settings', 'error');
@@ -768,6 +823,17 @@ export const SettingsPanel = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCancelPrivacy = () => {
+    setProfileVisibility(savedPrivacy.profileVisibility);
+    setLastSeenVisibility(savedPrivacy.lastSeenVisibility);
+    setStatusAudience(savedPrivacy.statusAudience);
+    setStatusAllowedUsers(savedPrivacy.statusAllowedUsers);
+    setStatusExcludedUsers(savedPrivacy.statusExcludedUsers);
+    setStatusViewReceipts(savedPrivacy.statusViewReceipts);
+    setReadReceipts(savedPrivacy.readReceipts);
+    setTypingIndicators(savedPrivacy.typingIndicators);
   };
 
   const handleUnblock = async (blockedId) => {
@@ -1120,52 +1186,138 @@ export const SettingsPanel = ({
                   </div>
                 </section>
 
-                {/* Accent Color Section with Presets and Custom Color Picker */}
+                {/* Theme & Color Palette Section */}
                 <section className="rounded-2xl border border-slate-800 bg-[#090F1C]/70 p-4 sm:p-5 mt-3">
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                     <div>
-                      <h4 className="text-sm font-bold text-white">Accent color</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Choose the highlight color used across buttons and active controls.</p>
+                      <h4 className="text-sm font-bold text-white flex items-center space-x-2">
+                        <span>Theme &amp; Color Palette</span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20">
+                          {!isCustomTheme ? 'Default (Admin Synced)' : (THEME_PALETTES[selectedThemeId]?.name || 'Custom Theme')}
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Select the <strong className="text-emerald-400">Default</strong> theme to stay synced with admin color updates, or pick any curated theme below.
+                      </p>
                     </div>
-                    <span className="text-[10px] text-slate-400 font-mono">{accentColor || 'indigo'}</span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    {Object.values(THEME_PALETTES).map((color) => {
-                      const selected = accentColor === color.id;
-                      return (
-                        <button
-                          key={color.id}
-                          type="button"
-                          onClick={() => {
-                            setAccentColor(color.id);
-                            showFeedback(`${color.name} accent selected.`);
-                          }}
-                          aria-label={`${color.name} accent color`}
-                          aria-pressed={selected}
-                          style={{ backgroundColor: color.primary }}
-                          className={`w-9 h-9 rounded-full flex items-center justify-center transition cursor-pointer ${selected
-                            ? 'ring-2 ring-white ring-offset-4 ring-offset-[#090F1C] scale-110'
-                            : 'opacity-80 hover:opacity-100 hover:scale-110'
-                            }`}
-                        >
-                          {selected && <Check className="w-4 h-4 text-white stroke-[3]" />}
-                        </button>
-                      );
-                    })}
 
-                    {/* Custom Color Picker Button */}
-                    <div className="flex items-center space-x-2 pl-3 border-l border-slate-800">
-                      <label className="text-[11px] text-slate-400 font-semibold cursor-pointer">Custom:</label>
+                  {/* Primary Default Theme Card (Admin Default) */}
+                  <div className="mb-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccentColor('default');
+                        showFeedback('Default theme selected (synced with admin updates).');
+                      }}
+                      className={`w-full p-3.5 rounded-2xl border text-left flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition cursor-pointer ${
+                        !isCustomTheme
+                          ? 'border-emerald-500/60 bg-gradient-to-r from-emerald-950/40 to-slate-900/60 ring-2 ring-emerald-500/30 shadow-lg shadow-emerald-950/20'
+                          : 'border-slate-800 hover:border-slate-700 bg-slate-900/40 hover:bg-slate-900/70'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div
+                          className="relative w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md overflow-hidden border border-white/10"
+                          style={{
+                            background: `linear-gradient(135deg, ${adminTheme?.primaryColor || '#6366f1'} 50%, ${adminTheme?.secondaryColor || '#10b981'} 50%)`
+                          }}
+                        >
+                          {!isCustomTheme && (
+                            <div className="w-5 h-5 rounded-full bg-black/60 backdrop-blur-xs flex items-center justify-center text-white">
+                              <Check className="w-3.5 h-3.5 stroke-[3] text-emerald-400" />
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-sm font-bold text-white">Default</span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
+                              Admin Combination
+                            </span>
+                            {!isCustomTheme && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold flex items-center space-x-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                <span>Active</span>
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Automatically follows colors &amp; typography updated by the administrator in real-time.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2 self-start sm:self-center shrink-0">
+                        <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-slate-950/60 border border-slate-800 text-[10px] font-mono text-slate-300">
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: adminTheme?.primaryColor || '#6366f1' }} />
+                          <span>{adminTheme?.primaryColor || '#6366f1'}</span>
+                          <span className="text-slate-600">/</span>
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: adminTheme?.secondaryColor || '#10b981' }} />
+                          <span>{adminTheme?.secondaryColor || '#10b981'}</span>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Curated Personal Themes */}
+                  <div>
+                    <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
+                      Curated Themes
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {Object.values(THEME_PALETTES).map((color) => {
+                        const isSelected = isCustomTheme && (selectedThemeId === color.id || accentColor === color.id);
+                        return (
+                          <button
+                            key={color.id}
+                            type="button"
+                            onClick={() => {
+                              setAccentColor(color.id);
+                              showFeedback(`${color.name} theme applied.`);
+                            }}
+                            className={`p-2.5 rounded-2xl border text-left flex items-center space-x-2.5 transition cursor-pointer ${
+                              isSelected
+                                ? 'border-violet-500/80 bg-violet-950/30 ring-2 ring-violet-500/30'
+                                : 'border-slate-800 hover:border-slate-700 bg-slate-900/40 hover:bg-slate-900/80'
+                            }`}
+                          >
+                            <div
+                              className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 shadow-sm relative"
+                              style={{ backgroundColor: color.primary }}
+                            >
+                              {isSelected && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-bold text-white truncate">{color.name}</div>
+                              <div className="text-[10px] text-slate-400 font-mono truncate">{color.primary}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Custom Hex Color Picker */}
+                  <div className="mt-4 pt-3.5 border-t border-slate-800/80 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Palette className="w-4 h-4 text-violet-400" />
+                      <span className="text-xs font-semibold text-slate-300">Custom Brand Hex:</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
                       <input
                         type="color"
                         value={activeTheme?.primaryColor || '#6366f1'}
                         onChange={(e) => {
                           setAccentColor(e.target.value);
-                          showFeedback('Custom color applied.');
+                          showFeedback('Custom hex color applied.');
                         }}
                         className="w-8 h-8 rounded-xl cursor-pointer bg-transparent border border-slate-700 p-0.5"
                         title="Pick custom color"
                       />
+                      <span className="text-xs font-mono text-slate-300 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800">
+                        {activeTheme?.primaryColor || '#6366f1'}
+                      </span>
                     </div>
                   </div>
                 </section>
@@ -1175,13 +1327,35 @@ export const SettingsPanel = ({
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <h4 className="text-sm font-bold text-white">Font Family</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Choose your preferred reading typeface.</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Choose your preferred reading typeface or keep default.</p>
                     </div>
-                    <span className="text-[10px] text-slate-400 font-mono">{fontFamily || 'Inter'}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {!isCustomTheme ? `Default (${adminTheme?.fontFamily || 'Inter'})` : fontFamily || 'Inter'}
+                    </span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {/* Default (Admin Font) Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFontFamily('default');
+                        showFeedback(`Font synced with Admin Default (${adminTheme?.fontFamily || 'Inter'}).`);
+                      }}
+                      className={`p-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer text-center truncate ${
+                        !isCustomTheme || fontFamily === (adminTheme?.fontFamily || 'Inter')
+                          ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30'
+                          : 'border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-600 hover:text-white'
+                      }`}
+                    >
+                      <div className="font-bold flex items-center justify-center space-x-1">
+                        <span>Default</span>
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300">Admin</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate mt-0.5">{adminTheme?.fontFamily || 'Inter'}</div>
+                    </button>
+
                     {TYPOGRAPHY_FONTS.map((font) => {
-                      const isSel = (fontFamily || 'Inter') === font.id;
+                      const isSel = isCustomTheme && (fontFamily === font.id);
                       return (
                         <button
                           key={font.id}
@@ -1197,7 +1371,8 @@ export const SettingsPanel = ({
                               : 'border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-600 hover:text-white'
                           }`}
                         >
-                          {font.id}
+                          <div className="font-bold truncate">{font.id}</div>
+                          <div className="text-[10px] text-slate-400 truncate mt-0.5">{font.name.split(' ')[0]}</div>
                         </button>
                       );
                     })}
@@ -2803,6 +2978,40 @@ export const SettingsPanel = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Profile Tab — Unsaved Changes Floating Dock */}
+      {profileHasChanges && activeTab === 'profile' && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#1E1833]/95 backdrop-blur-xl border border-violet-500/40 shadow-2xl rounded-2xl px-4 py-2.5 flex items-center space-x-3 text-xs text-white animate-fadeIn">
+          <div className="flex items-center space-x-2 pr-3 border-r border-violet-900/40">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_6px_#FBBF24]" />
+            <span className="font-semibold text-violet-200">Unsaved Changes</span>
+          </div>
+          <button type="button" onClick={handleCancelProfile} className="px-3.5 py-1.5 bg-[#231C38] hover:bg-[#2A2242] text-violet-300 hover:text-white rounded-xl border border-violet-900/30 transition cursor-pointer">
+            Cancel / Discard
+          </button>
+          <button type="button" disabled={loading} onClick={handleSaveProfile} className="px-4 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold rounded-xl shadow-lg shadow-violet-900/50 flex items-center space-x-1.5 transition active:scale-95 disabled:opacity-50 cursor-pointer">
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            <span>{loading ? 'Saving...' : 'Save & Publish'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Privacy Tab — Unsaved Changes Floating Dock */}
+      {privacyHasChanges && activeTab === 'privacy' && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#1E1833]/95 backdrop-blur-xl border border-violet-500/40 shadow-2xl rounded-2xl px-4 py-2.5 flex items-center space-x-3 text-xs text-white animate-fadeIn">
+          <div className="flex items-center space-x-2 pr-3 border-r border-violet-900/40">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_6px_#FBBF24]" />
+            <span className="font-semibold text-violet-200">Unsaved Changes</span>
+          </div>
+          <button type="button" onClick={handleCancelPrivacy} className="px-3.5 py-1.5 bg-[#231C38] hover:bg-[#2A2242] text-violet-300 hover:text-white rounded-xl border border-violet-900/30 transition cursor-pointer">
+            Cancel / Discard
+          </button>
+          <button type="button" disabled={loading} onClick={handleSavePrivacy} className="px-4 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold rounded-xl shadow-lg shadow-violet-900/50 flex items-center space-x-1.5 transition active:scale-95 disabled:opacity-50 cursor-pointer">
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            <span>{loading ? 'Saving...' : 'Save & Publish'}</span>
+          </button>
         </div>
       )}
     </div>

@@ -48,6 +48,32 @@ const systemConfigSchema = new mongoose.Schema(
       retentionDays: { type: Number, default: 14 },
       requireAdminApprovalForPermanentDelete: { type: Boolean, default: true }
     },
+    loaderConfig: {
+      style:          { type: String, enum: ['cyber', 'minimal', 'neon', 'retro', 'glitch'], default: 'cyber' },
+      rainChars:      { type: String, default: '01' },   // e.g. "01", "hex", "katakana", "custom"
+      customChars:    { type: String, default: '' },      // used when rainChars === 'custom'
+      rainColor:      { type: String, default: '#10b981' },
+      rainGlowColor:  { type: String, default: '#059669' },
+      bgColor:        { type: String, default: '#050811' },
+      accentColor:    { type: String, default: '#10b981' },
+      panelTitle:     { type: String, default: 'PULSECHAT' },
+      panelSubtitle:  { type: String, default: '01 GREEN DATA MATRIX // QUANTUM ENCRYPTED' },
+      securityBadge:  { type: String, default: 'CYBER TUNNEL ACTIVE // SECURE HANDSHAKE OK' },
+      statusMessages: {
+        type: [String],
+        default: [
+          'STREAMING 01 DATA CLOUD MATRIX...',
+          'VERIFYING QUANTUM E2EE SESSION...',
+          'DECRYPTING WORKSPACE ENVIRONMENT...',
+          'SYNCHRONIZING CONVERSATIONS & CHATS...',
+          'SYSTEM SYNCHRONIZED // DIVIDING GATE...'
+        ]
+      },
+      showBinaryTicker: { type: Boolean, default: true },
+      showSecurityBadge: { type: Boolean, default: true },
+      splitDuration:    { type: Number, default: 800 },
+      minDuration:      { type: Number, default: 2000 }
+    },
     landingPageConfig: {
       brandName: { type: String, default: 'PulseChat' },
       brandTagline: { type: String, default: 'AES-256 E2EE' },

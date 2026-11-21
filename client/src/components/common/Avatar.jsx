@@ -24,9 +24,12 @@ export const Avatar = ({
   name = 'User',
   size = 'md',
   isOnline = false,
-  showOnlineStatus = false
+  showOnlineStatus = false,
+  noRing = false,       // suppress the default ring on the img
+  ringClass = '',       // custom ring override, e.g. "ring-2 ring-violet-500/60"
 }) => {
   const sizeClasses = {
+    xs: 'w-6 h-6 text-[10px]',
     sm: 'w-8 h-8 text-xs',
     md: 'w-10 h-10 text-sm',
     lg: 'w-12 h-12 text-base',
@@ -34,6 +37,7 @@ export const Avatar = ({
   };
 
   const statusSize = {
+    xs: 'w-1.5 h-1.5 ring-1',
     sm: 'w-2 h-2 ring-1',
     md: 'w-2.5 h-2.5 ring-2',
     lg: 'w-3 h-3 ring-2',
@@ -49,19 +53,22 @@ export const Avatar = ({
         .toUpperCase()
     : '?';
 
+  const defaultRing = noRing ? '' : 'ring-1 ring-slate-700/60';
+  const appliedRing = ringClass || defaultRing;
+
   return (
     <div className="relative inline-flex flex-shrink-0">
       {src ? (
         <img
           src={src}
           alt={name}
-          className={`${sizeClasses[size] || sizeClasses.md} rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700`}
+          className={`${sizeClasses[size] || sizeClasses.md} rounded-full object-cover ${appliedRing}`}
         />
       ) : (
         <div
           className={`${sizeClasses[size] || sizeClasses.md} ${getColorForName(
             name
-          )} text-white font-semibold rounded-full flex items-center justify-center select-none shadow-sm`}
+          )} text-white font-semibold rounded-full flex items-center justify-center select-none shadow-sm ${appliedRing}`}
         >
           {initials}
         </div>

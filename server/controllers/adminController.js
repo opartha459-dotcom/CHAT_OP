@@ -1058,7 +1058,7 @@ const getSystemSettings = async (req, res) => {
 const updateSystemSettings = async (req, res) => {
   try {
     const SystemConfig = require('../models/SystemConfig');
-    const { featureFlags, databaseAssignments, retentionSettings } = req.body;
+    const { featureFlags, databaseAssignments, retentionSettings, loaderConfig } = req.body;
 
     let config = await SystemConfig.findOne({ key: 'system_settings' });
     if (!config) {
@@ -1080,6 +1080,9 @@ const updateSystemSettings = async (req, res) => {
     if (retentionSettings) {
       config.retentionSettings = { ...config.retentionSettings, ...retentionSettings };
     }
+    if (loaderConfig) {
+      config.loaderConfig = { ...(config.loaderConfig?.toObject ? config.loaderConfig.toObject() : config.loaderConfig || {}), ...loaderConfig };
+    }
 
     config.lastUpdatedBy = req.user._id;
     await config.save();
@@ -1090,6 +1093,9 @@ const updateSystemSettings = async (req, res) => {
       io.emit('system:features_updated', config.featureFlags);
       if (req.body.defaultTheme) {
         io.emit('system:theme_updated', config.defaultTheme);
+      }
+      if (req.body.loaderConfig) {
+        io.emit('system:loader_updated', config.loaderConfig);
       }
     }
 
@@ -1269,6 +1275,29 @@ const getPublicLandingConfig = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Error fetching landing page configuration'
+    });
+  }
+};
+
+// @desc Get public loader configuration
+// @route GET /api/system/loader
+const getPublicLoaderConfig = async (req, res) => {
+  try {
+    const SystemConfig = require('../models/SystemConfig');
+    let config = await SystemConfig.findOne({ key: 'system_settings' }).lean();
+    if (!config) {
+      config = await SystemConfig.create({ key: 'system_settings' });
+    }
+
+    return res.json({
+      success: true,
+      loaderConfig: config.loaderConfig || {}
+    });
+  } catch (error) {
+    console.error('[Get Loader Config Error]', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching loader configuration'
     });
   }
 };
@@ -2449,6 +2478,7 @@ module.exports = {
   getPublicTheme,
   updateSystemTheme,
   getPublicLandingConfig,
+  getPublicLoaderConfig,
   getLandingConfig,
   updateLandingConfig,
   getPublicContact,

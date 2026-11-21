@@ -181,7 +181,30 @@ export const DEFAULT_THEME_CONFIG = {
   headingTransform: 'none'
 };
 
-const ThemeContext = createContext();
+const DEFAULT_THEME_CONTEXT = {
+  theme: 'dark',
+  setTheme: () => {},
+  selectedThemeId: 'default',
+  accentColor: 'indigo',
+  rawAccentColor: 'indigo',
+  primaryColor: '#6366f1',
+  secondaryColor: '#10b981',
+  setAccentColor: () => {},
+  palette: ACCENT_PALETTES?.indigo || {},
+  fontSize: 'medium',
+  setFontSize: () => {},
+  fontFamily: 'Inter',
+  setFontFamily: () => {},
+  activeTheme: DEFAULT_THEME_CONFIG,
+  adminTheme: DEFAULT_THEME_CONFIG,
+  isCustomTheme: false,
+  setCustomTheme: () => {},
+  resetToAdminDefault: () => {},
+  updateAdminDefaultTheme: () => {},
+  refreshAdminTheme: () => {}
+};
+
+const ThemeContext = createContext(DEFAULT_THEME_CONTEXT);
 
 export const ThemeProvider = ({ children }) => {
   const auth = useAuth?.();
@@ -364,8 +387,13 @@ export const ThemeProvider = ({ children }) => {
   // USER CUSTOMIZATION ACTIONS
   // --------------------------------------------------------------------------
 
-  // User sets an accent color or custom color
+  // User sets an accent color or custom color (or 'default' to follow admin theme)
   const setAccentColor = (newAccentOrHex) => {
+    if (newAccentOrHex === 'default') {
+      resetToAdminDefault();
+      return;
+    }
+
     let updates = {};
     if (THEME_PALETTES[newAccentOrHex]) {
       const p = THEME_PALETTES[newAccentOrHex];
@@ -479,6 +507,31 @@ export const ThemeProvider = ({ children }) => {
 
   // User sets font family
   const setFontFamily = (newFont) => {
+    if (newFont === 'default') {
+      if (!isCustomTheme) return;
+      const nextCustom = {
+        ...(userCustomTheme || adminTheme),
+        fontFamily: adminTheme?.fontFamily || 'Inter'
+      };
+      setUserCustomTheme(nextCustom);
+      localStorage.setItem('pulsechat_user_custom_theme', JSON.stringify(nextCustom));
+      if (token) {
+        fetch('/api/users/settings/chat', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            isCustomTheme: true,
+            customTheme: nextCustom
+          })
+        }).catch(() => {});
+      }
+      return;
+    }
+
     const nextCustom = {
       ...(userCustomTheme || adminTheme),
       fontFamily: newFont
@@ -546,6 +599,17 @@ export const ThemeProvider = ({ children }) => {
     // Instantly apply admin theme
     applyThemeToDOM(adminTheme);
 
+    if (auth?.updateUser && user) {
+      auth.updateUser({
+        ...user,
+        chatSettings: {
+          ...(user.chatSettings || {}),
+          isCustomTheme: false,
+          customTheme: null
+        }
+      });
+    }
+
     if (token) {
       try {
         await fetch('/api/users/settings/chat', {
@@ -609,12 +673,20 @@ export const ThemeProvider = ({ children }) => {
     ring: 'ring-accent'
   };
 
+  const selectedThemeId = isCustomTheme
+    ? (userCustomTheme?.accentColor || activeTheme.accentColor || 'custom')
+    : 'default';
+
   return (
     <ThemeContext.Provider
       value={{
         theme: activeTheme.mode,
         setTheme,
-        accentColor: activeTheme.accentColor,
+        selectedThemeId,
+        accentColor: isCustomTheme ? activeTheme.accentColor : 'default',
+        rawAccentColor: activeTheme.accentColor,
+        primaryColor: activeTheme.primaryColor,
+        secondaryColor: activeTheme.secondaryColor,
         setAccentColor,
         palette,
         fontSize: activeTheme.fontSize,
@@ -635,4 +707,7 @@ export const ThemeProvider = ({ children }) => {
   );
 };
 
-export const useTheme = () => useContext(ThemeContext);
+export const useTheme = () => {
+  const context = useContext(ThemeContext);
+  return context || DEFAULT_THEME_CONTEXT;
+};

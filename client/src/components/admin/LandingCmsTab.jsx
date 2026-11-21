@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Globe,
   Upload,
@@ -28,7 +28,10 @@ import {
   Crop,
   Palette,
   Wand2,
-  Monitor
+  Monitor,
+  History,
+  Copy,
+  CheckCheck
 } from 'lucide-react';
 import { ImageCropModal } from '../common/ImageCropModal';
 
@@ -374,9 +377,61 @@ export const DEFAULT_LANDING_CONFIG = {
   }
 };
 
+const CMS_IMAGE_HISTORY_KEY = 'pulsechat_cms_image_history';
+
+export const getStoredImageHistory = () => {
+  try {
+    const raw = localStorage.getItem(CMS_IMAGE_HISTORY_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed.filter(Boolean);
+    }
+  } catch (e) {
+    console.warn('Failed to parse CMS image history', e);
+  }
+  return [
+    'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
+    'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=80',
+    'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80'
+  ];
+};
+
+export const saveImageToHistory = (url) => {
+  if (!url || typeof url !== 'string' || !url.trim()) return;
+  const cleanUrl = url.trim();
+  try {
+    const list = getStoredImageHistory();
+    const cleanBase = cleanUrl.split('?')[0];
+    const filtered = list.filter((item) => item.split('?')[0] !== cleanBase);
+    const updated = [cleanUrl, ...filtered].slice(0, 40);
+    localStorage.setItem(CMS_IMAGE_HISTORY_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('cms_image_history_updated', { detail: updated }));
+  } catch (e) {
+    console.warn('Failed to save to CMS image history', e);
+  }
+};
+
+export const removeImageFromHistory = (url) => {
+  if (!url) return;
+  try {
+    const list = getStoredImageHistory();
+    const cleanBase = url.split('?')[0];
+    const updated = list.filter((item) => item.split('?')[0] !== cleanBase);
+    localStorage.setItem(CMS_IMAGE_HISTORY_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('cms_image_history_updated', { detail: updated }));
+  } catch (e) {}
+};
+
+export const clearAllImageHistory = () => {
+  try {
+    localStorage.removeItem(CMS_IMAGE_HISTORY_KEY);
+    window.dispatchEvent(new CustomEvent('cms_image_history_updated', { detail: [] }));
+  } catch (e) {}
+};
+
 /**
  * Reusable image uploader component with integrated Crop & Adjust modal,
- * direct URL input, and live preview.
+ * direct raw upload option, URL input, live preview, and Image History/Media Library.
  */
 const ImageUploader = ({
   label,
@@ -388,11 +443,28 @@ const ImageUploader = ({
 }) => {
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef(null);
+  const [directUploading, setDirectUploading] = useState(false);
+  const [history, setHistory] = useState(() => getStoredImageHistory());
+  const [copiedUrl, setCopiedUrl] = useState('');
 
-  // When admin selects a file from disk, immediately open Crop & Adjust modal
-  const handleFileSelect = (e) => {
+  const cropFileInputRef = useRef(null);
+  const directFileInputRef = useRef(null);
+
+  // Sync history across instances via window event
+  useEffect(() => {
+    const handleHistoryUpdate = (e) => {
+      if (Array.isArray(e.detail)) {
+        setHistory(e.detail);
+      } else {
+        setHistory(getStoredImageHistory());
+      }
+    };
+    window.addEventListener('cms_image_history_updated', handleHistoryUpdate);
+    return () => window.removeEventListener('cms_image_history_updated', handleHistoryUpdate);
+  }, []);
+
+  // When admin selects a file to Crop & Adjust
+  const handleCropFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -407,88 +479,296 @@ const ImageUploader = ({
     e.target.value = '';
   };
 
+  // Direct upload without cropping
+  const handleDirectFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 25 * 1024 * 1024) {
+      alert('File is too large. Maximum image size is 25 MB.');
+      return;
+    }
+
+    setDirectUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const storedToken =
+        token ||
+        localStorage.getItem('pulsechat_token') ||
+        sessionStorage.getItem('pulsechat_token');
+      const headers = {};
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+
+      let res = await fetch('/api/admin/upload', {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: formData
+      });
+
+      if (!res.ok && res.status !== 400) {
+        res = await fetch('/api/users/upload', {
+          method: 'POST',
+          headers,
+          credentials: 'include',
+          body: formData
+        });
+      }
+
+      const data = await res.json();
+      const finalUrl = data.url || data.fileUrl || data.file?.url;
+
+      if (data.success && finalUrl) {
+        onChange(finalUrl);
+        saveImageToHistory(finalUrl);
+      } else {
+        alert(data.message || 'Direct upload failed.');
+      }
+    } catch (err) {
+      console.error('Direct upload error:', err);
+      alert('Upload failed: ' + (err.message || 'Network error'));
+    } finally {
+      setDirectUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  // Copy image URL helper
+  const handleCopyUrl = (url) => {
+    if (!url) return;
+    navigator.clipboard?.writeText(url).then(() => {
+      setCopiedUrl(url);
+      setTimeout(() => setCopiedUrl(''), 2000);
+    });
+  };
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3 p-4 rounded-2xl bg-[#1E1833]/80 border border-violet-900/30 shadow-xs">
       {label && (
-        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-          {label}
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="block text-xs font-bold text-white tracking-wide">
+            {label}
+          </label>
+          <span className="text-[11px] font-mono text-violet-400/80 bg-[#161226] px-2 py-0.5 rounded-md border border-violet-900/40">
+            {aspectRatio} Ratio
+          </span>
+        </div>
       )}
 
-      <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
+      {/* Input + Action Buttons */}
+      <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
         <div className="relative flex-1 w-full">
           <input
             type="text"
             value={value || ''}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => {
+              onChange(e.target.value);
+              if (e.target.value.trim()) saveImageToHistory(e.target.value);
+            }}
             placeholder={placeholder}
-            className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+            className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[#161226] border border-violet-900/40 text-violet-100 placeholder-violet-400/40 focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono pr-8"
           />
           {value && (
             <button
               type="button"
               onClick={() => onChange('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 transition cursor-pointer"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-violet-400/60 hover:text-rose-400 transition cursor-pointer"
               title="Clear Image"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
+        {/* Hidden inputs */}
         <input
-          ref={fileInputRef}
+          ref={cropFileInputRef}
           type="file"
           accept="image/*"
-          onChange={handleFileSelect}
+          onChange={handleCropFileSelect}
+          className="hidden"
+        />
+        <input
+          ref={directFileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleDirectFileSelect}
           className="hidden"
         />
 
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            disabled={uploading}
-            onClick={() => fileInputRef.current?.click()}
-            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition active:scale-95 disabled:opacity-50 cursor-pointer shadow-md shadow-indigo-600/20"
+            disabled={directUploading}
+            onClick={() => cropFileInputRef.current?.click()}
+            className="px-3.5 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 transition active:scale-95 disabled:opacity-50 cursor-pointer shadow-md shadow-violet-900/40"
             title="Upload and crop image"
           >
             <Crop className="w-3.5 h-3.5" />
             <span>Upload &amp; Crop</span>
           </button>
+
+          <button
+            type="button"
+            disabled={directUploading}
+            onClick={() => directFileInputRef.current?.click()}
+            className="px-3 py-2.5 bg-[#231C38] hover:bg-[#2A2242] border border-violet-900/40 text-violet-200 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition active:scale-95 disabled:opacity-50 cursor-pointer"
+            title="Upload raw file without cropping"
+          >
+            {directUploading ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-violet-400" />
+            ) : (
+              <Upload className="w-3.5 h-3.5 text-violet-400" />
+            )}
+            <span>Direct</span>
+          </button>
         </div>
       </div>
 
+      {/* Current Preview Card */}
       {value && (
-        <div className="mt-2 flex items-center justify-between p-2.5 bg-slate-100 dark:bg-slate-950/50 rounded-xl border border-slate-200 dark:border-slate-800 w-full">
-          <div className="flex items-center space-x-3 overflow-hidden mr-2">
+        <div className="flex items-center justify-between p-3 bg-[#161226] rounded-xl border border-violet-900/30 w-full">
+          <div className="flex items-center space-x-3 overflow-hidden mr-2 min-w-0">
             <img
               src={value}
-              alt="Preview"
-              className="w-16 h-12 object-cover rounded-lg border border-slate-200 dark:border-slate-700 bg-black/20 shrink-0"
+              alt="Active Preview"
+              className="w-16 h-12 object-cover rounded-lg border border-violet-900/50 bg-black/40 shrink-0"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
               }}
             />
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-mono">
-              <span className="font-semibold text-slate-700 dark:text-slate-200 block">Preview Loaded</span>
-              {value}
+            <div className="text-[11px] text-violet-300/80 truncate font-mono min-w-0">
+              <span className="font-bold text-white flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Currently Selected Asset
+              </span>
+              <span className="truncate block opacity-70" title={value}>{value}</span>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setCropImageSrc(value);
-              setCropModalOpen(true);
-            }}
-            className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition active:scale-95 cursor-pointer shrink-0"
-            title="Adjust crop, zoom and orientation of this image"
-          >
-            <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Crop &amp; Adjust</span>
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setCropImageSrc(value);
+                setCropModalOpen(true);
+              }}
+              className="px-3 py-1.5 bg-violet-600/20 hover:bg-violet-600/30 text-violet-300 border border-violet-500/30 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition active:scale-95 cursor-pointer"
+              title="Crop and adjust this active image"
+            >
+              <Sliders className="w-3.5 h-3.5 text-violet-400" />
+              <span>Crop &amp; Adjust</span>
+            </button>
+          </div>
         </div>
       )}
+
+      {/* Image History / Media Library Shelf */}
+      <div className="pt-2 border-t border-violet-900/20 space-y-2">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-1.5 text-violet-300/80 font-bold">
+            <History className="w-3.5 h-3.5 text-violet-400" />
+            <span>Image History &amp; Reusable Library</span>
+            <span className="px-1.5 py-0.2 rounded-md bg-[#161226] text-violet-400 font-mono text-[10px] border border-violet-900/40">
+              {history.length}
+            </span>
+          </div>
+
+          {history.length > 0 && (
+            <button
+              type="button"
+              onClick={clearAllImageHistory}
+              className="text-[11px] text-violet-400/60 hover:text-rose-400 transition cursor-pointer flex items-center gap-1"
+              title="Clear all saved history items"
+            >
+              <Trash2 className="w-3 h-3" />
+              <span>Clear History</span>
+            </button>
+          )}
+        </div>
+
+        {history.length === 0 ? (
+          <div className="text-[11px] text-violet-300/40 italic py-2">
+            Uploaded images will appear here automatically for one-click reuse across Hero, Features, and Preview sections.
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-violet-900/50 pt-1">
+            {history.map((imgUrl, hIdx) => {
+              const isSelected = value && value.split('?')[0] === imgUrl.split('?')[0];
+              return (
+                <div
+                  key={`${imgUrl}-${hIdx}`}
+                  className={`group relative shrink-0 rounded-xl overflow-hidden border transition-all cursor-pointer ${
+                    isSelected
+                      ? 'border-violet-500 ring-2 ring-violet-500/40 shadow-md shadow-violet-900/40'
+                      : 'border-violet-900/40 hover:border-violet-500/60 bg-[#161226]'
+                  }`}
+                  style={{ width: '96px', height: '64px' }}
+                  onClick={() => onChange(imgUrl)}
+                  title="Click to use this image"
+                >
+                  <img
+                    src={imgUrl}
+                    alt={`History asset ${hIdx + 1}`}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=300&q=80';
+                    }}
+                  />
+
+                  {/* Active selection badge */}
+                  {isSelected && (
+                    <div className="absolute top-1 left-1 bg-violet-600 text-white rounded-md p-0.5 shadow-sm">
+                      <Check className="w-3 h-3 stroke-[3]" />
+                    </div>
+                  )}
+
+                  {/* Hover action overlay */}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onChange(imgUrl);
+                      }}
+                      className="p-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white transition"
+                      title="Apply this image"
+                    >
+                      <Check className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCropImageSrc(imgUrl);
+                        setCropModalOpen(true);
+                      }}
+                      className="p-1 rounded-lg bg-[#231C38] hover:bg-[#2A2242] text-violet-300 transition"
+                      title="Crop & adjust this image"
+                    >
+                      <Crop className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeImageFromHistory(imgUrl);
+                      }}
+                      className="p-1 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-300 transition"
+                      title="Remove from history"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Image Crop & Adjust Modal */}
       <ImageCropModal
@@ -500,6 +780,7 @@ const ImageUploader = ({
         title={label ? `Crop & Adjust: ${label}` : 'Crop & Adjust Image'}
         onCropComplete={(finalUrl) => {
           onChange(finalUrl);
+          saveImageToHistory(finalUrl);
           setCropModalOpen(false);
         }}
       />
@@ -509,10 +790,21 @@ const ImageUploader = ({
 
 export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
   const [config, setConfig] = useState(DEFAULT_LANDING_CONFIG);
+  const [savedConfig, setSavedConfig] = useState(DEFAULT_LANDING_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState('hero'); // 'hero' | 'brand' | 'features' | 'preview' | 'stats' | 'highlights' | 'footer'
   const [newHighlight, setNewHighlight] = useState('');
+
+  // Detect whether unsaved changes exist compared to currently saved database configuration
+  const hasChanges = useMemo(() => {
+    return JSON.stringify(config) !== JSON.stringify(savedConfig);
+  }, [config, savedConfig]);
+
+  // Cancel & revert changes back to saved database state
+  const handleCancelChanges = () => {
+    setConfig(savedConfig);
+  };
 
   // Fetch current landing config
   const fetchLandingConfig = async () => {
@@ -525,7 +817,7 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.landingPageConfig) {
-          setConfig({
+          const merged = {
             ...DEFAULT_LANDING_CONFIG,
             ...data.landingPageConfig,
             hero: {
@@ -548,7 +840,20 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
               ...DEFAULT_LANDING_CONFIG.footer,
               ...(data.landingPageConfig.footer || {})
             }
-          });
+          };
+          setConfig(merged);
+          setSavedConfig(merged);
+
+          // Seed media history with existing landing page assets
+          const lpc = data.landingPageConfig;
+          if (lpc.hero?.heroImage) saveImageToHistory(lpc.hero.heroImage);
+          if (lpc.brandLogo) saveImageToHistory(lpc.brandLogo);
+          if (lpc.previewSection?.imageUrl) saveImageToHistory(lpc.previewSection.imageUrl);
+          if (Array.isArray(lpc.features)) {
+            lpc.features.forEach((f) => {
+              if (f.image) saveImageToHistory(f.image);
+            });
+          }
         }
       }
     } catch (err) {
@@ -575,6 +880,7 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
 
       const data = await res.json();
       if (res.ok && data.success) {
+        setSavedConfig(config);
         if (showFeedback) {
           showFeedback('Landing page updated successfully!');
         } else {
@@ -746,28 +1052,39 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
             href="/"
             target="_blank"
             rel="noopener noreferrer"
-            className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer"
+            className="px-3.5 py-2 bg-[#231C38] hover:bg-[#2A2242] border border-violet-900/40 text-violet-200 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer"
             title="Preview Live Landing Page"
           >
-            <Eye className="w-3.5 h-3.5 text-indigo-400" />
+            <Eye className="w-3.5 h-3.5 text-violet-400" />
             <span className="hidden sm:inline">View Site</span>
-            <ExternalLink className="w-3 h-3 text-slate-400" />
+            <ExternalLink className="w-3 h-3 text-violet-400/60" />
           </a>
 
           <button
             type="button"
             onClick={handleReset}
-            className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 rounded-xl text-xs font-semibold transition cursor-pointer"
+            className="px-3 py-2 bg-[#231C38] hover:bg-rose-950/40 text-violet-300 hover:text-rose-400 border border-violet-900/40 rounded-xl text-xs font-semibold transition cursor-pointer"
             title="Reset to Defaults"
           >
             Reset
           </button>
 
+          {hasChanges && (
+            <button
+              type="button"
+              onClick={handleCancelChanges}
+              className="px-3.5 py-2 bg-[#231C38] hover:bg-[#2A2242] text-violet-300 hover:text-white border border-violet-900/40 rounded-xl text-xs font-semibold transition cursor-pointer"
+              title="Discard Unsaved Changes"
+            >
+              Cancel
+            </button>
+          )}
+
           <button
             type="button"
             disabled={saving}
             onClick={handleSave}
-            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center space-x-1.5 transition active:scale-95 disabled:opacity-50 cursor-pointer"
+            className="px-5 py-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-violet-900/40 flex items-center space-x-1.5 transition active:scale-95 disabled:opacity-50 cursor-pointer"
           >
             {saving ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -1724,6 +2041,34 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Floating Bottom Action Dock - Positioned at bottom center, never blocks page content */}
+      {hasChanges && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#1E1833]/95 backdrop-blur-xl border border-violet-500/40 shadow-2xl rounded-2xl px-4 py-2.5 flex items-center space-x-3 text-xs text-white animate-fadeIn">
+          <div className="flex items-center space-x-2 pr-3 border-r border-violet-900/40">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_6px_#FBBF24]" />
+            <span className="font-semibold text-violet-200">Unsaved Changes</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCancelChanges}
+            className="px-3.5 py-1.5 bg-[#231C38] hover:bg-[#2A2242] text-violet-300 hover:text-white rounded-xl border border-violet-900/30 transition cursor-pointer"
+          >
+            Cancel / Discard
+          </button>
+
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleSave}
+            className="px-4 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold rounded-xl shadow-lg shadow-violet-900/50 flex items-center space-x-1.5 transition active:scale-95 disabled:opacity-50 cursor-pointer"
+          >
+            {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            <span>{saving ? 'Publishing...' : 'Save & Publish'}</span>
+          </button>
         </div>
       )}
     </div>
