@@ -8,6 +8,7 @@ const {
   reactToMessage,
   searchMessages,
   getCallHistory,
+  deleteCallHistory,
   pinMessage,
   unpinMessage,
   getPinnedMessages,
@@ -20,6 +21,7 @@ const { checkFeature } = require('../middlewares/checkFeature');
 
 router.get('/search', protect, searchMessages);
 router.get('/calls/history', protect, getCallHistory);
+router.delete('/calls/history', protect, deleteCallHistory);
 router.get('/pins/:conversationId', protect, getPinnedMessages);
 router.post('/:conversationId/poll', protect, checkFeature('polls'), createPoll);
 router.post('/:id/pin', protect, pinMessage);

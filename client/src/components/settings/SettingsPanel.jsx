@@ -808,7 +808,7 @@ export const SettingsPanel = ({
     if (!window.confirm('Are you sure you want to revoke all other devices?')) return;
     try {
       await logoutAll();
-      showFeedback('All other sessions revoked.');
+      navigate('/');
     } catch (err) {
       showFeedback('Error revoking sessions', 'error');
     }
@@ -979,7 +979,7 @@ export const SettingsPanel = ({
             )}
 
             <button
-              onClick={logout}
+              onClick={async () => { await logout(); navigate('/'); }}
               className="w-full flex items-center space-x-2.5 px-3.5 py-2 text-xs font-semibold text-[#F43F5E] hover:text-[#FB7185] hover:bg-rose-950/20 rounded-xl transition cursor-pointer"
             >
               <LogOut className="w-4 h-4 flex-shrink-0" />

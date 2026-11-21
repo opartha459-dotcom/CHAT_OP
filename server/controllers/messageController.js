@@ -406,6 +406,57 @@ const getCallHistory = async (req, res) => {
   }
 };
 
+// @desc Delete call history items (selected or all) for the current user
+// @route DELETE /api/messages/calls/history
+const deleteCallHistory = async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+    const { callIds, clearAll } = req.body || {};
+
+    if (clearAll) {
+      // Find all conversations user is a part of
+      const userConversations = await Conversation.find({
+        participants: currentUserId
+      }).select('_id');
+      const convIds = userConversations.map((c) => c._id);
+
+      // Add currentUserId to deletedFor on all call messages in those conversations
+      await Message.updateMany(
+        {
+          conversation: { $in: convIds },
+          messageType: 'call',
+          deletedFor: { $ne: currentUserId }
+        },
+        {
+          $addToSet: { deletedFor: currentUserId }
+        }
+      );
+
+      return res.json({ success: true, message: 'Call history cleared successfully.' });
+    }
+
+    if (!Array.isArray(callIds) || callIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'No call IDs provided.' });
+    }
+
+    // Add currentUserId to deletedFor for specified callIds
+    await Message.updateMany(
+      {
+        _id: { $in: callIds },
+        messageType: 'call'
+      },
+      {
+        $addToSet: { deletedFor: currentUserId }
+      }
+    );
+
+    return res.json({ success: true, message: 'Selected calls deleted successfully.' });
+  } catch (error) {
+    console.error('[Delete Call History Error]', error);
+    return res.status(500).json({ success: false, message: 'Error deleting call history.' });
+  }
+};
+
 // @desc Pin a message in conversation (Max 2 pins)
 // @route POST /api/messages/:id/pin
 const pinMessage = async (req, res) => {
@@ -824,6 +875,7 @@ module.exports = {
   reactToMessage,
   searchMessages,
   getCallHistory,
+  deleteCallHistory,
   pinMessage,
   unpinMessage,
   getPinnedMessages,

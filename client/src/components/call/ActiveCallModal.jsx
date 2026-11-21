@@ -47,6 +47,9 @@ const VideoTile = ({
   // Real-time audio activity detection using Web Audio API Analyser
   const isSpeaking = useAudioActivity(stream, isMuted);
 
+  const hasVideoTrack = Boolean(stream && stream.getVideoTracks().length > 0 && (!isVideoOff || isScreenSharing));
+  const displayName = isLocal ? 'You' : user?.nickname || user?.username || 'Participant';
+
   // Synchronize stream directly whenever stream or state changes
   useEffect(() => {
     const el = videoRef.current;
@@ -56,10 +59,7 @@ const VideoTile = ({
       }
       el.play().catch(() => {});
     }
-  }, [stream, isVideoOff, isScreenSharing]);
-
-  const hasVideoTrack = stream && stream.getVideoTracks().length > 0 && (!isVideoOff || isScreenSharing);
-  const displayName = isLocal ? 'You' : user?.nickname || user?.username || 'Participant';
+  }, [stream, isVideoOff, isScreenSharing, hasVideoTrack]);
 
   // Dynamic Google Meet style border logic:
   // 1. Active Speaker (Green glowing border)
@@ -112,6 +112,7 @@ const VideoTile = ({
         webkit-playsinline="true"
         muted={isLocal}
         onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+        onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
         className={`w-full h-full ${hasVideoTrack ? 'block' : 'hidden'} ${
           isScreenSharing || isSpotlight ? 'object-contain bg-black' : 'object-cover'
         } ${isLocal && !isScreenSharing ? 'scale-x-[-1]' : ''}`}
@@ -372,6 +373,20 @@ export const ActiveCallModal = () => {
               {raisedHandsList.map((h) => h.userName).join(', ')}{' '}
               {raisedHandsList.length > 1 ? 'have raised their hands' : 'raised hand'}
             </span>
+          </div>
+        )}
+
+        {/* Remote peer switched to video notification banner */}
+        {!isOutgoing && currentCall?.callType === 'video' && isVideoOff && !isScreenSharing && (
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-indigo-600/95 text-white font-semibold px-4 py-2 rounded-2xl shadow-2xl backdrop-blur-md flex items-center space-x-3 text-xs border border-indigo-400/50 animate-in fade-in slide-in-from-top-4">
+            <Video className="w-4 h-4 text-indigo-200 animate-pulse" />
+            <span>Call upgraded to video. Turn on your camera?</span>
+            <button
+              onClick={toggleVideo}
+              className="px-3 py-1 bg-white text-indigo-700 hover:bg-slate-100 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+            >
+              Turn on Camera
+            </button>
           </div>
         )}
 

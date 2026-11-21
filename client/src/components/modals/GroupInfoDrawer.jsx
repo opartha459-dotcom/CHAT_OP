@@ -318,14 +318,14 @@ export const GroupInfoDrawer = ({ isOpen, onClose, group }) => {
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/75 backdrop-blur-md animate-in fade-in duration-200 select-none">
       {/* Click outside backdrop */}
       <div className="hidden md:block flex-1" onClick={onClose} />
 
       {/* Drawer Container */}
-      <div className="w-full sm:w-[420px] h-full bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 overflow-hidden">
+      <div className="w-full sm:w-[420px] h-full bg-[#0B0F19] text-slate-100 border-l border-slate-800/90 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 overflow-hidden">
         {/* Top Sticky Header */}
-        <div className="h-14 px-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm sticky top-0 z-10 flex-shrink-0">
+        <div className="h-14 px-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40 backdrop-blur-sm sticky top-0 z-10 flex-shrink-0">
           <div className="flex items-center space-x-2.5">
             <button
               onClick={onClose}

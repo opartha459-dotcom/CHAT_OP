@@ -81,16 +81,21 @@ export const JoinGroupModal = ({ isOpen, onClose, initialCode = '' }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-md animate-in fade-in duration-200 select-none"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-md bg-[#0B0F19] text-slate-100 border border-slate-800/90 rounded-[28px] shadow-2xl shadow-purple-950/30 overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/80 bg-slate-900/40">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.15)] font-bold">
               <Users className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-slate-800 dark:text-white">
+              <h2 className="text-base font-bold text-white tracking-tight">
                 Join Group
               </h2>
               <p className="text-xs text-slate-400">Join via invite code or group link</p>
@@ -98,20 +103,20 @@ export const JoinGroupModal = ({ isOpen, onClose, initialCode = '' }) => {
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="w-8 h-8 rounded-full bg-slate-800/60 hover:bg-slate-700/80 border border-slate-700/50 text-slate-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Form Body */}
         <form onSubmit={handleJoin} className="p-6 space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
               Group Invite Code or Link
             </label>
             <div className="relative">
-              <Link2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Link2 className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="e.g. 87063d3f or https://.../join/87063d3f"
@@ -120,52 +125,52 @@ export const JoinGroupModal = ({ isOpen, onClose, initialCode = '' }) => {
                   setInviteInput(e.target.value);
                   setError('');
                 }}
-                className="w-full pl-10 pr-20 py-2.5 text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                className="w-full pl-10 pr-24 py-2.5 text-sm bg-slate-900/90 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/80 focus:ring-1 focus:ring-indigo-500/50 rounded-2xl transition-all"
                 autoFocus
               />
               <button
                 type="button"
                 onClick={handlePaste}
                 title="Paste from clipboard"
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-medium text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-600 transition flex items-center space-x-1"
+                className="absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700/80 text-[11px] font-semibold text-slate-300 rounded-xl transition flex items-center space-x-1 cursor-pointer"
               >
-                <Clipboard className="w-3 h-3" />
+                <Clipboard className="w-3 h-3 text-indigo-400" />
                 <span>Paste</span>
               </button>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1.5">
-              Paste the full invite URL (e.g. <span className="font-mono text-indigo-500">/join/code</span>) or type the unique code.
+            <p className="text-[11px] text-slate-400 mt-2">
+              Paste the full invite URL (e.g. <span className="font-mono text-indigo-400">/join/code</span>) or type the unique code.
             </p>
           </div>
 
           {/* Feedback Alerts */}
           {error && (
-            <div className="p-3 text-xs bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 rounded-xl flex items-center space-x-2">
+            <div className="p-3 text-xs bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl flex items-center space-x-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {successMsg && (
-            <div className="p-3 text-xs bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center space-x-2">
+            <div className="p-3 text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex items-center space-x-2">
               <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
               <span>{successMsg}</span>
             </div>
           )}
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-end space-x-2.5 pt-2">
+          <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800/80">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+              className="px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 rounded-xl transition border border-slate-800/80 cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !inviteInput.trim()}
-              className="px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-md shadow-indigo-600/20 transition flex items-center space-x-1.5"
+              className="px-5 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-40 rounded-xl shadow-lg shadow-purple-600/25 transition flex items-center space-x-1.5 cursor-pointer"
             >
               {loading ? (
                 <span>Joining...</span>

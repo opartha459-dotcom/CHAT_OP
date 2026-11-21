@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { User, KeyRound, AlertCircle, ArrowRight, Mail, Send, ShieldAlert } from 'lucide-react';
+import { User, KeyRound, AlertCircle, ArrowRight, Mail, Send, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { PulseLogo } from '../components/common/PulseLogo';
 
@@ -13,20 +13,12 @@ export const LoginPage = () => {
   const forceDeleted = searchParams.get('deleted') === '1';
   const forceReason = searchParams.get('reason');
 
-  let from = '/chat';
-  if (location.state?.from) {
-    if (typeof location.state.from === 'string') {
-      from = location.state.from;
-    } else if (location.state.from?.pathname) {
-      from = `${location.state.from.pathname}${location.state.from.search || ''}`;
-    }
-  }
-  if (from === '/' || from.startsWith('/login') || from.startsWith('/register') || from.includes('undefined')) {
-    from = '/chat';
-  }
+  // Always navigate to /chat after login — replace so /login never re-appears on back
+  const from = '/chat';
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [adminDeletionNotice, setAdminDeletionNotice] = useState(() => {
@@ -225,13 +217,22 @@ export const LoginPage = () => {
             <div className="relative">
               <KeyRound className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition"
+                tabIndex={-1}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 

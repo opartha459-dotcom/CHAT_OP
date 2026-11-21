@@ -30,17 +30,17 @@ import { CyberSplitscreenLoader } from './components/common/CyberSplitscreenLoad
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
 
-// Protected Route wrapper with Dashboard Skeleton loader
+// Protected Route wrapper — unauthenticated users go to landing (replace so /chat never sits in history for guests)
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
-  const location = useLocation();
 
   if (loading) {
     return <DashboardSkeleton />;
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    // replace: true so back-button from landing never loops back through /chat
+    return <Navigate to="/" replace />;
   }
 
   return children;
@@ -49,14 +49,13 @@ const ProtectedRoute = ({ children }) => {
 // Admin Route wrapper
 const AdminRoute = ({ children }) => {
   const { isAuthenticated, user, loading } = useAuth();
-  const location = useLocation();
 
   if (loading) {
     return <AdminDashboardSkeleton />;
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/login" replace />;
   }
 
   if (user?.role !== 'admin') {
@@ -66,30 +65,34 @@ const AdminRoute = ({ children }) => {
   return children;
 };
 
-// Public Route (redirects to original target or /chat if logged in)
+// Smart Home Route — authenticated users are forwarded to /chat so "/" never sits
+// in their browser history as a "back" destination while they're logged in.
+const HomeRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <AuthCardSkeleton />;
+  }
+
+  // replace: true means /chat replaces / in history → back from chat exits the app,
+  // not loops back to landing while still logged in.
+  if (isAuthenticated) {
+    return <Navigate to="/chat" replace />;
+  }
+
+  return children;
+};
+
+// Public Route (redirects authenticated users to /chat — covers /login & /register)
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
-  const location = useLocation();
 
   if (loading) {
     return <AuthCardSkeleton />;
   }
 
   if (isAuthenticated) {
-    const search = location.search || '';
-    let target = `/chat${search}`;
-    if (location.state?.from) {
-      if (typeof location.state.from === 'string') {
-        target = location.state.from;
-      } else if (location.state.from?.pathname) {
-        target = `${location.state.from.pathname}${location.state.from.search || ''}`;
-      }
-    }
-    // Never redirect to landing, login, register, or undefined paths
-    if (target === '/' || target.startsWith('/login') || target.startsWith('/register') || target.includes('undefined')) {
-      target = `/chat${search}`;
-    }
-    return <Navigate to={target} replace />;
+    return <Navigate to="/chat" replace />;
   }
 
   return children;
@@ -159,96 +162,91 @@ export default function App() {
                       <BrowserRouter>
                         <MaintenanceBanner />
                         <Routes>
-                        <Route
-                          path="/"
-                          element={
-                            <PublicRoute>
-                              <LandingPage />
-                            </PublicRoute>
-                          }
-                        />
-                        <Route
-                          path="/login"
-                          element={
-                            <PublicRoute>
-                              <LoginPage />
-                            </PublicRoute>
-                          }
-                        />
-                        <Route
-                          path="/register"
-                          element={
-                            <PublicRoute>
-                              <RegisterPage />
-                            </PublicRoute>
-                          }
-                        />
-                        <Route
-                          path="/chat"
-                          element={
-                            <ProtectedRoute>
-                              <ChatDashboard />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/admin"
-                          element={
-                            <AdminRoute>
-                              <AdminDashboard />
-                            </AdminRoute>
-                          }
-                        />
-                        <Route
-                          path="/join/:code"
-                          element={
-                            <ProtectedRoute>
-                              <JoinGroupHandler />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/account-recovery"
-                          element={<AccountRecoveryPage />}
-                        />
-                        <Route
-                          path="/verify-email"
-                          element={<VerifyEmailPage />}
-                        />
-                        <Route
-                          path="/confirm-deletion"
-                          element={<ConfirmDeletionPage />}
-                        />
-                        <Route
-                          path="/reset-password"
-                          element={<ResetPasswordPage />}
-                        />
-                        <Route
-                          path="/deletion-appeal"
-                          element={<DeletionAppealPage />}
-                        />
-                        {/* Fallback to Home / Chat with replace */}
-                        <Route path="*" element={<Navigate to="/" replace />} />
-                      </Routes>
+                          {/* Landing — smart home: logged-in users go straight to /chat (replace keeps history clean) */}
+                          <Route path="/" element={<HomeRoute><LandingPage /></HomeRoute>} />
+                          <Route path="/landing" element={<HomeRoute><LandingPage /></HomeRoute>} />
+                          <Route
+                            path="/login"
+                            element={
+                              <PublicRoute>
+                                <LoginPage />
+                              </PublicRoute>
+                            }
+                          />
+                          <Route
+                            path="/register"
+                            element={
+                              <PublicRoute>
+                                <RegisterPage />
+                              </PublicRoute>
+                            }
+                          />
+                          <Route
+                            path="/chat"
+                            element={
+                              <ProtectedRoute>
+                                <ChatDashboard />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/admin"
+                            element={
+                              <AdminRoute>
+                                <AdminDashboard />
+                              </AdminRoute>
+                            }
+                          />
+                          <Route
+                            path="/join/:code"
+                            element={
+                              <ProtectedRoute>
+                                <JoinGroupHandler />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/account-recovery"
+                            element={<AccountRecoveryPage />}
+                          />
+                          <Route
+                            path="/verify-email"
+                            element={<VerifyEmailPage />}
+                          />
+                          <Route
+                            path="/confirm-deletion"
+                            element={<ConfirmDeletionPage />}
+                          />
+                          <Route
+                            path="/reset-password"
+                            element={<ResetPasswordPage />}
+                          />
+                          <Route
+                            path="/deletion-appeal"
+                            element={<DeletionAppealPage />}
+                          />
+                          {/* Fallback to Home / Chat with replace */}
+                          <Route path="*" element={<Navigate to="/" replace />} />
+                        </Routes>
 
-                      {/* WebRTC Audio/Video Call Modals */}
-                      <IncomingCallModal />
-                      <ActiveCallModal />
+                        {/* WebRTC Audio/Video Call Modals */}
+                        <IncomingCallModal />
+                        <ActiveCallModal />
 
-                      {/* Manual Admin Verification Code Delivery Modal */}
-                      <IncomingCodeModal />
+                        {/* Manual Admin Verification Code Delivery Modal */}
+                        <IncomingCodeModal />
 
-                      {/* Full-System Scheduled Maintenance Overlay */}
-                      <MaintenanceScreen />
+                        {/* Full-System Scheduled Maintenance Overlay */}
+                        <MaintenanceScreen />
 
-                      {/* Sci-Fi 01 Green Data Cloud Split-Screen Intro Animation */}
-                      <CyberSplitscreenLoader />
-                    </BrowserRouter>
-                  </StatusProvider>
-                </CallProvider>
-              </ChatProvider>
-            </MaintenanceProvider>
-          </FeatureFlagsProvider>
+                        {/* Sci-Fi 01 Green Data Cloud Split-Screen Intro Animation */}
+                        <CyberSplitscreenLoader />
+                      </BrowserRouter>
+                    </StatusProvider>
+                  </CallProvider>
+                </ChatProvider>
+              </MaintenanceProvider>
+            </FeatureFlagsProvider>
           </ThemeProvider>
         </SocketProvider>
       </AuthProvider>

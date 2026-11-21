@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { PulseLogo } from '../components/common/PulseLogo';
 import { useSocket } from '../context/SocketContext';
+import { useAuth } from '../context/AuthContext';
 import { DEFAULT_LANDING_CONFIG, HeroBlendedImage } from '../components/admin/LandingCmsTab';
 
 const ICON_MAP = {
@@ -40,6 +41,7 @@ const renderIcon = (iconName, className = 'w-5 h-5') => {
 };
 
 export const LandingPage = () => {
+  const { user, isAuthenticated } = useAuth();
   const [config, setConfig] = useState(DEFAULT_LANDING_CONFIG);
   const [loaded, setLoaded] = useState(false);
   const { socket } = useSocket();
@@ -194,18 +196,41 @@ export const LandingPage = () => {
 
           {/* Auth Actions */}
           <div className="flex items-center space-x-2.5 text-xs font-semibold">
-            <Link
-              to={hero?.secondaryCtaLink || '/login'}
-              className="px-4 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-900 transition whitespace-nowrap"
-            >
-              Sign In
-            </Link>
-            <Link
-              to={hero?.primaryCtaLink || '/register'}
-              className="px-4.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap"
-            >
-              {hero?.primaryCtaText || 'Get Started'}
-            </Link>
+            {isAuthenticated ? (
+              <>
+                {user?.role === 'admin' && (
+                  <Link
+                    to="/admin"
+                    className="px-3.5 py-2 rounded-xl text-purple-400 hover:text-purple-300 hover:bg-purple-950/40 border border-purple-500/20 transition whitespace-nowrap hidden sm:inline-flex items-center space-x-1.5"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Admin Panel</span>
+                  </Link>
+                )}
+                <Link
+                  to="/chat"
+                  className="px-4.5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-lg shadow-purple-600/30 transition hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap flex items-center space-x-1.5"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Open Chat</span>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  to={hero?.secondaryCtaLink || '/login'}
+                  className="px-4 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-900 transition whitespace-nowrap"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  to={hero?.primaryCtaLink || '/register'}
+                  className="px-4.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap"
+                >
+                  {hero?.primaryCtaText || 'Get Started'}
+                </Link>
+              </>
+            )}
           </div>
         </header>
       </div>
@@ -245,19 +270,49 @@ export const LandingPage = () => {
 
           {/* Primary & Secondary CTA Buttons */}
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-lg mx-auto">
-            <Link
-              to={hero?.primaryCtaLink || '/register'}
-              className="w-full sm:w-auto px-7.5 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-xl shadow-indigo-600/30 flex items-center justify-center space-x-2 transition hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap"
-            >
-              <span>{hero?.primaryCtaText || 'Create Free Account'}</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-            <Link
-              to={hero?.secondaryCtaLink || '/login'}
-              className="w-full sm:w-auto px-7.5 py-4 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-200 font-semibold text-sm flex items-center justify-center space-x-2 transition whitespace-nowrap"
-            >
-              <span>{hero?.secondaryCtaText || 'Launch Messenger'}</span>
-            </Link>
+            {isAuthenticated ? (
+              <>
+                <Link
+                  to="/chat"
+                  className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-sm shadow-xl shadow-purple-600/30 flex items-center justify-center space-x-2 transition hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap"
+                >
+                  <span>Open PulseChat</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+                {user?.role === 'admin' ? (
+                  <Link
+                    to="/admin"
+                    className="w-full sm:w-auto px-7 py-4 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-200 font-semibold text-sm flex items-center justify-center space-x-2 transition whitespace-nowrap"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-purple-400" />
+                    <span>Admin Dashboard</span>
+                  </Link>
+                ) : (
+                  <a
+                    href="#features"
+                    className="w-full sm:w-auto px-7 py-4 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-200 font-semibold text-sm flex items-center justify-center space-x-2 transition whitespace-nowrap"
+                  >
+                    <span>Explore Features</span>
+                  </a>
+                )}
+              </>
+            ) : (
+              <>
+                <Link
+                  to={hero?.primaryCtaLink || '/register'}
+                  className="w-full sm:w-auto px-7.5 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-xl shadow-indigo-600/30 flex items-center justify-center space-x-2 transition hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap"
+                >
+                  <span>{hero?.primaryCtaText || 'Create Free Account'}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+                <Link
+                  to={hero?.secondaryCtaLink || '/login'}
+                  className="w-full sm:w-auto px-7.5 py-4 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-200 font-semibold text-sm flex items-center justify-center space-x-2 transition whitespace-nowrap"
+                >
+                  <span>{hero?.secondaryCtaText || 'Launch Messenger'}</span>
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Trust Highlights Directly Under CTAs */}

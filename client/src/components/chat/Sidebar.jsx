@@ -43,7 +43,10 @@ import {
   Palette,
   Laptop,
   KeyRound,
-  Info
+  Info,
+  Trash2,
+  CheckSquare,
+  Globe
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -56,10 +59,8 @@ import { SidebarSkeleton } from '../common/Skeleton';
 import { NewChatModal } from '../modals/NewChatModal';
 import { CreateGroupModal } from '../modals/CreateGroupModal';
 import { JoinGroupModal } from '../modals/JoinGroupModal';
-import { InstallAppModal } from '../modals/InstallAppModal';
 import { SettingsModal } from '../modals/SettingsModal';
 import { SettingsPanel } from '../settings/SettingsPanel';
-import { AdminModal } from '../modals/AdminModal';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { StatusRail } from '../status/StatusRail';
@@ -152,7 +153,6 @@ export const Sidebar = () => {
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [isJoinGroupOpen, setIsJoinGroupOpen] = useState(false);
-  const [isInstallAppOpen, setIsInstallAppOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState('appearance');
 
@@ -160,7 +160,6 @@ export const Sidebar = () => {
     setSettingsInitialTab(tab);
     setIsSettingsOpen(true);
   };
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isPushBannerDismissed, setIsPushBannerDismissed] = useState(false);
   const [viewedStatusesExpanded, setViewedStatusesExpanded] = useState(false);
@@ -172,10 +171,10 @@ export const Sidebar = () => {
     if (isInstallable) {
       const installed = await promptInstall();
       if (!installed) {
-        setIsInstallAppOpen(true);
+        openSettingsTo('install');
       }
     } else {
-      setIsInstallAppOpen(true);
+      openSettingsTo('install');
     }
   };
 
@@ -204,6 +203,9 @@ export const Sidebar = () => {
   // Call History State
   const [callHistory, setCallHistory] = useState([]);
   const [loadingCalls, setLoadingCalls] = useState(false);
+  const [isCallSelectMode, setIsCallSelectMode] = useState(false);
+  const [selectedCallIds, setSelectedCallIds] = useState([]);
+  const [isDeletingCalls, setIsDeletingCalls] = useState(false);
 
   const fetchCallHistory = useCallback(async () => {
     try {
@@ -223,9 +225,98 @@ export const Sidebar = () => {
     }
   }, [authHeaders]);
 
+  const toggleSelectCall = (callId) => {
+    setSelectedCallIds((prev) =>
+      prev.includes(callId) ? prev.filter((id) => id !== callId) : [...prev, callId]
+    );
+  };
+
+  const handleToggleSelectAllCalls = () => {
+    if (selectedCallIds.length === filteredCalls.length) {
+      setSelectedCallIds([]);
+    } else {
+      setSelectedCallIds(filteredCalls.map((c) => c._id));
+    }
+  };
+
+  const handleDeleteSelectedCalls = async () => {
+    if (selectedCallIds.length === 0) return;
+    try {
+      setIsDeletingCalls(true);
+      const res = await fetch('/api/messages/calls/history', {
+        method: 'DELETE',
+        headers: {
+          ...authHeaders(),
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ callIds: selectedCallIds })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCallHistory((prev) => prev.filter((c) => !selectedCallIds.includes(c._id)));
+        setSelectedCallIds([]);
+        setIsCallSelectMode(false);
+      }
+    } catch (err) {
+      console.error('Failed to delete selected calls:', err);
+    } finally {
+      setIsDeletingCalls(false);
+    }
+  };
+
+  const handleDeleteSingleCall = async (callId, e) => {
+    e?.stopPropagation();
+    try {
+      setCallHistory((prev) => prev.filter((c) => c._id !== callId));
+      await fetch('/api/messages/calls/history', {
+        method: 'DELETE',
+        headers: {
+          ...authHeaders(),
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ callIds: [callId] })
+      });
+    } catch (err) {
+      console.error('Failed to delete call log:', err);
+    }
+  };
+
+  const handleClearCallHistory = async () => {
+    if (!window.confirm('Are you sure you want to clear your entire call history?')) {
+      return;
+    }
+    try {
+      setIsDeletingCalls(true);
+      const res = await fetch('/api/messages/calls/history', {
+        method: 'DELETE',
+        headers: {
+          ...authHeaders(),
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ clearAll: true })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCallHistory([]);
+        setSelectedCallIds([]);
+        setIsCallSelectMode(false);
+      }
+    } catch (err) {
+      console.error('Failed to clear call history:', err);
+    } finally {
+      setIsDeletingCalls(false);
+    }
+  };
+
   useEffect(() => {
     if (mainTab === 'calls') {
       fetchCallHistory();
+    } else {
+      setIsCallSelectMode(false);
+      setSelectedCallIds([]);
     }
   }, [mainTab, fetchCallHistory]);
 
@@ -418,6 +509,33 @@ export const Sidebar = () => {
               {/* Floating Menu */}
               {isMenuOpen && (
                 <div className="absolute right-0 top-full mt-1.5 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl py-1.5 z-50 text-xs text-slate-800 dark:text-slate-200 animate-in fade-in zoom-in-95 duration-100">
+                  {mainTab === 'calls' && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setIsCallSelectMode(true);
+                          setSelectedCallIds([]);
+                        }}
+                        className="w-full px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-2.5 transition text-left cursor-pointer"
+                      >
+                        <CheckSquare className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                        <span className="font-medium">Select Calls</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          handleClearCallHistory();
+                        }}
+                        className="w-full px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center space-x-2.5 transition text-left cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4 flex-shrink-0" />
+                        <span className="font-medium">Clear Call History</span>
+                      </button>
+                      <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+                    </>
+                  )}
+
                   <button
                     onClick={() => {
                       setIsMenuOpen(false);
@@ -485,6 +603,17 @@ export const Sidebar = () => {
                       <span className="font-medium">Admin Dashboard</span>
                     </button>
                   )}
+
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      navigate('/');
+                    }}
+                    className="w-full px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-2.5 transition text-left cursor-pointer"
+                  >
+                    <Globe className="w-4 h-4 text-cyan-500 flex-shrink-0" />
+                    <span className="font-medium">Landing Page</span>
+                  </button>
 
                   <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
 
@@ -943,77 +1072,191 @@ export const Sidebar = () => {
 
           {/* TAB: CALLS */}
           {mainTab === 'calls' && (
-            <div className="divide-y divide-slate-100 dark:divide-slate-900">
-              {loadingCalls ? (
-                <SidebarSkeleton count={6} />
-              ) : filteredCalls.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-center text-slate-400 px-6">
-                  <PhoneMissed className="w-10 h-10 stroke-1 mb-2 text-slate-300 dark:text-slate-700" />
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">No calls yet</p>
-                  <p className="text-[11px] mt-1 text-slate-400">Recent calls will be shown here</p>
-                </div>
-              ) : (
-                filteredCalls.map((call) => {
-                  const isGroup = call.conversation?.type === 'group' || call.conversation?.isGroup;
-                  const otherUser = isGroup
-                    ? null
-                    : call.conversation?.participants?.find(
-                        (p) => (p._id || p)?.toString() !== user?._id?.toString()
-                      ) || call.sender;
-                  const title = isGroup
-                    ? call.conversation?.groupDetails?.name || 'Group Call'
-                    : otherUser?.nickname || otherUser?.username || 'User';
-                  const avatarUrl = isGroup ? call.conversation?.groupDetails?.avatar : otherUser?.avatar;
-
-                  const callMeta = call.callMetadata || {};
-                  const isVideo = callMeta.callType === 'video';
-                  const status = callMeta.status || 'completed';
-                  const isMe = (call.sender?._id || call.sender)?.toString() === user?._id?.toString();
-                  const isMissed = !isMe && (status === 'missed' || status === 'busy');
-
-                  return (
-                    <div
-                      key={call._id}
-                      className="px-4 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-900/60 transition"
-                    >
-                      <div className="flex items-center space-x-3 min-w-0">
-                        <Avatar src={avatarUrl} name={title} size="md" />
-                        <div className="min-w-0">
-                          <h4 className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white truncate">
-                            {title}
-                          </h4>
-                          <div className="flex items-center space-x-1.5 text-[11px] text-slate-500">
-                            {isMissed ? (
-                              <PhoneMissed className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
-                            ) : isMe ? (
-                              <ArrowUpRight className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-                            ) : (
-                              <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-                            )}
-                            <span className={isMissed ? 'text-rose-500 font-medium' : ''}>
-                              {isMissed ? 'Missed' : isMe ? 'Outgoing' : 'Incoming'}
-                            </span>
-                            <span>·</span>
-                            <span>{formatTime(call.createdAt)}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Quick Call Button */}
-                      {!isGroup && otherUser && (
+            <div className="flex flex-col">
+              {/* Call History Subheader / Selection Action Bar */}
+              {filteredCalls.length > 0 && (
+                <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between text-xs sticky top-0 z-10 backdrop-blur-sm">
+                  {isCallSelectMode ? (
+                    <>
+                      <div className="flex items-center space-x-2">
                         <button
                           type="button"
-                          onClick={() => startCall(call.conversation?._id, isVideo ? 'video' : 'audio', otherUser)}
-                          className="p-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-full transition cursor-pointer"
-                          title={`Call back ${title}`}
+                          onClick={() => {
+                            setIsCallSelectMode(false);
+                            setSelectedCallIds([]);
+                          }}
+                          className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition cursor-pointer"
+                          title="Cancel selection"
                         >
-                          {isVideo ? <Video className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+                          <X className="w-4 h-4" />
                         </button>
-                      )}
-                    </div>
-                  );
-                })
+                        <span className="font-bold text-slate-900 dark:text-white">
+                          {selectedCallIds.length} Selected
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={handleToggleSelectAllCalls}
+                          className="px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                        >
+                          {selectedCallIds.length === filteredCalls.length ? 'Deselect' : 'Select All'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={selectedCallIds.length === 0 || isDeletingCalls}
+                          onClick={handleDeleteSelectedCalls}
+                          className="px-3 py-1 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-sm shadow-rose-600/30 transition cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete{selectedCallIds.length > 0 ? ` (${selectedCallIds.length})` : ''}</span>
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-[11px]">
+                        Recent Calls
+                      </span>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCallSelectMode(true);
+                            setSelectedCallIds([]);
+                          }}
+                          className="px-2.5 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition cursor-pointer flex items-center space-x-1"
+                        >
+                          <CheckSquare className="w-3.5 h-3.5" />
+                          <span>Select</span>
+                        </button>
+                        <span className="text-slate-300 dark:text-slate-700">·</span>
+                        <button
+                          type="button"
+                          onClick={handleClearCallHistory}
+                          className="px-2 py-0.5 text-xs font-medium text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer"
+                        >
+                          Clear All
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
+
+              <div className="divide-y divide-slate-100 dark:divide-slate-900">
+                {loadingCalls ? (
+                  <SidebarSkeleton count={6} />
+                ) : filteredCalls.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-center text-slate-400 px-6">
+                    <PhoneMissed className="w-10 h-10 stroke-1 mb-2 text-slate-300 dark:text-slate-700" />
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">No calls yet</p>
+                    <p className="text-[11px] mt-1 text-slate-400">Recent calls will be shown here</p>
+                  </div>
+                ) : (
+                  filteredCalls.map((call) => {
+                    const isGroup = call.conversation?.type === 'group' || call.conversation?.isGroup;
+                    const otherUser = isGroup
+                      ? null
+                      : call.conversation?.participants?.find(
+                          (p) => (p._id || p)?.toString() !== user?._id?.toString()
+                        ) || call.sender;
+                    const title = isGroup
+                      ? call.conversation?.groupDetails?.name || 'Group Call'
+                      : otherUser?.nickname || otherUser?.username || 'User';
+                    const avatarUrl = isGroup ? call.conversation?.groupDetails?.avatar : otherUser?.avatar;
+
+                    const callMeta = call.callMetadata || {};
+                    const isVideo = callMeta.callType === 'video';
+                    const status = callMeta.status || 'completed';
+                    const isMe = (call.sender?._id || call.sender)?.toString() === user?._id?.toString();
+                    const isMissed = !isMe && (status === 'missed' || status === 'busy');
+                    const isSelected = selectedCallIds.includes(call._id);
+
+                    return (
+                      <div
+                        key={call._id}
+                        onClick={() => {
+                          if (isCallSelectMode) {
+                            toggleSelectCall(call._id);
+                          }
+                        }}
+                        className={`px-4 py-3 flex items-center justify-between transition cursor-pointer select-none group ${
+                          isSelected
+                            ? 'bg-purple-500/10 dark:bg-purple-950/30'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-900/60'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3 min-w-0">
+                          {/* Selection Checkbox */}
+                          {isCallSelectMode && (
+                            <div
+                              className={`w-5 h-5 rounded-full flex items-center justify-center border transition-all flex-shrink-0 ${
+                                isSelected
+                                  ? 'bg-purple-600 border-purple-500 text-white shadow-xs'
+                                  : 'border-slate-400 dark:border-slate-600 bg-transparent'
+                              }`}
+                            >
+                              {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                            </div>
+                          )}
+
+                          <Avatar src={avatarUrl} name={title} size="md" />
+                          <div className="min-w-0">
+                            <h4 className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white truncate">
+                              {title}
+                            </h4>
+                            <div className="flex items-center space-x-1.5 text-[11px] text-slate-500">
+                              {isMissed ? (
+                                <PhoneMissed className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
+                              ) : isMe ? (
+                                <ArrowUpRight className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                              ) : (
+                                <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                              )}
+                              <span className={isMissed ? 'text-rose-500 font-medium' : ''}>
+                                {isMissed ? 'Missed' : isMe ? 'Outgoing' : 'Incoming'}
+                              </span>
+                              <span>·</span>
+                              <span>{formatTime(call.createdAt)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Actions (when not in select mode) */}
+                        {!isCallSelectMode && (
+                          <div className="flex items-center space-x-1">
+                            {/* Quick Delete Single Call */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteSingleCall(call._id, e)}
+                              className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-full transition cursor-pointer opacity-40 group-hover:opacity-100"
+                              title="Delete this call log"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+
+                            {/* Quick Call Back Button */}
+                            {!isGroup && otherUser && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startCall(call.conversation?._id, isVideo ? 'video' : 'audio', otherUser);
+                                }}
+                                className="p-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-full transition cursor-pointer"
+                                title={`Call back ${title}`}
+                              >
+                                {isVideo ? <Video className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           )}
 
@@ -1158,7 +1401,7 @@ export const Sidebar = () => {
                 )}
 
                 <button
-                  onClick={logout}
+                  onClick={async () => { await logout(); navigate('/'); }}
                   className="w-full flex items-center space-x-2.5 p-3 rounded-2xl text-xs font-semibold text-[#F43F5E] hover:bg-rose-500/10 transition cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
@@ -1290,13 +1533,11 @@ export const Sidebar = () => {
       <NewChatModal isOpen={isNewChatOpen} onClose={() => setIsNewChatOpen(false)} />
       <CreateGroupModal isOpen={isCreateGroupOpen} onClose={() => setIsCreateGroupOpen(false)} />
       <JoinGroupModal isOpen={isJoinGroupOpen} onClose={() => setIsJoinGroupOpen(false)} />
-      <InstallAppModal isOpen={isInstallAppOpen} onClose={() => setIsInstallAppOpen(false)} />
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         initialTab={settingsInitialTab}
       />
-      <AdminModal isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
     </>
   );
 };

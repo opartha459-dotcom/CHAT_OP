@@ -1122,17 +1122,23 @@ const setupSockets = (io) => {
         call.callType = callType;
       }
 
-      socket.to(`call:${callId}`).emit(
-        'call:peer-media-toggled',
-        {
-          socketId: socket.id,
-          userId,
-          isVideoOff: Boolean(isVideoOff),
-          isMuted: Boolean(isMuted),
-          isScreenSharing: Boolean(isScreenSharing),
-          callType: call.callType
-        }
-      );
+      const mediaPayload = {
+        socketId: socket.id,
+        userId,
+        callType: call.callType
+      };
+
+      if (isVideoOff !== undefined) {
+        mediaPayload.isVideoOff = Boolean(isVideoOff);
+      }
+      if (isMuted !== undefined) {
+        mediaPayload.isMuted = Boolean(isMuted);
+      }
+      if (isScreenSharing !== undefined) {
+        mediaPayload.isScreenSharing = Boolean(isScreenSharing);
+      }
+
+      socket.to(`call:${callId}`).emit('call:peer-media-toggled', mediaPayload);
     });
 
     socket.on('call:reaction', (payload = {}) => {

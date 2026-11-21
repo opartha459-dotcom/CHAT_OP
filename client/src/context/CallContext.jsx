@@ -186,31 +186,54 @@ export const CallProvider = ({ children }) => {
     // Receive remote tracks and preserve multi-track stream
     pc.ontrack = (event) => {
       const incomingTrack = event.track;
-      setRemoteStreams((prev) => {
-        const existing = prev[targetSocketId];
-        let streamToUse;
-        if (event.streams && event.streams[0]) {
-          streamToUse = new MediaStream(event.streams[0].getTracks());
-        } else if (existing?.stream) {
-          if (!existing.stream.getTracks().some((t) => t.id === incomingTrack.id)) {
-            existing.stream.addTrack(incomingTrack);
-          }
-          streamToUse = new MediaStream(existing.stream.getTracks());
-        } else {
-          streamToUse = new MediaStream([incomingTrack]);
-        }
+      const isVideoTrack = incomingTrack.kind === 'video';
 
-        return {
-          ...prev,
-          [targetSocketId]: {
-            stream: streamToUse,
-            user: targetUser || existing?.user,
-            isVideoOff: existing?.isVideoOff ?? false,
-            isMuted: existing?.isMuted ?? false,
-            isScreenSharing: existing?.isScreenSharing ?? false
+      const updateRemoteStream = () => {
+        setRemoteStreams((prev) => {
+          const existing = prev[targetSocketId];
+          let streamToUse;
+          if (event.streams && event.streams[0]) {
+            streamToUse = new MediaStream(event.streams[0].getTracks());
+          } else if (existing?.stream) {
+            if (!existing.stream.getTracks().some((t) => t.id === incomingTrack.id)) {
+              existing.stream.addTrack(incomingTrack);
+            }
+            streamToUse = new MediaStream(existing.stream.getTracks());
+          } else {
+            streamToUse = new MediaStream([incomingTrack]);
           }
-        };
-      });
+
+          return {
+            ...prev,
+            [targetSocketId]: {
+              stream: streamToUse,
+              user: targetUser || existing?.user,
+              isVideoOff: isVideoTrack ? false : (existing?.isVideoOff ?? false),
+              isMuted: existing?.isMuted ?? false,
+              isScreenSharing: existing?.isScreenSharing ?? false
+            }
+          };
+        });
+      };
+
+      updateRemoteStream();
+
+      incomingTrack.onunmute = () => {
+        updateRemoteStream();
+      };
+
+      incomingTrack.onended = () => {
+        setRemoteStreams((prev) => {
+          if (!prev[targetSocketId]) return prev;
+          return {
+            ...prev,
+            [targetSocketId]: {
+              ...prev[targetSocketId],
+              isVideoOff: isVideoTrack ? true : prev[targetSocketId].isVideoOff
+            }
+          };
+        });
+      };
     };
 
     // Candidate exchange
@@ -448,11 +471,38 @@ export const CallProvider = ({ children }) => {
   const toggleVideo = useCallback(async () => {
     if (!localStreamRef.current) return;
 
-    const videoTrack = localStreamRef.current.getVideoTracks()[0];
-    if (videoTrack) {
-      videoTrack.enabled = !videoTrack.enabled;
-      const newOff = !videoTrack.enabled;
+    const existingVideoTrack = localStreamRef.current.getVideoTracks()[0];
+    const isLiveTrack = existingVideoTrack && existingVideoTrack.readyState === 'live';
+
+    if (isLiveTrack) {
+      existingVideoTrack.enabled = !existingVideoTrack.enabled;
+      const newOff = !existingVideoTrack.enabled;
       setIsVideoOff(newOff);
+
+      for (const [targetSocketId, pc] of Object.entries(peerConnectionsRef.current)) {
+        try {
+          const videoTransceiver = pc.getTransceivers?.().find(
+            (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
+          );
+
+          if (videoTransceiver && videoTransceiver.sender) {
+            videoTransceiver.direction = newOff ? 'recvonly' : 'sendrecv';
+            await videoTransceiver.sender.replaceTrack(newOff ? null : existingVideoTrack).catch(() => {});
+          }
+
+          if (pc.signalingState === 'stable') {
+            const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+            await pc.setLocalDescription(offer);
+            socket?.emit('call:signal', {
+              toSocketId: targetSocketId,
+              callId: currentCallRef.current?.callId || currentCall?.callId,
+              signal: { type: 'offer', sdp: pc.localDescription }
+            });
+          }
+        } catch (err) {
+          console.warn('[WebRTC] Toggle live video track warning:', err);
+        }
+      }
 
       if (socket && currentCall) {
         socket.emit('call:toggle-media', {
@@ -461,7 +511,7 @@ export const CallProvider = ({ children }) => {
         });
       }
     } else {
-      // If call started as audio-only and user wants to enable camera (convert to video call)
+      // Call started as audio-only (or camera track ended) -> acquire camera & convert to video call
       try {
         const camStream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
@@ -479,26 +529,42 @@ export const CallProvider = ({ children }) => {
         // Update call type to video
         setCurrentCall((prev) => (prev ? { ...prev, callType: 'video' } : prev));
 
-        // Add or replace track in all active peer connections
-        Object.values(peerConnectionsRef.current).forEach((pc) => {
-          const videoTransceiver = pc.getTransceivers?.().find(
-            (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
-          );
+        // Add or replace track in all active peer connections AND trigger renegotiation
+        for (const [targetSocketId, pc] of Object.entries(peerConnectionsRef.current)) {
+          try {
+            let videoTransceiver = pc.getTransceivers?.().find(
+              (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
+            );
 
-          if (videoTransceiver && videoTransceiver.sender) {
-            videoTransceiver.direction = 'sendrecv';
-            videoTransceiver.sender.replaceTrack(newTrack).catch((err) => {
-              console.warn('[WebRTC] replaceTrack warning:', err);
-            });
-          } else {
-            const sender = pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
-            if (sender) {
-              sender.replaceTrack(newTrack).catch(() => { });
+            if (videoTransceiver) {
+              videoTransceiver.direction = 'sendrecv';
+              if (videoTransceiver.sender) {
+                await videoTransceiver.sender.replaceTrack(newTrack);
+              }
             } else {
-              pc.addTrack(newTrack, combinedStream);
+              const sender = pc.getSenders().find((s) => (s.track && s.track.kind === 'video') || s.kind === 'video');
+              if (sender) {
+                await sender.replaceTrack(newTrack);
+              } else {
+                pc.addTrack(newTrack, combinedStream);
+              }
             }
+
+            // Always renegotiate if peer connection is stable so the remote peer
+            // immediately receives updated SDP and begins decoding the camera video track
+            if (pc.signalingState === 'stable') {
+              const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+              await pc.setLocalDescription(offer);
+              socket?.emit('call:signal', {
+                toSocketId: targetSocketId,
+                callId: currentCallRef.current?.callId || currentCall?.callId,
+                signal: { type: 'offer', sdp: pc.localDescription }
+              });
+            }
+          } catch (pcErr) {
+            console.warn('[WebRTC] Mid-call video upgrade error:', pcErr);
           }
-        });
+        }
 
         if (socket && currentCall) {
           socket.emit('call:toggle-media', {
@@ -1037,6 +1103,20 @@ useEffect(() => {
           delete iceCandidateQueueRef.current[fromSocketId];
         }
 
+        // If local user has an active camera video track, ensure it is attached before answering
+        const localVideo = localStreamRef.current?.getVideoTracks?.()[0];
+        if (localVideo && localVideo.readyState === 'live' && !isVideoOff) {
+          const videoTransceiver = pc.getTransceivers?.().find(
+            (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
+          );
+          if (videoTransceiver) {
+            videoTransceiver.direction = 'sendrecv';
+            if (videoTransceiver.sender && videoTransceiver.sender.track !== localVideo) {
+              await videoTransceiver.sender.replaceTrack(localVideo).catch(() => {});
+            }
+          }
+        }
+
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
@@ -1045,6 +1125,33 @@ useEffect(() => {
           callId: currentCallRef.current?.callId,
           signal: { type: 'answer', sdp: pc.localDescription }
         });
+
+        // Ensure remote video track from transceiver is reflected in remoteStreams
+        const remoteVideoTrack = pc.getTransceivers?.().find(
+          (t) => t.receiver?.track?.kind === 'video'
+        )?.receiver?.track;
+
+        if (remoteVideoTrack) {
+          setRemoteStreams((prev) => {
+            const existing = prev[fromSocketId];
+            if (!existing) return prev;
+            let s = existing.stream;
+            if (!s) {
+              s = new MediaStream([remoteVideoTrack]);
+            } else if (!s.getTracks().some((t) => t.id === remoteVideoTrack.id)) {
+              s.addTrack(remoteVideoTrack);
+              s = new MediaStream(s.getTracks());
+            }
+            return {
+              ...prev,
+              [fromSocketId]: {
+                ...existing,
+                stream: s,
+                isVideoOff: false
+              }
+            };
+          });
+        }
       } else if (signal.type === 'answer') {
         if (pc.signalingState !== 'stable') {
           await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
@@ -1057,6 +1164,33 @@ useEffect(() => {
               } catch (e) { }
             }
             delete iceCandidateQueueRef.current[fromSocketId];
+          }
+
+          // Ensure remote video track from transceiver is reflected in remoteStreams
+          const remoteVideoTrack = pc.getTransceivers?.().find(
+            (t) => t.receiver?.track?.kind === 'video'
+          )?.receiver?.track;
+
+          if (remoteVideoTrack) {
+            setRemoteStreams((prev) => {
+              const existing = prev[fromSocketId];
+              if (!existing) return prev;
+              let s = existing.stream;
+              if (!s) {
+                s = new MediaStream([remoteVideoTrack]);
+              } else if (!s.getTracks().some((t) => t.id === remoteVideoTrack.id)) {
+                s.addTrack(remoteVideoTrack);
+                s = new MediaStream(s.getTracks());
+              }
+              return {
+                ...prev,
+                [fromSocketId]: {
+                  ...existing,
+                  stream: s,
+                  isVideoOff: false
+                }
+              };
+            });
           }
         }
       } else if (signal.type === 'candidate' && signal.candidate) {

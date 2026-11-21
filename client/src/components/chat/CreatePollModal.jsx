@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, HelpCircle, Check, Loader2, AlertCircle } from 'lucide-react';
+import { X, Plus, Trash2, Loader2, AlertCircle, BarChart2 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 
 export const CreatePollModal = ({ isOpen, onClose, conversationId }) => {
@@ -79,30 +79,40 @@ export const CreatePollModal = ({ isOpen, onClose, conversationId }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-md animate-in fade-in duration-200 select-none"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-md bg-[#0B0F19] text-slate-100 border border-slate-800/90 rounded-[28px] shadow-2xl shadow-purple-950/30 overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800">
-          <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              Create a Poll
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Ask participants a question with customizable options
-            </p>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/80 bg-slate-900/40">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shadow-[0_0_15px_rgba(168,85,247,0.15)] font-bold">
+              <BarChart2 className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white tracking-tight">
+                Create a Poll
+              </h3>
+              <p className="text-xs text-slate-400">
+                Ask participants a question with customizable options
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="w-8 h-8 rounded-full bg-slate-800/60 hover:bg-slate-700/80 border border-slate-700/50 text-slate-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
           {error && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs rounded-xl flex items-center space-x-2">
+            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-2xl flex items-center space-x-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span>{error}</span>
             </div>
@@ -110,7 +120,7 @@ export const CreatePollModal = ({ isOpen, onClose, conversationId }) => {
 
           {/* Question input */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
               Question
             </label>
             <input
@@ -119,13 +129,13 @@ export const CreatePollModal = ({ isOpen, onClose, conversationId }) => {
               placeholder="e.g. Where should we host the meetup?"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+              className="w-full px-4 py-2.5 text-sm bg-slate-900/90 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/80 focus:ring-1 focus:ring-purple-500/50 rounded-2xl transition-all"
             />
           </div>
 
           {/* Options */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
               Options (2 to 8)
             </label>
             <div className="space-y-2">
@@ -137,13 +147,13 @@ export const CreatePollModal = ({ isOpen, onClose, conversationId }) => {
                     placeholder={`Option ${idx + 1}`}
                     value={opt}
                     onChange={(e) => handleOptionChange(idx, e.target.value)}
-                    className="flex-1 px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="flex-1 px-4 py-2 text-xs sm:text-sm bg-slate-900/90 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/80 focus:ring-1 focus:ring-purple-500/50 rounded-xl transition-all"
                   />
                   {options.length > 2 && (
                     <button
                       type="button"
                       onClick={() => removeOption(idx)}
-                      className="p-2 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                      className="p-2 text-slate-400 hover:text-rose-400 rounded-xl hover:bg-slate-800 transition cursor-pointer"
                       title="Remove option"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -157,7 +167,7 @@ export const CreatePollModal = ({ isOpen, onClose, conversationId }) => {
               <button
                 type="button"
                 onClick={addOption}
-                className="mt-2.5 inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                className="mt-2.5 inline-flex items-center space-x-1.5 text-xs font-semibold text-purple-400 hover:text-purple-300 transition cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Option</span>
@@ -166,41 +176,41 @@ export const CreatePollModal = ({ isOpen, onClose, conversationId }) => {
           </div>
 
           {/* Settings checkboxes */}
-          <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-            <label className="flex items-center space-x-2.5 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+          <div className="p-3.5 bg-slate-900/40 rounded-2xl border border-slate-800/80 space-y-2.5">
+            <label className="flex items-center space-x-2.5 text-xs text-slate-300 cursor-pointer">
               <input
                 type="checkbox"
                 checked={allowsMultiple}
                 onChange={(e) => setAllowsMultiple(e.target.checked)}
-                className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500"
+                className="w-4 h-4 rounded text-purple-600 border-slate-700 bg-slate-900 focus:ring-purple-500"
               />
               <span>Allow multiple selections</span>
             </label>
 
-            <label className="flex items-center space-x-2.5 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+            <label className="flex items-center space-x-2.5 text-xs text-slate-300 cursor-pointer">
               <input
                 type="checkbox"
                 checked={isAnonymous}
                 onChange={(e) => setIsAnonymous(e.target.checked)}
-                className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500"
+                className="w-4 h-4 rounded text-purple-600 border-slate-700 bg-slate-900 focus:ring-purple-500"
               />
               <span>Anonymous voting (hide voter identities)</span>
             </label>
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center justify-end space-x-2 pt-3">
+          <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800/80">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+              className="px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 rounded-xl transition border border-slate-800/80 cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl shadow-md shadow-indigo-600/25 transition active:scale-95 flex items-center space-x-1.5"
+              className="px-5 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-40 rounded-xl shadow-lg shadow-purple-600/25 transition active:scale-95 flex items-center space-x-1.5 cursor-pointer"
             >
               {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               <span>{loading ? 'Creating...' : 'Create Poll'}</span>
