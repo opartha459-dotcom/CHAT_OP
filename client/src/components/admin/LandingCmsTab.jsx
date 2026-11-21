@@ -298,6 +298,44 @@ const AVAILABLE_ICONS = [
   { id: 'BarChart3', label: 'Chart (Analytics)', icon: BarChart3 }
 ];
 
+export const FEATURE_CMS_CARD_THEMES = {
+  violet: {
+    container: 'border-2 border-violet-500/70 shadow-lg shadow-violet-950/40 bg-[#160E2E]/90 hover:border-violet-400',
+    topBar: 'bg-gradient-to-r from-violet-600/30 via-violet-500/15 to-transparent border-b border-violet-500/30',
+    badge: 'bg-violet-500/20 text-violet-300 border-violet-500/50',
+    laser: 'from-violet-500 via-fuchsia-400 to-transparent',
+    accentText: 'text-violet-400'
+  },
+  cyan: {
+    container: 'border-2 border-cyan-500/70 shadow-lg shadow-cyan-950/40 bg-[#0A1A2A]/90 hover:border-cyan-400',
+    topBar: 'bg-gradient-to-r from-cyan-600/30 via-cyan-500/15 to-transparent border-b border-cyan-500/30',
+    badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50',
+    laser: 'from-cyan-500 via-sky-400 to-transparent',
+    accentText: 'text-cyan-400'
+  },
+  emerald: {
+    container: 'border-2 border-emerald-500/70 shadow-lg shadow-emerald-950/40 bg-[#091F18]/90 hover:border-emerald-400',
+    topBar: 'bg-gradient-to-r from-emerald-600/30 via-emerald-500/15 to-transparent border-b border-emerald-500/30',
+    badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50',
+    laser: 'from-emerald-500 via-teal-400 to-transparent',
+    accentText: 'text-emerald-400'
+  },
+  amber: {
+    container: 'border-2 border-amber-500/70 shadow-lg shadow-amber-950/40 bg-[#211608]/90 hover:border-amber-400',
+    topBar: 'bg-gradient-to-r from-amber-600/30 via-amber-500/15 to-transparent border-b border-amber-500/30',
+    badge: 'bg-amber-500/20 text-amber-300 border-amber-500/50',
+    laser: 'from-amber-500 via-yellow-400 to-transparent',
+    accentText: 'text-amber-400'
+  },
+  rose: {
+    container: 'border-2 border-rose-500/70 shadow-lg shadow-rose-950/40 bg-[#240A1A]/90 hover:border-rose-400',
+    topBar: 'bg-gradient-to-r from-rose-600/30 via-rose-500/15 to-transparent border-b border-rose-500/30',
+    badge: 'bg-rose-500/20 text-rose-300 border-rose-500/50',
+    laser: 'from-rose-500 via-pink-400 to-transparent',
+    accentText: 'text-rose-400'
+  }
+};
+
 export const DEFAULT_LANDING_CONFIG = {
   brandName: 'PulseChat',
   brandTagline: 'AES-256 E2EE',
@@ -1044,6 +1082,18 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
       const updated = [...(prev.features || [])];
       updated[index] = { ...updated[index], [field]: val };
       return { ...prev, features: updated };
+    });
+  };
+
+  const handleReorderFeatures = (fromIndex, toIndex) => {
+    setConfig((prev) => {
+      const list = [...(prev.features || [])];
+      if (fromIndex < 0 || fromIndex >= list.length || toIndex < 0 || toIndex >= list.length) {
+        return prev;
+      }
+      const [moved] = list.splice(fromIndex, 1);
+      list.splice(toIndex, 0, moved);
+      return { ...prev, features: list };
     });
   };
 
@@ -2084,232 +2134,306 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(config.features || []).map((feat, idx) => (
-              <div
-                key={idx}
-                className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs space-y-3 relative group"
-              >
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-[11px] font-bold text-indigo-500 uppercase tracking-wider font-mono">
-                    Feature #{idx + 1}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteFeature(idx)}
-                    className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
-                    title="Delete feature card"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {(config.features || []).map((feat, idx) => {
+              const cardTh = FEATURE_CMS_CARD_THEMES[feat.accentColor] || FEATURE_CMS_CARD_THEMES.violet;
+              const isMinimalIcon = feat.layout === 'icon' || feat.imageSize === 'icon';
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Title
-                    </label>
-                    <input
-                      type="text"
-                      value={feat.title || ''}
-                      onChange={(e) => handleUpdateFeature(idx, 'title', e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
+              return (
+                <div
+                  key={idx}
+                  className={`rounded-2xl overflow-hidden transition-all duration-300 relative group ${cardTh.container}`}
+                >
+                  {/* Top Glowing Laser Edge */}
+                  <div className={`h-1 w-full bg-gradient-to-r ${cardTh.laser}`} />
 
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Badge / Tag
-                    </label>
-                    <input
-                      type="text"
-                      value={feat.badge || ''}
-                      onChange={(e) => handleUpdateFeature(idx, 'badge', e.target.value)}
-                      placeholder="e.g. E2EE"
-                      className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                </div>
+                  {/* Highlight Header with Distinct Badges */}
+                  <div className={`px-4 py-3 flex items-center justify-between ${cardTh.topBar}`}>
+                    <div className="flex items-center space-x-2">
+                      <span className={`px-2.5 py-1 text-xs font-mono font-bold rounded-lg border uppercase tracking-wider ${cardTh.badge}`}>
+                        FEATURE #{idx + 1}
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-black/40 text-slate-300 border border-white/10">
+                        {feat.colSpan === 'wide' ? '2 Cols' : feat.colSpan === 'full' ? '3 Cols' : feat.colSpan === 'normal' ? '1 Col' : 'Auto Grid'}
+                      </span>
+                      {feat.layout && (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-black/40 text-slate-300 border border-white/10">
+                          {feat.layout}
+                        </span>
+                      )}
+                    </div>
 
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={feat.description || ''}
-                    onChange={(e) => handleUpdateFeature(idx, 'description', e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Icon
-                    </label>
-                    <select
-                      value={feat.icon || 'Zap'}
-                      onChange={(e) => handleUpdateFeature(idx, 'icon', e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                    >
-                      {AVAILABLE_ICONS.map((ic) => (
-                        <option key={ic.id} value={ic.id}>
-                          {ic.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Card Grid Span
-                    </label>
-                    <select
-                      value={feat.colSpan || 'auto'}
-                      onChange={(e) => handleUpdateFeature(idx, 'colSpan', e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer font-medium"
-                    >
-                      <option value="auto">Auto Balanced (Smart)</option>
-                      <option value="wide">Wide (2 Columns)</option>
-                      <option value="normal">Standard (1 Column)</option>
-                      <option value="full">Full Width (3 Columns)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Card Theme Accent Glow */}
-                <div className="pt-1">
-                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Card Theme Glow / Accent Color
-                  </label>
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {[
-                      { id: 'violet', label: 'Violet', bg: 'bg-violet-500' },
-                      { id: 'cyan', label: 'Cyan', bg: 'bg-cyan-500' },
-                      { id: 'emerald', label: 'Matrix', bg: 'bg-emerald-500' },
-                      { id: 'amber', label: 'Amber', bg: 'bg-amber-500' },
-                      { id: 'rose', label: 'Rose', bg: 'bg-rose-500' }
-                    ].map((th) => (
+                    <div className="flex items-center space-x-1">
+                      {/* Move card up/down directly in editor */}
+                      {idx > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleReorderFeatures(idx, idx - 1)}
+                          className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                          title="Move feature earlier"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {idx < (config.features || []).length - 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleReorderFeatures(idx, idx + 1)}
+                          className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                          title="Move feature later"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
-                        key={th.id}
                         type="button"
-                        onClick={() => handleUpdateFeature(idx, 'accentColor', th.id)}
-                        className={`py-1.5 px-2 rounded-xl text-[10px] font-semibold border flex items-center justify-center space-x-1.5 transition cursor-pointer ${
-                          (feat.accentColor || 'violet') === th.id
-                            ? 'border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-50 dark:bg-indigo-950/40 text-slate-900 dark:text-white font-bold'
-                            : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-500 hover:border-slate-300 dark:hover:border-slate-700'
-                        }`}
+                        onClick={() => handleDeleteFeature(idx)}
+                        className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-rose-950/50 transition cursor-pointer ml-1"
+                        title="Delete feature card"
                       >
-                        <span className={`w-2.5 h-2.5 rounded-full ${th.bg} shrink-0`} />
-                        <span>{th.label}</span>
+                        <Trash2 className="w-4 h-4" />
                       </button>
-                    ))}
+                    </div>
                   </div>
-                </div>
 
-                {/* Card Visual Layout Style */}
-                <div className="pt-1">
-                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Card Visual Layout Style
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-xs">
-                    {[
-                      { id: 'banner-top', label: 'Top Banner', desc: 'Visual on top' },
-                      { id: 'banner-bottom', label: 'Bottom Visual', desc: 'Visual at bottom' },
-                      { id: 'card-overlay', label: 'Card Overlay', desc: 'Full image background' },
-                      { id: 'split', label: 'Split View', desc: 'Side-by-side' },
-                      { id: 'icon', label: 'Minimal Icon', desc: 'Clean typography' }
-                    ].map((lay) => (
-                      <button
-                        key={lay.id}
-                        type="button"
-                        onClick={() => handleUpdateFeature(idx, 'layout', lay.id)}
-                        className={`p-2 rounded-xl text-left border transition cursor-pointer ${
-                          (feat.layout || 'banner-top') === lay.id
-                            ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
-                            : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        <div className="text-[11px] font-bold leading-tight">{lay.label}</div>
-                        <div className={`text-[9px] mt-0.5 leading-tight ${
-                          (feat.layout || 'banner-top') === lay.id ? 'text-indigo-100' : 'text-slate-400 dark:text-slate-500'
-                        }`}>
-                          {lay.desc}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Image Uploader & Media Controls */}
-                <div className="space-y-2 pt-1">
-                  <ImageUploader
-                    label="Custom Feature Image / Visual Banner"
-                    value={feat.image}
-                    token={token}
-                    aspectRatio="16:9"
-                    onChange={(url) => handleUpdateFeature(idx, 'image', url)}
-                    placeholder="Upload or paste image URL"
-                  />
-
-                  {feat.image && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="p-4 sm:p-5 space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Image Display Format
+                          Title
                         </label>
-                        <div className="grid grid-cols-3 gap-1.5 text-xs">
-                          {[
-                            { id: 'banner', label: 'Full Banner' },
-                            { id: 'medium', label: 'Medium Graphic' },
-                            { id: 'compact', label: 'Compact Strip' }
-                          ].map((fmt) => (
-                            <button
-                              key={fmt.id}
-                              type="button"
-                              onClick={() => handleUpdateFeature(idx, 'imageSize', fmt.id)}
-                              className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border text-center transition cursor-pointer ${
-                                (feat.imageSize || 'banner') === fmt.id
-                                  ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                              }`}
-                            >
-                              {fmt.label}
-                            </button>
-                          ))}
-                        </div>
+                        <input
+                          type="text"
+                          value={feat.title || ''}
+                          onChange={(e) => handleUpdateFeature(idx, 'title', e.target.value)}
+                          className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
                       </div>
 
                       <div>
                         <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Image Object Fit
+                          Badge / Tag
                         </label>
-                        <div className="grid grid-cols-2 gap-1.5 text-xs">
-                          {[
-                            { id: 'cover', label: 'Cover (Fill Frame)' },
-                            { id: 'contain', label: 'Contain (Fit Image)' }
-                          ].map((fit) => (
-                            <button
-                              key={fit.id}
-                              type="button"
-                              onClick={() => handleUpdateFeature(idx, 'imageFit', fit.id)}
-                              className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border text-center transition cursor-pointer ${
-                                (feat.imageFit || 'cover') === fit.id
-                                  ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                              }`}
-                            >
-                              {fit.label}
-                            </button>
-                          ))}
-                        </div>
+                        <input
+                          type="text"
+                          value={feat.badge || ''}
+                          onChange={(e) => handleUpdateFeature(idx, 'badge', e.target.value)}
+                          placeholder="e.g. E2EE"
+                          className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
                       </div>
                     </div>
-                  )}
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Description
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={feat.description || ''}
+                        onChange={(e) => handleUpdateFeature(idx, 'description', e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Icon {isMinimalIcon && feat.image && <span className="text-violet-400 font-normal">(Replaced by Custom Icon)</span>}
+                        </label>
+                        <select
+                          value={feat.icon || 'Zap'}
+                          onChange={(e) => handleUpdateFeature(idx, 'icon', e.target.value)}
+                          className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                        >
+                          {AVAILABLE_ICONS.map((ic) => (
+                            <option key={ic.id} value={ic.id}>
+                              {ic.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Card Grid Span
+                        </label>
+                        <select
+                          value={feat.colSpan || 'auto'}
+                          onChange={(e) => handleUpdateFeature(idx, 'colSpan', e.target.value)}
+                          className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer font-medium"
+                        >
+                          <option value="auto">Auto Balanced (Smart)</option>
+                          <option value="wide">Wide (2 Columns)</option>
+                          <option value="normal">Standard (1 Column)</option>
+                          <option value="full">Full Width (3 Columns)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Card Theme Accent Glow */}
+                    <div className="pt-1">
+                      <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Card Theme Glow / Accent Color
+                      </label>
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {[
+                          { id: 'violet', label: 'Violet', bg: 'bg-violet-500' },
+                          { id: 'cyan', label: 'Cyan', bg: 'bg-cyan-500' },
+                          { id: 'emerald', label: 'Matrix', bg: 'bg-emerald-500' },
+                          { id: 'amber', label: 'Amber', bg: 'bg-amber-500' },
+                          { id: 'rose', label: 'Rose', bg: 'bg-rose-500' }
+                        ].map((th) => (
+                          <button
+                            key={th.id}
+                            type="button"
+                            onClick={() => handleUpdateFeature(idx, 'accentColor', th.id)}
+                            className={`py-1.5 px-2 rounded-xl text-[10px] font-semibold border flex items-center justify-center space-x-1.5 transition cursor-pointer ${
+                              (feat.accentColor || 'violet') === th.id
+                                ? 'border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-50 dark:bg-indigo-950/40 text-slate-900 dark:text-white font-bold'
+                                : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-500 hover:border-slate-300 dark:hover:border-slate-700'
+                            }`}
+                          >
+                            <span className={`w-2.5 h-2.5 rounded-full ${th.bg} shrink-0`} />
+                            <span>{th.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Card Visual Layout Style */}
+                    <div className="pt-1">
+                      <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Card Visual Layout Style
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-xs">
+                        {[
+                          { id: 'banner-top', label: 'Top Banner', desc: 'Visual on top' },
+                          { id: 'banner-bottom', label: 'Bottom Visual', desc: 'Visual at bottom' },
+                          { id: 'card-overlay', label: 'Card Overlay', desc: 'Full image background' },
+                          { id: 'split', label: 'Split View', desc: 'Side-by-side' },
+                          { id: 'icon', label: 'Minimal Icon', desc: 'Shows custom icon' }
+                        ].map((lay) => (
+                          <button
+                            key={lay.id}
+                            type="button"
+                            onClick={() => {
+                              handleUpdateFeature(idx, 'layout', lay.id);
+                              if (lay.id === 'icon' && feat.image && feat.imageSize !== 'icon') {
+                                handleUpdateFeature(idx, 'imageSize', 'icon');
+                              }
+                            }}
+                            className={`p-2 rounded-xl text-left border transition cursor-pointer ${
+                              (feat.layout || 'banner-top') === lay.id
+                                ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                                : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            <div className="text-[11px] font-bold leading-tight">{lay.label}</div>
+                            <div className={`text-[9px] mt-0.5 leading-tight ${
+                              (feat.layout || 'banner-top') === lay.id ? 'text-indigo-100' : 'text-slate-400 dark:text-slate-500'
+                            }`}>
+                              {lay.desc}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Image Uploader & Media Controls */}
+                    <div className="space-y-2 pt-1">
+                      <ImageUploader
+                        label={isMinimalIcon ? "Custom Feature Icon / Emblem (Replaces Default Icon)" : "Custom Feature Image / Visual Banner"}
+                        value={feat.image}
+                        token={token}
+                        aspectRatio={isMinimalIcon ? "1:1" : "16:9"}
+                        onChange={(url) => {
+                          handleUpdateFeature(idx, 'image', url);
+                          if (feat.layout === 'icon') {
+                            handleUpdateFeature(idx, 'imageSize', 'icon');
+                          }
+                        }}
+                        placeholder={isMinimalIcon ? "Upload or paste custom icon URL (PNG, SVG, WebP)" : "Upload or paste image URL"}
+                      />
+
+                      {/* Active Custom Minimal Icon Banner Preview */}
+                      {feat.image && isMinimalIcon && (
+                        <div className="flex items-center space-x-3 p-3 rounded-xl bg-violet-950/60 border border-violet-500/50 shadow-xs">
+                          <div className="w-12 h-12 rounded-xl bg-[#0E081C] border border-violet-400/50 p-1 flex items-center justify-center shrink-0 shadow-inner">
+                            <img src={feat.image} alt={feat.title} className="w-full h-full object-contain rounded-lg" />
+                          </div>
+                          <div className="text-xs">
+                            <div className="font-bold text-violet-200 flex items-center space-x-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Active Custom Minimal Icon</span>
+                            </div>
+                            <div className="text-[10px] text-violet-300/80 mt-0.5">
+                              This image will render directly as the feature emblem on the landing page & live preview instead of the default Lucide icon.
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {feat.image && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                              Image Display Format
+                            </label>
+                            <div className="grid grid-cols-4 gap-1 text-xs">
+                              {[
+                                { id: 'banner', label: 'Banner' },
+                                { id: 'medium', label: 'Medium' },
+                                { id: 'compact', label: 'Compact' },
+                                { id: 'icon', label: 'Icon' }
+                              ].map((fmt) => (
+                                <button
+                                  key={fmt.id}
+                                  type="button"
+                                  onClick={() => handleUpdateFeature(idx, 'imageSize', fmt.id)}
+                                  className={`py-1.5 px-1.5 rounded-lg text-[10px] font-medium border text-center transition cursor-pointer ${
+                                    (feat.imageSize || 'banner') === fmt.id
+                                      ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                  }`}
+                                >
+                                  {fmt.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                              Image Object Fit
+                            </label>
+                            <div className="grid grid-cols-2 gap-1.5 text-xs">
+                              {[
+                                { id: 'cover', label: 'Cover (Fill)' },
+                                { id: 'contain', label: 'Contain (Fit)' }
+                              ].map((fit) => (
+                                <button
+                                  key={fit.id}
+                                  type="button"
+                                  onClick={() => handleUpdateFeature(idx, 'imageFit', fit.id)}
+                                  className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border text-center transition cursor-pointer ${
+                                    (feat.imageFit || 'cover') === fit.id
+                                      ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                  }`}
+                                >
+                                  {fit.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -3352,6 +3476,8 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
         config={config}
         activeSection={activeSection}
         onSelectSection={(secId) => setActiveSection(secId)}
+        onUpdateFeature={handleUpdateFeature}
+        onReorderFeatures={handleReorderFeatures}
       />
     </div>
   )}

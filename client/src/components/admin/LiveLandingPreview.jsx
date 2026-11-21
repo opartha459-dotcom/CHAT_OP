@@ -22,7 +22,14 @@ import {
   Shield,
   Check,
   Layers,
-  Sparkle
+  Sparkle,
+  GripVertical,
+  ArrowLeftRight,
+  Maximize2,
+  ChevronLeft,
+  ChevronRight,
+  Palette,
+  MousePointerClick
 } from 'lucide-react';
 import { PulseLogo } from '../common/PulseLogo';
 import { SocialBrandIcon } from '../common/SocialBrandIcon';
@@ -48,13 +55,17 @@ const renderIcon = (iconName, className = 'w-5 h-5') => {
 export const LiveLandingPreview = ({
   config,
   activeSection = 'hero',
-  onSelectSection
+  onSelectSection,
+  onUpdateFeature,
+  onReorderFeatures
 }) => {
   const [device, setDevice] = useState('desktop'); // 'desktop' | 'tablet' | 'mobile'
   const [viewScope, setViewScope] = useState('active'); // 'active' | 'full'
   const [zoom, setZoom] = useState(100); // 75 | 85 | 100
   const [gridBg, setGridBg] = useState(true);
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
+  const [cursorBuilder, setCursorBuilder] = useState(true); // Interactive cursor grid builder toggle
+  const [draggedIdx, setDraggedIdx] = useState(null);
 
   const {
     brandName = 'PulseChat',
@@ -102,6 +113,63 @@ export const LiveLandingPreview = ({
       transformOrigin: 'top center',
       marginBottom: zoom < 100 ? `-${(100 - zoom) * 3}px` : '0px'
     };
+  };
+
+  // Cursor-based helpers to dynamically shape Bento Cards with mouse
+  const cycleSpan = (idx, currentSpan) => {
+    if (!onUpdateFeature) return;
+    const nextMap = {
+      auto: 'wide',
+      wide: 'full',
+      full: 'normal',
+      normal: 'auto'
+    };
+    const nextVal = nextMap[currentSpan || 'auto'] || 'wide';
+    onUpdateFeature(idx, 'colSpan', nextVal);
+  };
+
+  const cycleLayout = (idx, currentLayout) => {
+    if (!onUpdateFeature) return;
+    const layouts = ['banner-top', 'banner-bottom', 'card-overlay', 'split', 'icon'];
+    const currentIdx = layouts.indexOf(currentLayout || 'banner-top');
+    const nextLayout = layouts[(currentIdx + 1) % layouts.length];
+    onUpdateFeature(idx, 'layout', nextLayout);
+  };
+
+  const cycleImageSize = (idx, currentSize) => {
+    if (!onUpdateFeature) return;
+    const sizes = ['banner', 'medium', 'compact'];
+    const currentIdx = sizes.indexOf(currentSize || 'banner');
+    const nextSize = sizes[(currentIdx + 1) % sizes.length];
+    onUpdateFeature(idx, 'imageSize', nextSize);
+  };
+
+  const moveCard = (idx, direction) => {
+    if (!onReorderFeatures) return;
+    const targetIdx = direction === 'left' ? idx - 1 : idx + 1;
+    if (targetIdx >= 0 && targetIdx < (features || []).length) {
+      onReorderFeatures(idx, targetIdx);
+    }
+  };
+
+  // Drag and Drop handlers
+  const handleDragStart = (e, idx) => {
+    setDraggedIdx(idx);
+    e.dataTransfer.setData('text/plain', String(idx));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDrop = (e, targetIdx) => {
+    e.preventDefault();
+    if (draggedIdx === null || draggedIdx === targetIdx) return;
+    if (onReorderFeatures) {
+      onReorderFeatures(draggedIdx, targetIdx);
+    }
+    setDraggedIdx(null);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
   };
 
   // Accent themes for Bento Grid cards
@@ -275,7 +343,8 @@ export const LiveLandingPreview = ({
 
   const renderFeaturesBentoGrid = () => (
     <section className="px-5 py-10 w-full flex flex-col items-center">
-      <div className="text-center max-w-xl mx-auto mb-8">
+      {/* Header */}
+      <div className="text-center max-w-xl mx-auto mb-6">
         <span className="px-3 py-0.5 rounded-full bg-violet-600/20 border border-violet-500/30 text-[9px] font-mono font-bold uppercase tracking-widest text-violet-300">
           {featuresBadge}
         </span>
@@ -285,55 +354,186 @@ export const LiveLandingPreview = ({
         <p className="text-[11px] sm:text-xs text-violet-300/70 mt-1.5 leading-relaxed">
           {featuresSubtitle}
         </p>
+
+        {/* Cursor Builder Indicator Banner */}
+        {cursorBuilder && (
+          <div className="mt-4 px-3 py-1.5 rounded-xl bg-violet-950/60 border border-violet-500/40 text-violet-200 text-[11px] inline-flex items-center space-x-2 shadow-md animate-fadeIn">
+            <MousePointerClick className="w-3.5 h-3.5 text-violet-400 animate-bounce" />
+            <span className="font-semibold">Interactive Cursor Mode:</span>
+            <span className="text-violet-300/80">Click card handles below to resize width, swap positions, or change themes in real time!</span>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full text-left">
-        {features.map((feat, idx) => {
-          let spanClass = 'col-span-1';
-          let isHighlight = false;
+      {/* Bento Grid — columns driven by device state, NOT Tailwind breakpoints */}
+      {(() => {
+        // Determine actual column count for the simulated device viewport
+        const deviceCols = device === 'mobile' ? 1 : device === 'tablet' ? 2 : 3;
+        const gridStyle = { display: 'grid', gridTemplateColumns: `repeat(${deviceCols}, minmax(0, 1fr))`, gap: '1rem' };
 
-          if (feat.colSpan === 'full') {
-            spanClass = 'md:col-span-2 lg:col-span-3';
-            isHighlight = true;
-          } else if (feat.colSpan === 'wide') {
-            spanClass = 'md:col-span-2 lg:col-span-2';
-            isHighlight = true;
-          } else if (feat.colSpan === 'normal') {
-            spanClass = 'col-span-1';
-          } else {
-            if (features.length === 4 && (idx === 0 || idx === 3)) {
-              spanClass = 'md:col-span-2 lg:col-span-2';
-              isHighlight = true;
-            } else if (features.length === 5 && idx === 0) {
-              spanClass = 'md:col-span-2 lg:col-span-2';
-              isHighlight = true;
-            }
-          }
+        return (
+          <div style={gridStyle} className="w-full text-left">
+            {features.map((feat, idx) => {
+              let colSpanVal = 1;
+              let isHighlight = false;
+              const currentSpan = feat.colSpan || 'auto';
 
-          const layout = feat.layout || 'banner-top';
-          const imageSize = feat.imageSize || 'banner';
-          const imageFit = feat.imageFit || 'cover';
-          const hasImage = Boolean(feat.image);
-          const th = ACCENT_THEMES[feat.accentColor] || ACCENT_THEMES.violet;
-          const fitClass = imageFit === 'contain' ? 'object-contain p-2' : 'object-cover';
+              if (feat.colSpan === 'full') {
+                colSpanVal = deviceCols; // full always = all columns
+                isHighlight = true;
+              } else if (feat.colSpan === 'wide') {
+                colSpanVal = Math.min(2, deviceCols);
+                isHighlight = colSpanVal > 1;
+              } else if (feat.colSpan === 'normal') {
+                colSpanVal = 1;
+              } else {
+                // Auto-balance
+                if (deviceCols > 1) {
+                  if (features.length === 4 && (idx === 0 || idx === 3)) {
+                    colSpanVal = Math.min(2, deviceCols);
+                    isHighlight = colSpanVal > 1;
+                  } else if (features.length === 5 && idx === 0) {
+                    colSpanVal = Math.min(2, deviceCols);
+                    isHighlight = colSpanVal > 1;
+                  } else if (features.length >= 6 && (idx === 0 || idx === 5)) {
+                    colSpanVal = Math.min(2, deviceCols);
+                    isHighlight = colSpanVal > 1;
+                  } else if (features.length === 1) {
+                    colSpanVal = deviceCols;
+                    isHighlight = true;
+                  }
+                }
+              }
 
-          let imgH = 'h-32 sm:h-36';
-          if (imageSize === 'medium') imgH = 'h-24 sm:h-28';
-          if (imageSize === 'compact') imgH = 'h-16 sm:h-20';
-          if (isHighlight && imageSize === 'banner') imgH = 'h-36 sm:h-44';
+              const cardStyle = { gridColumn: `span ${colSpanVal} / span ${colSpanVal}` };
 
-          const isSplitLayout = layout === 'split' && hasImage && isHighlight;
-          const isOverlayLayout = layout === 'card-overlay' && hasImage;
-          const isBottomLayout = layout === 'banner-bottom' && hasImage;
+              const layout = feat.layout || 'banner-top';
+              const imageSize = feat.imageSize || 'banner';
+              const imageFit = feat.imageFit || 'cover';
+              const hasImage = Boolean(feat.image);
+              const th = ACCENT_THEMES[feat.accentColor] || ACCENT_THEMES.violet;
+              const fitClass = imageFit === 'contain' ? 'object-contain p-2' : 'object-cover';
 
-          return (
-            <div
-              key={idx}
-              className={`relative p-5 rounded-2xl ${th.cardBg} border ${th.border} transition flex flex-col justify-between group overflow-hidden shadow-lg ${spanClass} ${
-                isHighlight ? th.highlightBg : ''
-              }`}
-            >
+              let imgH = 'h-32';
+              if (imageSize === 'medium') imgH = 'h-24';
+              if (imageSize === 'compact') imgH = 'h-16';
+              if (isHighlight && imageSize === 'banner') imgH = 'h-36';
+
+              const isSplitLayout = layout === 'split' && hasImage && isHighlight;
+              const isOverlayLayout = layout === 'card-overlay' && hasImage;
+              const isBottomLayout = layout === 'banner-bottom' && hasImage;
+
+              // Span label for badge
+              const spanLabelMap = {
+                auto: 'Auto',
+                normal: '1 Col',
+                wide: '2 Cols',
+                full: '3 Cols (Full)'
+              };
+
+              return (
+                <div
+                  key={idx}
+                  style={cardStyle}
+                  draggable={cursorBuilder}
+                  onDragStart={(e) => handleDragStart(e, idx)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, idx)}
+                  className={`relative p-5 rounded-2xl ${th.cardBg} border ${th.border} transition-all duration-200 flex flex-col justify-between group overflow-hidden shadow-lg min-w-0 ${
+                    isHighlight ? th.highlightBg : ''
+                  } ${draggedIdx === idx ? 'opacity-40 border-dashed border-indigo-400' : ''}`}
+                >
+              {/* Glowing Top Bevel */}
               <div className={`absolute top-0 inset-x-6 h-px bg-gradient-to-r from-transparent via-violet-500/0 ${th.topGlow} to-transparent z-20`} />
+
+              {/* CURSOR GRID BUILDER TOOLBAR (DIRECT MOUSE CONTROLS) */}
+              {cursorBuilder && (
+                <div className="mb-3.5 pb-2.5 border-b border-violet-900/30 flex flex-wrap items-center justify-between gap-y-1.5 gap-x-1 relative z-30 min-w-0">
+                  {/* Left: Move Left / Drag / Move Right */}
+                  <div className="flex items-center space-x-1">
+                    <button
+                      type="button"
+                      disabled={idx === 0}
+                      onClick={() => moveCard(idx, 'left')}
+                      className="p-1 rounded-md bg-[#1C1434] hover:bg-violet-900/40 text-violet-300 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+                      title="Move card left / up in grid"
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                    </button>
+
+                    <div
+                      className="px-1.5 py-0.5 rounded-md bg-[#18112C] text-violet-400 text-[10px] font-mono flex items-center cursor-grab active:cursor-grabbing"
+                      title="Drag with mouse to reorder card position"
+                    >
+                      <GripVertical className="w-3 h-3" />
+                      <span>#{idx + 1}</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={idx === features.length - 1}
+                      onClick={() => moveCard(idx, 'right')}
+                      className="p-1 rounded-md bg-[#1C1434] hover:bg-violet-900/40 text-violet-300 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+                      title="Move card right / down in grid"
+                    >
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  {/* Right: Interactive Span Resizer & Color Dots */}
+                  <div className="flex flex-wrap items-center gap-1">
+                    {/* Width Span Resizer with Mouse */}
+                    <button
+                      type="button"
+                      onClick={() => cycleSpan(idx, feat.colSpan)}
+                      className="px-2 py-0.5 rounded-md bg-violet-950/80 hover:bg-violet-900/90 border border-violet-700/50 text-[9px] font-mono font-bold text-violet-200 flex items-center space-x-1 transition cursor-pointer shadow-xs"
+                      title="Click to resize width: 1 Col -> 2 Cols -> 3 Cols"
+                    >
+                      <ArrowLeftRight className="w-2.5 h-2.5 text-violet-400" />
+                      <span>{spanLabelMap[currentSpan] || 'Auto'}</span>
+                    </button>
+
+                    {/* Quick Layout Style Toggle with Mouse */}
+                    <button
+                      type="button"
+                      onClick={() => cycleLayout(idx, feat.layout)}
+                      className="px-1.5 py-0.5 rounded-md bg-[#1C1434] hover:bg-violet-900/40 border border-violet-800/40 text-[9px] font-mono text-violet-300 transition cursor-pointer"
+                      title="Click to cycle layout: Top -> Bottom -> Overlay -> Split -> Icon"
+                    >
+                      {layout.replace('banner-', '')}
+                    </button>
+
+                    {/* Quick Color Swatches with Mouse */}
+                    <div className="flex items-center space-x-1 pl-1">
+                      {['violet', 'cyan', 'emerald', 'amber', 'rose'].map((cId) => (
+                        <button
+                          key={cId}
+                          type="button"
+                          onClick={() => onUpdateFeature && onUpdateFeature(idx, 'accentColor', cId)}
+                          className={`w-2.5 h-2.5 rounded-full transition cursor-pointer ${
+                            (feat.accentColor || 'violet') === cId
+                              ? 'ring-1 ring-white scale-125'
+                              : 'opacity-50 hover:opacity-100'
+                          }`}
+                          style={{
+                            backgroundColor:
+                              cId === 'violet'
+                                ? '#A855F7'
+                                : cId === 'cyan'
+                                ? '#06B6D4'
+                                : cId === 'emerald'
+                                ? '#10B981'
+                                : cId === 'amber'
+                                ? '#F59E0B'
+                                : '#F43F5E'
+                          }}
+                          title={`Switch accent to ${cId}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* OVERLAY LAYOUT */}
               {isOverlayLayout ? (
@@ -348,9 +548,17 @@ export const LiveLandingPreview = ({
                   </div>
                   <div className="relative z-10 flex flex-col justify-between h-full">
                     <div className="flex items-center justify-between mb-4">
-                      <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center shadow-xs`}>
-                        {renderIcon(feat.icon, 'w-4 h-4')}
-                      </div>
+                      {hasImage && (layout === 'icon' || imageSize === 'icon') ? (
+                        <img
+                          src={feat.image}
+                          alt={feat.title}
+                          className="w-9 h-9 object-contain rounded-xl border border-violet-700/60 bg-[#120A22] p-1 shadow-xs"
+                        />
+                      ) : (
+                        <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center shadow-xs`}>
+                          {renderIcon(feat.icon, 'w-4 h-4')}
+                        </div>
+                      )}
                       {feat.badge && (
                         <span className={`px-2 py-0.5 text-[9px] font-mono font-bold ${th.badge} border rounded-md uppercase`}>
                           {feat.badge}
@@ -369,9 +577,17 @@ export const LiveLandingPreview = ({
                   <div className="flex flex-col justify-between h-full">
                     <div>
                       <div className="flex items-center justify-between mb-3">
-                        <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center shadow-xs`}>
-                          {renderIcon(feat.icon, 'w-4 h-4')}
-                        </div>
+                        {hasImage && (layout === 'icon' || imageSize === 'icon') ? (
+                          <img
+                            src={feat.image}
+                            alt={feat.title}
+                            className="w-9 h-9 object-contain rounded-xl border border-violet-700/60 bg-[#120A22] p-1 shadow-xs"
+                          />
+                        ) : (
+                          <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center shadow-xs`}>
+                            {renderIcon(feat.icon, 'w-4 h-4')}
+                          </div>
+                        )}
                         {feat.badge && (
                           <span className={`px-2 py-0.5 text-[9px] font-mono font-bold ${th.badge} border rounded-md uppercase`}>
                             {feat.badge}
@@ -395,17 +611,25 @@ export const LiveLandingPreview = ({
                 <div className="flex flex-col justify-between h-full relative z-10">
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center shadow-xs`}>
-                        {renderIcon(feat.icon, 'w-4 h-4')}
-                      </div>
+                      {hasImage && (layout === 'icon' || imageSize === 'icon') ? (
+                        <img
+                          src={feat.image}
+                          alt={feat.title}
+                          className="w-9 h-9 object-contain rounded-xl border border-violet-700/60 bg-[#120A22] p-1 shadow-xs"
+                        />
+                      ) : (
+                        <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center shadow-xs`}>
+                          {renderIcon(feat.icon, 'w-4 h-4')}
+                        </div>
+                      )}
                       {feat.badge && (
                         <span className={`px-2 py-0.5 text-[9px] font-mono font-bold ${th.badge} border rounded-md uppercase`}>
                           {feat.badge}
                         </span>
                       )}
                     </div>
-                    <h3 className="font-bold text-white text-xs sm:text-sm mb-1">{feat.title}</h3>
-                    <p className="text-[10px] text-violet-300/70 leading-relaxed">{feat.description}</p>
+                    <h3 className="font-bold text-white text-xs sm:text-sm mb-1 break-words">{feat.title}</h3>
+                    <p className="text-[10px] text-violet-300/70 leading-relaxed break-words">{feat.description}</p>
                   </div>
                   <div className={`w-full rounded-xl overflow-hidden mt-4 border border-violet-800/40 bg-[#120A22] ${imgH}`}>
                     <img src={feat.image} alt={feat.title} className={`w-full h-full ${fitClass}`} />
@@ -416,9 +640,17 @@ export const LiveLandingPreview = ({
                 <div className="flex flex-col justify-between h-full relative z-10">
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center shadow-xs`}>
-                        {renderIcon(feat.icon, 'w-4 h-4')}
-                      </div>
+                      {hasImage && (layout === 'icon' || imageSize === 'icon') ? (
+                        <img
+                          src={feat.image}
+                          alt={feat.title}
+                          className="w-10 h-10 object-contain rounded-xl border border-violet-700/60 bg-[#120A22] p-1 shadow-md"
+                        />
+                      ) : (
+                        <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center shadow-xs`}>
+                          {renderIcon(feat.icon, 'w-4 h-4')}
+                        </div>
+                      )}
                       {feat.badge && (
                         <span className={`px-2 py-0.5 text-[9px] font-mono font-bold ${th.badge} border rounded-md uppercase`}>
                           {feat.badge}
@@ -426,14 +658,14 @@ export const LiveLandingPreview = ({
                       )}
                     </div>
 
-                    {hasImage && layout !== 'icon' && (
+                    {hasImage && layout !== 'icon' && imageSize !== 'icon' && (
                       <div className={`w-full rounded-xl overflow-hidden mb-3 border border-violet-800/40 bg-[#120A22] ${imgH}`}>
                         <img src={feat.image} alt={feat.title} className={`w-full h-full ${fitClass}`} />
                       </div>
                     )}
 
-                    <h3 className="font-bold text-white text-xs sm:text-sm mb-1">{feat.title}</h3>
-                    <p className="text-[10px] text-violet-300/70 leading-relaxed">{feat.description}</p>
+                    <h3 className="font-bold text-white text-xs sm:text-sm mb-1 break-words">{feat.title}</h3>
+                    <p className="text-[10px] text-violet-300/70 leading-relaxed break-words">{feat.description}</p>
                   </div>
 
                   {isHighlight && (
@@ -450,10 +682,23 @@ export const LiveLandingPreview = ({
                   )}
                 </div>
               )}
+
+              {/* CORNER RESIZE HANDLE (CLICK TO EXPAND / CYCLE WIDTH) */}
+              {cursorBuilder && (
+                <div
+                  onClick={() => cycleSpan(idx, feat.colSpan)}
+                  className="absolute bottom-2 right-2 p-1 rounded-md bg-[#1B1232]/80 hover:bg-violet-600/90 border border-violet-700/40 text-violet-300 hover:text-white transition cursor-pointer z-30 opacity-70 group-hover:opacity-100"
+                  title="Click to cycle card width with mouse: 1 Col -> 2 Cols -> 3 Cols"
+                >
+                  <ArrowLeftRight className="w-2.5 h-2.5" />
+                </div>
+              )}
             </div>
           );
         })}
-      </div>
+        </div>
+        );
+      })()}
     </section>
   );
 
@@ -690,8 +935,23 @@ export const LiveLandingPreview = ({
           </button>
         </div>
 
-        {/* Right: Scope Switcher & Zoom */}
+        {/* Right: Scope Switcher, Cursor Tool Toggle & Zoom */}
         <div className="flex items-center space-x-2">
+          {/* Interactive Cursor Grid Builder Toggle */}
+          <button
+            type="button"
+            onClick={() => setCursorBuilder(!cursorBuilder)}
+            className={`px-2.5 py-1 rounded-xl text-xs font-semibold flex items-center space-x-1.5 border transition cursor-pointer ${
+              cursorBuilder
+                ? 'bg-violet-600 text-white border-violet-500 shadow-xs'
+                : 'bg-slate-100 dark:bg-[#1C1434] text-slate-500 dark:text-violet-300/70 border-slate-200 dark:border-violet-800/40 hover:text-white'
+            }`}
+            title="Toggle Mouse Cursor Grid Builder Handles"
+          >
+            <MousePointerClick className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline">Cursor Builder</span>
+          </button>
+
           {/* Scope Selector */}
           <div className="flex items-center bg-slate-100 dark:bg-[#1C1434] p-1 rounded-xl border border-slate-200 dark:border-violet-800/40 text-xs">
             <button
@@ -732,7 +992,7 @@ export const LiveLandingPreview = ({
       </div>
 
       {/* PREVIEW CANVAS CONTAINER */}
-      <div className="p-4 sm:p-6 bg-[#06040C] overflow-x-auto min-h-[540px] max-h-[750px] overflow-y-auto flex justify-center items-start relative scrollbar-thin">
+      <div className="p-4 sm:p-6 bg-[#06040C] overflow-x-auto min-h-[540px] max-h-[780px] overflow-y-auto flex justify-center items-start relative scrollbar-thin">
         {/* Device Bezel Frame */}
         <div className={getDeviceContainerClass()} style={getZoomStyle()}>
           {/* Chrome / Browser Header for Desktop */}

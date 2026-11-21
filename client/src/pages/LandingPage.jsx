@@ -810,38 +810,38 @@ export const LandingPage = () => {
                 //   * 4 items: Row 1 is 2+1, Row 2 is 1+2 (staggered diagonal bento) -> 100% full!
                 //   * 5 items: Row 1 is 2+1, Row 2 is 1+1+1 -> 100% full!
                 //   * 6 items: Row 1 is 2+1, Row 2 is 1+1+1 (or 1+2) -> 100% full!
-                let spanClass = 'md:col-span-1 lg:col-span-1';
+                let spanClass = 'col-span-1 md:col-span-1 lg:col-span-1';
                 let isHighlight = false;
 
                 if (feat.colSpan === 'full') {
-                  spanClass = 'md:col-span-2 lg:col-span-3';
+                  spanClass = 'col-span-1 md:col-span-2 lg:col-span-3';
                   isHighlight = true;
                 } else if (feat.colSpan === 'wide') {
-                  spanClass = 'md:col-span-2 lg:col-span-2';
+                  spanClass = 'col-span-1 md:col-span-2 lg:col-span-2';
                   isHighlight = true;
                 } else if (feat.colSpan === 'normal') {
-                  spanClass = 'md:col-span-1 lg:col-span-1';
+                  spanClass = 'col-span-1 md:col-span-1 lg:col-span-1';
                   isHighlight = false;
                 } else {
                   const total = features.length;
                   if (total === 4) {
                     // Staggered balanced diagonal bento: Card 0 and Card 3 are wide
                     if (idx === 0 || idx === 3) {
-                      spanClass = 'md:col-span-2 lg:col-span-2';
+                      spanClass = 'col-span-1 md:col-span-2 lg:col-span-2';
                       isHighlight = true;
                     }
                   } else if (total === 5) {
                     if (idx === 0) {
-                      spanClass = 'md:col-span-2 lg:col-span-2';
+                      spanClass = 'col-span-1 md:col-span-2 lg:col-span-2';
                       isHighlight = true;
                     }
                   } else if (total >= 6) {
                     if (idx === 0 || idx === 5) {
-                      spanClass = 'md:col-span-2 lg:col-span-2';
+                      spanClass = 'col-span-1 md:col-span-2 lg:col-span-2';
                       isHighlight = true;
                     }
                   } else if (total === 1) {
-                    spanClass = 'md:col-span-2 lg:col-span-3';
+                    spanClass = 'col-span-1 md:col-span-2 lg:col-span-3';
                     isHighlight = true;
                   }
                 }
@@ -923,7 +923,7 @@ export const LandingPage = () => {
                 return (
                   <div
                     key={idx}
-                    className={`relative p-7 sm:p-8 rounded-3xl ${th.cardBg} border ${th.border} transition-all duration-300 flex flex-col justify-between group overflow-hidden shadow-xl ${th.glow} hover:-translate-y-1 backdrop-blur-xl ${spanClass} ${
+                    className={`relative p-7 sm:p-8 rounded-3xl ${th.cardBg} border ${th.border} transition-all duration-300 flex flex-col justify-between group overflow-hidden shadow-xl ${th.glow} hover:-translate-y-1 backdrop-blur-xl min-w-0 ${spanClass} ${
                       isHighlight ? th.highlightBg : ''
                     }`}
                   >
@@ -948,9 +948,17 @@ export const LandingPage = () => {
                         <div className="flex flex-col justify-between h-full">
                           <div>
                             <div className="flex items-center justify-between mb-5">
-                              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-violet-600/30 to-fuchsia-600/20 border border-violet-500/40 text-violet-300 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
-                                {renderIcon(feat.icon, 'w-6 h-6')}
-                              </div>
+                              {hasImage && (layout === 'icon' || imageSize === 'icon') ? (
+                                <img
+                                  src={feat.image}
+                                  alt={feat.title}
+                                  className="w-12 h-12 object-contain rounded-2xl border border-violet-500/40 bg-[#120A22] p-1.5 shadow-md"
+                                />
+                              ) : (
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-violet-600/30 to-fuchsia-600/20 border border-violet-500/40 text-violet-300 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
+                                  {renderIcon(feat.icon, 'w-6 h-6')}
+                                </div>
+                              )}
                               {feat.badge && (
                                 <span className={`px-3 py-1 text-[10px] font-mono font-bold ${th.badge} border rounded-lg tracking-wide uppercase`}>
                                   {feat.badge}
@@ -990,9 +998,17 @@ export const LandingPage = () => {
                       /* OVERLAY LAYOUT CONTENT */
                       <div className="flex flex-col justify-between h-full relative z-10">
                         <div className="flex items-center justify-between mb-5">
-                          <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner`}>
-                            {renderIcon(feat.icon, 'w-6 h-6')}
-                          </div>
+                          {hasImage && (layout === 'icon' || imageSize === 'icon') ? (
+                            <img
+                              src={feat.image}
+                              alt={feat.title}
+                              className="w-12 h-12 object-contain rounded-2xl border border-violet-700/60 bg-[#120A22] p-1.5 shadow-md"
+                            />
+                          ) : (
+                            <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner`}>
+                              {renderIcon(feat.icon, 'w-6 h-6')}
+                            </div>
+                          )}
                           {feat.badge && (
                             <span className={`px-3 py-1 text-[10px] font-mono font-bold ${th.badge} border rounded-lg tracking-wide uppercase`}>
                               {feat.badge}
@@ -1015,9 +1031,17 @@ export const LandingPage = () => {
                         <div>
                           <div className="flex items-center justify-between mb-5">
                             <div className="flex items-center space-x-3">
-                              <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner`}>
-                                {renderIcon(feat.icon, 'w-6 h-6')}
-                              </div>
+                              {hasImage && (layout === 'icon' || imageSize === 'icon') ? (
+                                <img
+                                  src={feat.image}
+                                  alt={feat.title}
+                                  className="w-12 h-12 object-contain rounded-2xl border border-violet-700/60 bg-[#120A22] p-1.5 shadow-md"
+                                />
+                              ) : (
+                                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner`}>
+                                  {renderIcon(feat.icon, 'w-6 h-6')}
+                                </div>
+                              )}
                             </div>
                             {feat.badge && (
                               <span className={`px-3 py-1 text-[10px] font-mono font-bold ${th.badge} border rounded-lg tracking-wide uppercase`}>
@@ -1067,7 +1091,7 @@ export const LandingPage = () => {
                           {/* Card Header: Icon & Badge */}
                           <div className="flex items-center justify-between mb-5">
                             <div className="flex items-center space-x-3">
-                              {hasImage && imageSize === 'icon' ? (
+                              {hasImage && (layout === 'icon' || imageSize === 'icon') ? (
                                 <img
                                   src={feat.image}
                                   alt={feat.title}
