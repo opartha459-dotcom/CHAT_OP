@@ -846,89 +846,289 @@ export const LandingPage = () => {
                   }
                 }
 
-                const imageSize = feat.imageSize || 'banner'; // 'banner' | 'medium' | 'icon'
+                const layout = feat.layout || 'banner-top';
+                const imageSize = feat.imageSize || 'banner'; // 'banner' | 'medium' | 'compact' | 'icon'
+                const imageFit = feat.imageFit || 'cover'; // 'cover' | 'contain'
                 const hasImage = Boolean(feat.image);
+
+                const ACCENT_THEMES = {
+                  violet: {
+                    border: 'border-violet-800/40 hover:border-violet-500/70',
+                    glow: 'hover:shadow-violet-900/30',
+                    topGlow: 'group-hover:via-violet-400/80',
+                    iconBg: 'from-violet-600/30 to-fuchsia-600/20 border-violet-500/40 text-violet-300',
+                    badge: 'bg-[#120921] text-violet-300 border-violet-800/40',
+                    check: 'text-violet-400',
+                    cardBg: 'bg-[#160E2C]/85',
+                    highlightBg: 'bg-gradient-to-br from-[#1C1236]/90 via-[#160E2C]/90 to-[#120B24]/90'
+                  },
+                  cyan: {
+                    border: 'border-cyan-800/40 hover:border-cyan-500/70',
+                    glow: 'hover:shadow-cyan-900/30',
+                    topGlow: 'group-hover:via-cyan-400/80',
+                    iconBg: 'from-cyan-600/30 to-blue-600/20 border-cyan-500/40 text-cyan-300',
+                    badge: 'bg-[#06121E] text-cyan-300 border-cyan-800/40',
+                    check: 'text-cyan-400',
+                    cardBg: 'bg-[#0A1624]/85',
+                    highlightBg: 'bg-gradient-to-br from-[#0F1E33]/90 via-[#0B1728]/90 to-[#070F1B]/90'
+                  },
+                  emerald: {
+                    border: 'border-emerald-800/40 hover:border-emerald-500/70',
+                    glow: 'hover:shadow-emerald-900/30',
+                    topGlow: 'group-hover:via-emerald-400/80',
+                    iconBg: 'from-emerald-600/30 to-teal-600/20 border-emerald-500/40 text-emerald-300',
+                    badge: 'bg-[#05140D] text-emerald-300 border-emerald-800/40',
+                    check: 'text-emerald-400',
+                    cardBg: 'bg-[#071810]/85',
+                    highlightBg: 'bg-gradient-to-br from-[#0C2418]/90 via-[#091C13]/90 to-[#06140D]/90'
+                  },
+                  amber: {
+                    border: 'border-amber-800/40 hover:border-amber-500/70',
+                    glow: 'hover:shadow-amber-900/30',
+                    topGlow: 'group-hover:via-amber-400/80',
+                    iconBg: 'from-amber-600/30 to-orange-600/20 border-amber-500/40 text-amber-300',
+                    badge: 'bg-[#180E03] text-amber-300 border-amber-800/40',
+                    check: 'text-amber-400',
+                    cardBg: 'bg-[#181006]/85',
+                    highlightBg: 'bg-gradient-to-br from-[#261808]/90 via-[#1D1206]/90 to-[#140C04]/90'
+                  },
+                  rose: {
+                    border: 'border-rose-800/40 hover:border-rose-500/70',
+                    glow: 'hover:shadow-rose-900/30',
+                    topGlow: 'group-hover:via-rose-400/80',
+                    iconBg: 'from-rose-600/30 to-pink-600/20 border-rose-500/40 text-rose-300',
+                    badge: 'bg-[#1A0812] text-rose-300 border-rose-800/40',
+                    check: 'text-rose-400',
+                    cardBg: 'bg-[#180812]/85',
+                    highlightBg: 'bg-gradient-to-br from-[#270E1B]/90 via-[#1E0B15]/90 to-[#14070E]/90'
+                  }
+                };
+
+                const th = ACCENT_THEMES[feat.accentColor] || ACCENT_THEMES.violet;
+                const fitClass = imageFit === 'contain' ? 'object-contain p-2' : 'object-cover';
+
+                let imgHeightClass = 'h-44 sm:h-52';
+                if (imageSize === 'medium') {
+                  imgHeightClass = 'h-36 sm:h-44';
+                } else if (imageSize === 'compact') {
+                  imgHeightClass = 'h-24 sm:h-30';
+                } else if (isHighlight && imageSize === 'banner') {
+                  imgHeightClass = 'h-52 sm:h-64';
+                }
+
+                const isSplitLayout = layout === 'split' && hasImage && imageSize !== 'icon' && isHighlight;
+                const isOverlayLayout = layout === 'card-overlay' && hasImage;
+                const isBottomLayout = layout === 'banner-bottom' && hasImage && imageSize !== 'icon';
 
                 return (
                   <div
                     key={idx}
-                    className={`relative p-7 sm:p-8 rounded-3xl bg-[#160E2C]/85 border border-violet-800/40 hover:border-violet-500/70 transition-all duration-300 flex flex-col justify-between group overflow-hidden shadow-xl hover:shadow-violet-900/30 hover:-translate-y-1 backdrop-blur-xl ${spanClass} ${
-                      isHighlight
-                        ? 'bg-gradient-to-br from-[#1C1236]/90 via-[#160E2C]/90 to-[#120B24]/90'
-                        : ''
+                    className={`relative p-7 sm:p-8 rounded-3xl ${th.cardBg} border ${th.border} transition-all duration-300 flex flex-col justify-between group overflow-hidden shadow-xl ${th.glow} hover:-translate-y-1 backdrop-blur-xl ${spanClass} ${
+                      isHighlight ? th.highlightBg : ''
                     }`}
                   >
                     {/* Glowing Top Bevel Edge */}
-                    <div className="absolute top-0 inset-x-8 h-px bg-gradient-to-r from-transparent via-violet-500/0 group-hover:via-violet-400/80 to-transparent transition-all duration-300" />
+                    <div className={`absolute top-0 inset-x-8 h-px bg-gradient-to-r from-transparent via-violet-500/0 ${th.topGlow} to-transparent transition-all duration-300 z-20`} />
 
-                    <div>
-                      {/* Card Header: Icon & Badge */}
-                      <div className="flex items-center justify-between mb-5">
-                        <div className="flex items-center space-x-3">
-                          {hasImage && imageSize === 'icon' ? (
-                            <img
-                              src={feat.image}
-                              alt={feat.title}
-                              className="w-14 h-14 object-contain rounded-2xl border border-violet-800/40 bg-[#120A22] p-1.5 shadow-md"
-                            />
-                          ) : (
-                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-violet-600/30 to-fuchsia-600/20 border border-violet-500/40 text-violet-300 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
-                              {renderIcon(feat.icon, 'w-6 h-6')}
+                    {/* OVERLAY LAYOUT: Full-Bleed Artwork Backdrop */}
+                    {isOverlayLayout && (
+                      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                        <img
+                          src={feat.image}
+                          alt={feat.title}
+                          className={`w-full h-full ${fitClass} filter brightness-[0.38] group-hover:scale-105 transition-transform duration-700`}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#07050E] via-[#07050E]/60 to-transparent" />
+                      </div>
+                    )}
+
+                    {/* SPLIT LAYOUT: Side-by-Side (for wide cards) */}
+                    {isSplitLayout ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center h-full relative z-10">
+                        <div className="flex flex-col justify-between h-full">
+                          <div>
+                            <div className="flex items-center justify-between mb-5">
+                              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-violet-600/30 to-fuchsia-600/20 border border-violet-500/40 text-violet-300 flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner">
+                                {renderIcon(feat.icon, 'w-6 h-6')}
+                              </div>
+                              {feat.badge && (
+                                <span className={`px-3 py-1 text-[10px] font-mono font-bold ${th.badge} border rounded-lg tracking-wide uppercase`}>
+                                  {feat.badge}
+                                </span>
+                              )}
                             </div>
-                          )}
+                            <h3 className="font-bold text-white mb-2.5 tracking-tight text-xl sm:text-2xl">
+                              {feat.title}
+                            </h3>
+                            <p className="text-xs sm:text-sm text-violet-300/70 leading-relaxed">
+                              {feat.description}
+                            </p>
+                          </div>
+
+                          <div className="mt-6 pt-4 border-t border-violet-900/30 flex flex-wrap items-center gap-4 text-xs font-mono text-violet-300/80">
+                            <div className="flex items-center space-x-1.5">
+                              <Check className={`w-4 h-4 ${th.check}`} />
+                              <span>AES-256-GCM</span>
+                            </div>
+                            <div className="flex items-center space-x-1.5">
+                              <Check className={`w-4 h-4 ${th.check}`} />
+                              <span>PBKDF2 Keys</span>
+                            </div>
+                          </div>
                         </div>
 
-                        {feat.badge && (
-                          <span className="px-3 py-1 text-[10px] font-mono font-bold bg-[#120921] text-violet-300 border border-violet-800/40 rounded-lg tracking-wide uppercase">
-                            {feat.badge}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Prominent High-Impact Feature Graphic / Banner */}
-                      {hasImage && imageSize !== 'icon' && (
-                        <div
-                          className={`w-full rounded-2xl overflow-hidden mb-5 border border-violet-800/40 bg-[#120A22] relative group-hover:border-violet-500/60 transition-all shadow-xl group-hover:shadow-violet-900/40 ${imageSize === 'medium'
-                            ? 'h-36 sm:h-44'
-                            : isHighlight
-                              ? 'h-52 sm:h-64'
-                              : 'h-44 sm:h-52'
-                            }`}
-                        >
+                        <div className="w-full h-full min-h-[200px] sm:min-h-[260px] rounded-2xl overflow-hidden border border-violet-800/40 bg-[#120A22] relative group-hover:border-violet-500/60 transition-all shadow-xl">
                           <img
                             src={feat.image}
                             alt={feat.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            className={`w-full h-full ${fitClass} group-hover:scale-105 transition-transform duration-500`}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-[#160E2C]/50 via-transparent to-transparent pointer-events-none" />
+                        </div>
+                      </div>
+                    ) : isOverlayLayout ? (
+                      /* OVERLAY LAYOUT CONTENT */
+                      <div className="flex flex-col justify-between h-full relative z-10">
+                        <div className="flex items-center justify-between mb-5">
+                          <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner`}>
+                            {renderIcon(feat.icon, 'w-6 h-6')}
+                          </div>
+                          {feat.badge && (
+                            <span className={`px-3 py-1 text-[10px] font-mono font-bold ${th.badge} border rounded-lg tracking-wide uppercase`}>
+                              {feat.badge}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="p-5 rounded-2xl bg-[#0B0716]/80 border border-violet-700/30 backdrop-blur-md mt-6 shadow-2xl">
+                          <h3 className={`font-bold text-white mb-2 tracking-tight ${isHighlight ? 'text-xl sm:text-2xl' : 'text-base sm:text-lg'}`}>
+                            {feat.title}
+                          </h3>
+                          <p className="text-xs sm:text-sm text-violet-200/80 leading-relaxed">
+                            {feat.description}
+                          </p>
+                        </div>
+                      </div>
+                    ) : isBottomLayout ? (
+                      /* BOTTOM VISUAL LAYOUT */
+                      <div className="flex flex-col justify-between h-full relative z-10">
+                        <div>
+                          <div className="flex items-center justify-between mb-5">
+                            <div className="flex items-center space-x-3">
+                              <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner`}>
+                                {renderIcon(feat.icon, 'w-6 h-6')}
+                              </div>
+                            </div>
+                            {feat.badge && (
+                              <span className={`px-3 py-1 text-[10px] font-mono font-bold ${th.badge} border rounded-lg tracking-wide uppercase`}>
+                                {feat.badge}
+                              </span>
+                            )}
+                          </div>
+
+                          <h3 className={`font-bold text-white mb-2.5 tracking-tight ${isHighlight ? 'text-xl sm:text-2xl' : 'text-base sm:text-lg'}`}>
+                            {feat.title}
+                          </h3>
+                          <p className="text-xs sm:text-sm text-violet-300/70 leading-relaxed max-w-2xl">
+                            {feat.description}
+                          </p>
+                        </div>
+
+                        <div className={`w-full rounded-2xl overflow-hidden mt-6 border border-violet-800/40 bg-[#120A22] relative group-hover:border-violet-500/60 transition-all shadow-xl group-hover:shadow-violet-900/40 ${imgHeightClass}`}>
+                          <img
+                            src={feat.image}
+                            alt={feat.title}
+                            className={`w-full h-full ${fitClass} group-hover:scale-105 transition-transform duration-500`}
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-[#160E2C]/70 via-transparent to-transparent pointer-events-none" />
                         </div>
-                      )}
 
-                      <h3
-                        className={`font-bold text-white mb-2.5 tracking-tight ${isHighlight ? 'text-xl sm:text-2xl' : 'text-base sm:text-lg'
-                          }`}
-                      >
-                        {feat.title}
-                      </h3>
-                      <p className="text-xs sm:text-sm text-violet-300/70 leading-relaxed max-w-2xl">
-                        {feat.description}
-                      </p>
-                    </div>
+                        {isHighlight && (
+                          <div className="mt-5 pt-4 border-t border-violet-900/30 flex flex-wrap items-center gap-4 text-xs font-mono text-violet-300/80">
+                            <div className="flex items-center space-x-1.5">
+                              <Check className={`w-4 h-4 ${th.check}`} />
+                              <span>AES-256-GCM</span>
+                            </div>
+                            <div className="flex items-center space-x-1.5">
+                              <Check className={`w-4 h-4 ${th.check}`} />
+                              <span>PBKDF2 Salted Keys</span>
+                            </div>
+                            <div className="flex items-center space-x-1.5">
+                              <Check className={`w-4 h-4 ${th.check}`} />
+                              <span>Zero Server Plaintext</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* TOP BANNER / ICON LAYOUT (Default & Top Banner) */
+                      <div className="flex flex-col justify-between h-full relative z-10">
+                        <div>
+                          {/* Card Header: Icon & Badge */}
+                          <div className="flex items-center justify-between mb-5">
+                            <div className="flex items-center space-x-3">
+                              {hasImage && imageSize === 'icon' ? (
+                                <img
+                                  src={feat.image}
+                                  alt={feat.title}
+                                  className="w-14 h-14 object-contain rounded-2xl border border-violet-800/40 bg-[#120A22] p-1.5 shadow-md"
+                                />
+                              ) : (
+                                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${th.iconBg} border flex items-center justify-center group-hover:scale-105 transition-transform shadow-inner`}>
+                                  {renderIcon(feat.icon, 'w-6 h-6')}
+                                </div>
+                              )}
+                            </div>
 
-                    {isHighlight && (
-                      <div className="mt-6 pt-5 border-t border-violet-900/30 flex flex-wrap items-center gap-4 text-xs font-mono text-violet-300/80">
-                        <div className="flex items-center space-x-1.5">
-                          <Check className="w-4 h-4 text-emerald-400" />
-                          <span>AES-256-GCM</span>
+                            {feat.badge && (
+                              <span className={`px-3 py-1 text-[10px] font-mono font-bold ${th.badge} border rounded-lg tracking-wide uppercase`}>
+                                {feat.badge}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Prominent Feature Graphic / Banner */}
+                          {hasImage && layout !== 'icon' && imageSize !== 'icon' && (
+                            <div
+                              className={`w-full rounded-2xl overflow-hidden mb-5 border border-violet-800/40 bg-[#120A22] relative group-hover:border-violet-500/60 transition-all shadow-xl group-hover:shadow-violet-900/40 ${imgHeightClass}`}
+                            >
+                              <img
+                                src={feat.image}
+                                alt={feat.title}
+                                className={`w-full h-full ${fitClass} group-hover:scale-105 transition-transform duration-500`}
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-[#160E2C]/70 via-transparent to-transparent pointer-events-none" />
+                            </div>
+                          )}
+
+                          <h3
+                            className={`font-bold text-white mb-2.5 tracking-tight ${
+                              isHighlight ? 'text-xl sm:text-2xl' : 'text-base sm:text-lg'
+                            }`}
+                          >
+                            {feat.title}
+                          </h3>
+                          <p className="text-xs sm:text-sm text-violet-300/70 leading-relaxed max-w-2xl">
+                            {feat.description}
+                          </p>
                         </div>
-                        <div className="flex items-center space-x-1.5">
-                          <Check className="w-4 h-4 text-emerald-400" />
-                          <span>PBKDF2 Salted Keys</span>
-                        </div>
-                        <div className="flex items-center space-x-1.5">
-                          <Check className="w-4 h-4 text-emerald-400" />
-                          <span>Zero Server Plaintext</span>
-                        </div>
+
+                        {isHighlight && (
+                          <div className="mt-6 pt-5 border-t border-violet-900/30 flex flex-wrap items-center gap-4 text-xs font-mono text-violet-300/80">
+                            <div className="flex items-center space-x-1.5">
+                              <Check className={`w-4 h-4 ${th.check}`} />
+                              <span>AES-256-GCM</span>
+                            </div>
+                            <div className="flex items-center space-x-1.5">
+                              <Check className={`w-4 h-4 ${th.check}`} />
+                              <span>PBKDF2 Salted Keys</span>
+                            </div>
+                            <div className="flex items-center space-x-1.5">
+                              <Check className={`w-4 h-4 ${th.check}`} />
+                              <span>Zero Server Plaintext</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

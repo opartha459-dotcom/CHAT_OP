@@ -35,9 +35,11 @@ import {
   Share2,
   ChevronUp,
   ChevronDown,
-  HelpCircle
+  HelpCircle,
+  Columns
 } from 'lucide-react';
 import { ImageCropModal } from '../common/ImageCropModal';
+import { LiveLandingPreview } from './LiveLandingPreview';
 import {
   SocialBrandIcon,
   detectSocialPlatform,
@@ -323,7 +325,10 @@ export const DEFAULT_LANDING_CONFIG = {
       to: '#020617'
     },
     blendIntensity: 75,
-    blendMode: 'normal'
+    blendMode: 'normal',
+    buttonStyle: 'gradient',
+    windowChrome: 'traffic',
+    badgeStyle: 'pulse'
   },
   featuresBadge: 'Platform Architecture',
   featuresTitle: 'Built for security, engineered for scale.',
@@ -335,7 +340,12 @@ export const DEFAULT_LANDING_CONFIG = {
         'Messages are encrypted directly on client devices using Web Crypto AES-256-GCM. The database and backend never possess your plaintext.',
       icon: 'Lock',
       badge: 'E2EE',
-      image: ''
+      image: '',
+      imageSize: 'banner',
+      imageFit: 'cover',
+      colSpan: 'auto',
+      layout: 'banner-top',
+      accentColor: 'violet'
     },
     {
       title: 'Zero-Latency Socket.IO',
@@ -343,7 +353,12 @@ export const DEFAULT_LANDING_CONFIG = {
         'Instant delivery receipts, live typing indicators, presence tracking, emoji reactions, and message editing without reloading.',
       icon: 'Zap',
       badge: 'Instant',
-      image: ''
+      image: '',
+      imageSize: 'banner',
+      imageFit: 'cover',
+      colSpan: 'auto',
+      layout: 'banner-top',
+      accentColor: 'cyan'
     },
     {
       title: 'Group Governance & Safety',
@@ -351,7 +366,12 @@ export const DEFAULT_LANDING_CONFIG = {
         'Granular group roles (Owners, Admins, Members), invite links, announcement channels, server-side user blocking, and moderation reports.',
       icon: 'Users',
       badge: 'Admin Control',
-      image: ''
+      image: '',
+      imageSize: 'banner',
+      imageFit: 'cover',
+      colSpan: 'auto',
+      layout: 'banner-top',
+      accentColor: 'emerald'
     },
     {
       title: 'HD Voice & Video Calls',
@@ -359,7 +379,12 @@ export const DEFAULT_LANDING_CONFIG = {
         'P2P WebRTC crystal clear audio & video calling with mid-call video conversion, mobile screen sharing, and active speaker detection.',
       icon: 'Video',
       badge: 'WebRTC P2P',
-      image: ''
+      image: '',
+      imageSize: 'banner',
+      imageFit: 'cover',
+      colSpan: 'auto',
+      layout: 'banner-top',
+      accentColor: 'rose'
     }
   ],
   highlightPoints: [
@@ -433,7 +458,9 @@ export const DEFAULT_LANDING_CONFIG = {
     primaryButtonText: 'Create Free Account',
     primaryButtonLink: '/register',
     secondaryButtonText: 'Launch Messenger',
-    secondaryButtonLink: '/login'
+    secondaryButtonLink: '/login',
+    tintStyle: 'deep',
+    alignment: 'center'
   }
 };
 
@@ -855,6 +882,7 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState('hero'); // 'hero' | 'brand' | 'features' | 'preview' | 'stats' | 'highlights' | 'footer'
   const [newHighlight, setNewHighlight] = useState('');
+  const [viewMode, setViewMode] = useState('split'); // 'split' | 'editor' | 'preview'
 
   // Detect whether unsaved changes exist compared to currently saved database configuration
   const hasChanges = useMemo(() => {
@@ -912,7 +940,21 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
             ctaBanner: {
               ...DEFAULT_LANDING_CONFIG.ctaBanner,
               ...(data.landingPageConfig.ctaBanner || {})
-            }
+            },
+            features: Array.isArray(data.landingPageConfig.features)
+              ? data.landingPageConfig.features.map((f) => ({
+                  title: f.title || '',
+                  description: f.description || '',
+                  icon: f.icon || 'Zap',
+                  badge: f.badge || '',
+                  image: f.image || '',
+                  imageSize: f.imageSize || 'banner',
+                  imageFit: f.imageFit || 'cover',
+                  colSpan: f.colSpan || 'auto',
+                  layout: f.layout || 'banner-top',
+                  accentColor: f.accentColor || 'violet'
+                }))
+              : DEFAULT_LANDING_CONFIG.features
           };
           setConfig(merged);
           setSavedConfig(merged);
@@ -984,7 +1026,12 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
       description: 'Enter a clear description of this key capability.',
       icon: 'Zap',
       badge: 'Feature',
-      image: ''
+      image: '',
+      imageSize: 'banner',
+      imageFit: 'cover',
+      colSpan: 'auto',
+      layout: 'banner-top',
+      accentColor: 'violet'
     };
     setConfig((prev) => ({
       ...prev,
@@ -1252,12 +1299,55 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
         </div>
 
         <div className="flex items-center space-x-2.5">
+          {/* Studio View Mode Switcher - High Contrast & Clearly Visible */}
+          <div className="flex items-center bg-[#130B24] p-1 rounded-xl border border-violet-700/50 shadow-inner space-x-1">
+            <button
+              type="button"
+              onClick={() => setViewMode('split')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                viewMode === 'split'
+                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-900/50 border border-violet-400/40'
+                  : 'text-violet-200 hover:text-white hover:bg-violet-900/30'
+              }`}
+              title="Split Studio: Editor on Left, Live Preview on Right"
+            >
+              <Columns className="w-3.5 h-3.5 text-violet-300" />
+              <span>Split Studio</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('editor')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                viewMode === 'editor'
+                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-900/50 border border-violet-400/40'
+                  : 'text-violet-200 hover:text-white hover:bg-violet-900/30'
+              }`}
+              title="Editor Fullscreen (Expanded View)"
+            >
+              <Sliders className="w-3.5 h-3.5 text-violet-300" />
+              <span>Editor Only</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('preview')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                viewMode === 'preview'
+                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-900/50 border border-violet-400/40'
+                  : 'text-violet-200 hover:text-white hover:bg-violet-900/30'
+              }`}
+              title="Live Preview Fullscreen (Expanded View)"
+            >
+              <Eye className="w-3.5 h-3.5 text-violet-300" />
+              <span>Preview Only</span>
+            </button>
+          </div>
+
           <a
             href="/"
             target="_blank"
             rel="noopener noreferrer"
-            className="px-3.5 py-2 bg-[#231C38] hover:bg-[#2A2242] border border-violet-900/40 text-violet-200 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer"
-            title="Preview Live Landing Page"
+            className="px-3.5 py-2 bg-[#231C38] hover:bg-[#2A2242] border border-violet-800/50 text-violet-200 hover:text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer"
+            title="Preview Live Landing Page in New Window"
           >
             <Eye className="w-3.5 h-3.5 text-violet-400" />
             <span className="hidden sm:inline">View Site</span>
@@ -1267,7 +1357,7 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
           <button
             type="button"
             onClick={handleReset}
-            className="px-3 py-2 bg-[#231C38] hover:bg-rose-950/40 text-violet-300 hover:text-rose-400 border border-violet-900/40 rounded-xl text-xs font-semibold transition cursor-pointer"
+            className="px-3 py-2 bg-[#231C38] hover:bg-rose-950/40 text-violet-300 hover:text-rose-400 border border-violet-800/50 rounded-xl text-xs font-semibold transition cursor-pointer"
             title="Reset to Defaults"
           >
             Reset
@@ -1277,7 +1367,7 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
             <button
               type="button"
               onClick={handleCancelChanges}
-              className="px-3.5 py-2 bg-[#231C38] hover:bg-[#2A2242] text-violet-300 hover:text-white border border-violet-900/40 rounded-xl text-xs font-semibold transition cursor-pointer"
+              className="px-3.5 py-2 bg-[#231C38] hover:bg-[#2A2242] text-violet-300 hover:text-white border border-violet-800/50 rounded-xl text-xs font-semibold transition cursor-pointer"
               title="Discard Unsaved Changes"
             >
               Cancel
@@ -1300,27 +1390,32 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
         </div>
       </div>
 
-      {/* Navigation Pills */}
-      <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100/80 dark:bg-[#110A22] border border-slate-200 dark:border-violet-900/40 rounded-2xl shadow-xs">
-        {SECTIONS.map((sec) => {
-          const Icon = sec.icon;
-          const isActive = activeSection === sec.id;
-          return (
-            <button
-              key={sec.id}
-              onClick={() => setActiveSection(sec.id)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer shrink-0 ${
-                isActive
-                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-900/40 font-bold'
-                  : 'text-slate-600 hover:text-slate-900 dark:text-violet-300/70 dark:hover:text-white hover:bg-white dark:hover:bg-violet-900/30'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5 shrink-0" />
-              <span>{sec.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Main Studio Container: Split View vs Full Screen */}
+      <div className={`w-full ${viewMode === 'split' ? 'grid grid-cols-1 xl:grid-cols-12 gap-6 items-start' : 'space-y-6'}`}>
+        {/* LEFT COLUMN: Editor Panels */}
+        {viewMode !== 'preview' && (
+          <div className={`${viewMode === 'split' ? 'xl:col-span-6 2xl:col-span-5' : 'w-full max-w-5xl mx-auto'} space-y-5 min-w-0`}>
+            {/* Navigation Pills */}
+            <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-[#120B24] border border-violet-800/50 rounded-2xl shadow-xs">
+              {SECTIONS.map((sec) => {
+                const Icon = sec.icon;
+                const isActive = activeSection === sec.id;
+                return (
+                  <button
+                    key={sec.id}
+                    onClick={() => setActiveSection(sec.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer shrink-0 ${
+                      isActive
+                        ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-900/50 font-bold border border-violet-400/30'
+                        : 'text-violet-200 hover:text-white bg-[#1A1230]/60 hover:bg-[#251B44] border border-violet-900/30'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5 shrink-0 text-violet-300" />
+                    <span>{sec.label}</span>
+                  </button>
+                );
+              })}
+            </div>
 
       {/* SECTION 1: HERO SECTION */}
       {activeSection === 'hero' && (
@@ -1436,6 +1531,79 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
                   }
                   className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                 />
+              </div>
+            </div>
+
+            {/* Hero Visual Styling Studio */}
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
+              <label className="block text-xs font-bold text-slate-900 dark:text-white">
+                Hero Button & Frame Styling
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Primary Button Style */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Primary Button Glow Style
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5 text-xs">
+                    {[
+                      { id: 'gradient', label: 'Radiant Gradient' },
+                      { id: 'neon', label: 'Cyber Neon' },
+                      { id: 'glass', label: 'Frost Glass' }
+                    ].map((btn) => (
+                      <button
+                        key={btn.id}
+                        type="button"
+                        onClick={() =>
+                          setConfig((prev) => ({
+                            ...prev,
+                            hero: { ...prev.hero, buttonStyle: btn.id }
+                          }))
+                        }
+                        className={`py-1.5 px-2 rounded-xl text-[11px] font-medium border text-center transition cursor-pointer ${
+                          (config.hero?.buttonStyle || 'gradient') === btn.id
+                            ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Hero Window Chrome Style */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Window Frame Header
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5 text-xs">
+                    {[
+                      { id: 'traffic', label: 'macOS Dots' },
+                      { id: 'minimal', label: 'Cyber Lock' },
+                      { id: 'none', label: 'Seamless' }
+                    ].map((ch) => (
+                      <button
+                        key={ch.id}
+                        type="button"
+                        onClick={() =>
+                          setConfig((prev) => ({
+                            ...prev,
+                            hero: { ...prev.hero, windowChrome: ch.id }
+                          }))
+                        }
+                        className={`py-1.5 px-2 rounded-xl text-[11px] font-medium border text-center transition cursor-pointer ${
+                          (config.hero?.windowChrome || 'traffic') === ch.id
+                            ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        {ch.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -2010,7 +2178,72 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                {/* Card Theme Accent Glow */}
+                <div className="pt-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Card Theme Glow / Accent Color
+                  </label>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[
+                      { id: 'violet', label: 'Violet', bg: 'bg-violet-500' },
+                      { id: 'cyan', label: 'Cyan', bg: 'bg-cyan-500' },
+                      { id: 'emerald', label: 'Matrix', bg: 'bg-emerald-500' },
+                      { id: 'amber', label: 'Amber', bg: 'bg-amber-500' },
+                      { id: 'rose', label: 'Rose', bg: 'bg-rose-500' }
+                    ].map((th) => (
+                      <button
+                        key={th.id}
+                        type="button"
+                        onClick={() => handleUpdateFeature(idx, 'accentColor', th.id)}
+                        className={`py-1.5 px-2 rounded-xl text-[10px] font-semibold border flex items-center justify-center space-x-1.5 transition cursor-pointer ${
+                          (feat.accentColor || 'violet') === th.id
+                            ? 'border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-50 dark:bg-indigo-950/40 text-slate-900 dark:text-white font-bold'
+                            : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-500 hover:border-slate-300 dark:hover:border-slate-700'
+                        }`}
+                      >
+                        <span className={`w-2.5 h-2.5 rounded-full ${th.bg} shrink-0`} />
+                        <span>{th.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Card Visual Layout Style */}
+                <div className="pt-1">
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Card Visual Layout Style
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-xs">
+                    {[
+                      { id: 'banner-top', label: 'Top Banner', desc: 'Visual on top' },
+                      { id: 'banner-bottom', label: 'Bottom Visual', desc: 'Visual at bottom' },
+                      { id: 'card-overlay', label: 'Card Overlay', desc: 'Full image background' },
+                      { id: 'split', label: 'Split View', desc: 'Side-by-side' },
+                      { id: 'icon', label: 'Minimal Icon', desc: 'Clean typography' }
+                    ].map((lay) => (
+                      <button
+                        key={lay.id}
+                        type="button"
+                        onClick={() => handleUpdateFeature(idx, 'layout', lay.id)}
+                        className={`p-2 rounded-xl text-left border transition cursor-pointer ${
+                          (feat.layout || 'banner-top') === lay.id
+                            ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                            : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        <div className="text-[11px] font-bold leading-tight">{lay.label}</div>
+                        <div className={`text-[9px] mt-0.5 leading-tight ${
+                          (feat.layout || 'banner-top') === lay.id ? 'text-indigo-100' : 'text-slate-400 dark:text-slate-500'
+                        }`}>
+                          {lay.desc}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Image Uploader & Media Controls */}
+                <div className="space-y-2 pt-1">
                   <ImageUploader
                     label="Custom Feature Image / Visual Banner"
                     value={feat.image}
@@ -2021,29 +2254,56 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
                   />
 
                   {feat.image && (
-                    <div className="pt-1">
-                      <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                        Image Display Format
-                      </label>
-                      <div className="grid grid-cols-3 gap-1.5 text-xs">
-                        {[
-                          { id: 'banner', label: 'Full Banner' },
-                          { id: 'medium', label: 'Medium Graphic' },
-                          { id: 'icon', label: 'Compact Icon' }
-                        ].map((fmt) => (
-                          <button
-                            key={fmt.id}
-                            type="button"
-                            onClick={() => handleUpdateFeature(idx, 'imageSize', fmt.id)}
-                            className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border text-center transition cursor-pointer ${
-                              (feat.imageSize || 'banner') === fmt.id
-                                ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                            }`}
-                          >
-                            {fmt.label}
-                          </button>
-                        ))}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Image Display Format
+                        </label>
+                        <div className="grid grid-cols-3 gap-1.5 text-xs">
+                          {[
+                            { id: 'banner', label: 'Full Banner' },
+                            { id: 'medium', label: 'Medium Graphic' },
+                            { id: 'compact', label: 'Compact Strip' }
+                          ].map((fmt) => (
+                            <button
+                              key={fmt.id}
+                              type="button"
+                              onClick={() => handleUpdateFeature(idx, 'imageSize', fmt.id)}
+                              className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border text-center transition cursor-pointer ${
+                                (feat.imageSize || 'banner') === fmt.id
+                                  ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                              }`}
+                            >
+                              {fmt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Image Object Fit
+                        </label>
+                        <div className="grid grid-cols-2 gap-1.5 text-xs">
+                          {[
+                            { id: 'cover', label: 'Cover (Fill Frame)' },
+                            { id: 'contain', label: 'Contain (Fit Image)' }
+                          ].map((fit) => (
+                            <button
+                              key={fit.id}
+                              type="button"
+                              onClick={() => handleUpdateFeature(idx, 'imageFit', fit.id)}
+                              className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border text-center transition cursor-pointer ${
+                                (feat.imageFit || 'cover') === fit.id
+                                  ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                              }`}
+                            >
+                              {fit.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -2943,6 +3203,70 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
                 />
               </div>
             </div>
+
+            {/* CTA Visual Styling */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-violet-900/40">
+              <div>
+                <label className="block text-[11px] font-semibold text-violet-200 mb-1">
+                  Banner Tint & Contrast
+                </label>
+                <div className="grid grid-cols-3 gap-1.5 text-xs">
+                  {[
+                    { id: 'deep', label: 'Deep Obsidian' },
+                    { id: 'violet', label: 'Violet Aura' },
+                    { id: 'slate', label: 'High Contrast' }
+                  ].map((tnt) => (
+                    <button
+                      key={tnt.id}
+                      type="button"
+                      onClick={() =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          ctaBanner: { ...prev.ctaBanner, tintStyle: tnt.id }
+                        }))
+                      }
+                      className={`py-1.5 px-2 rounded-xl text-[11px] font-medium border text-center transition cursor-pointer ${
+                        (config.ctaBanner?.tintStyle || 'deep') === tnt.id
+                          ? 'bg-violet-600 text-white border-violet-600 font-bold shadow-xs'
+                          : 'bg-[#19142B] text-violet-300 border-violet-900/40 hover:bg-[#221B3A]'
+                      }`}
+                    >
+                      {tnt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-violet-200 mb-1">
+                  Button Alignment
+                </label>
+                <div className="grid grid-cols-2 gap-1.5 text-xs">
+                  {[
+                    { id: 'center', label: 'Centered' },
+                    { id: 'left', label: 'Split Left' }
+                  ].map((al) => (
+                    <button
+                      key={al.id}
+                      type="button"
+                      onClick={() =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          ctaBanner: { ...prev.ctaBanner, alignment: al.id }
+                        }))
+                      }
+                      className={`py-1.5 px-2 rounded-xl text-[11px] font-medium border text-center transition cursor-pointer ${
+                        (config.ctaBanner?.alignment || 'center') === al.id
+                          ? 'bg-violet-600 text-white border-violet-600 font-bold shadow-xs'
+                          : 'bg-[#19142B] text-violet-300 border-violet-900/40 hover:bg-[#221B3A]'
+                      }`}
+                    >
+                      {al.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -3018,6 +3342,20 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
           </div>
         </div>
       )}
+    </div>
+  )}
+
+  {/* RIGHT COLUMN: Live Interactive Preview */}
+  {viewMode !== 'editor' && (
+    <div className={`${viewMode === 'split' ? 'xl:col-span-6 2xl:col-span-7 xl:sticky xl:top-4' : 'w-full max-w-6xl mx-auto'} min-w-0`}>
+      <LiveLandingPreview
+        config={config}
+        activeSection={activeSection}
+        onSelectSection={(secId) => setActiveSection(secId)}
+      />
+    </div>
+  )}
+</div>
 
       {/* Floating Bottom Action Dock - Positioned at bottom center, never blocks page content */}
       {hasChanges && (

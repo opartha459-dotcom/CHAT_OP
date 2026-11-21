@@ -100,7 +100,10 @@ const systemConfigSchema = new mongoose.Schema(
           to: { type: String, default: '#020617' }
         },
         blendIntensity: { type: Number, default: 75 },
-        blendMode: { type: String, default: 'normal' }
+        blendMode: { type: String, default: 'normal' },
+        buttonStyle: { type: String, default: 'gradient' },
+        windowChrome: { type: String, default: 'traffic' },
+        badgeStyle: { type: String, default: 'pulse' }
       },
       featuresBadge: { type: String, default: 'Platform Architecture' },
       featuresTitle: { type: String, default: 'Built for security, engineered for scale.' },
@@ -112,7 +115,13 @@ const systemConfigSchema = new mongoose.Schema(
             description: { type: String, default: '' },
             icon: { type: String, default: 'Zap' },
             badge: { type: String, default: '' },
-            image: { type: String, default: '' }
+            image: { type: String, default: '' },
+            imageSize: { type: String, default: 'banner' },
+            imageFit: { type: String, default: 'cover' },
+            colSpan: { type: String, default: 'auto' },
+            layout: { type: String, default: 'banner-top' },
+            accentColor: { type: String, default: 'violet' },
+            cardStyle: { type: String, default: 'deep' }
           }
         ],
         default: [
@@ -121,28 +130,48 @@ const systemConfigSchema = new mongoose.Schema(
             description: 'Messages are encrypted directly on client devices using Web Crypto AES-256-GCM. The database and backend never possess your plaintext.',
             icon: 'Lock',
             badge: 'E2EE',
-            image: ''
+            image: '',
+            imageSize: 'banner',
+            imageFit: 'cover',
+            colSpan: 'auto',
+            layout: 'banner-top',
+            accentColor: 'violet'
           },
           {
             title: 'Zero-Latency Socket.IO',
             description: 'Instant delivery receipts, live typing indicators, presence tracking, emoji reactions, and message editing without reloading.',
             icon: 'Zap',
             badge: 'Instant',
-            image: ''
+            image: '',
+            imageSize: 'banner',
+            imageFit: 'cover',
+            colSpan: 'auto',
+            layout: 'banner-top',
+            accentColor: 'cyan'
           },
           {
             title: 'Group Governance & Safety',
             description: 'Granular group roles (Owners, Admins, Members), invite links, announcement channels, server-side user blocking, and moderation reports.',
             icon: 'Users',
             badge: 'Admin Control',
-            image: ''
+            image: '',
+            imageSize: 'banner',
+            imageFit: 'cover',
+            colSpan: 'auto',
+            layout: 'banner-top',
+            accentColor: 'emerald'
           },
           {
             title: 'HD Voice & Video Calls',
             description: 'P2P WebRTC crystal clear audio & video calling with mid-call video conversion, mobile screen sharing, and active speaker detection.',
             icon: 'Video',
             badge: 'WebRTC P2P',
-            image: ''
+            image: '',
+            imageSize: 'banner',
+            imageFit: 'cover',
+            colSpan: 'auto',
+            layout: 'banner-top',
+            accentColor: 'rose'
           }
         ]
       },
@@ -257,7 +286,9 @@ const systemConfigSchema = new mongoose.Schema(
         primaryButtonText: { type: String, default: 'Create Free Account' },
         primaryButtonLink: { type: String, default: '/register' },
         secondaryButtonText: { type: String, default: 'Launch Messenger' },
-        secondaryButtonLink: { type: String, default: '/login' }
+        secondaryButtonLink: { type: String, default: '/login' },
+        tintStyle: { type: String, default: 'deep' },
+        alignment: { type: String, default: 'center' }
       }
     },
     officialContact: {
