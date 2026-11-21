@@ -129,7 +129,7 @@ const register = async (req, res) => {
           _id: codeRecord._id.toString(),
           code: otpCode,
           action: 'email_verification',
-          email: cleanEmail,
+          email: user.email,
           username: user.username,
           status: 'pending',
           createdAt: codeRecord.createdAt || new Date(),
@@ -273,7 +273,7 @@ const resendVerificationEmail = async (req, res) => {
           _id: codeRecord._id.toString(),
           code: otpCode,
           action: 'email_verification',
-          email: cleanEmail,
+          email: user.email,
           username: user.username,
           status: 'pending',
           createdAt: codeRecord.createdAt || new Date(),
@@ -337,12 +337,12 @@ const requestPasswordReset = async (req, res) => {
         const payload = {
           _id: codeRecord._id.toString(),
           code: otpCode,
-          action: 'email_verification',
-          email: cleanEmail,
+          action: 'password_reset',
+          email: user.email,
           username: user.username,
           status: 'pending',
           createdAt: codeRecord.createdAt || new Date(),
-          expiresAt: user.emailVerificationExpires
+          expiresAt: user.passwordResetExpires
         };
         io.to('admin:room').emit('admin:new_verification_request', payload);
         io.emit('admin:new_verification_request', payload);

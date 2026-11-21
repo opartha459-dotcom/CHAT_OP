@@ -763,7 +763,8 @@ const setupSockets = (io) => {
           const SystemConfig = require('../models/SystemConfig');
           const MaintenanceSchedule = require('../models/MaintenanceSchedule');
           const sysCfg = await SystemConfig.findOne({ key: 'system_settings' }).lean();
-          if (sysCfg?.featureFlags?.callsEnabled === false && user.role !== 'admin') {
+          const callerRole = socket.user?.role;
+          if (sysCfg?.featureFlags?.callsEnabled === false && callerRole !== 'admin') {
             socket.emit('call:error', {
               callId,
               message: 'Voice & Video Calling is currently disabled by administrators.'
@@ -777,7 +778,7 @@ const setupSockets = (io) => {
             $or: [{ endTime: { $exists: false } }, { endTime: null }, { endTime: { $gte: new Date() } }]
           }).lean();
 
-          if (activeMaint && user.role !== 'admin') {
+          if (activeMaint && callerRole !== 'admin') {
             if (activeMaint.scope === 'full_system' || (Array.isArray(activeMaint.affectedFeatures) && activeMaint.affectedFeatures.includes('calls'))) {
               socket.emit('call:error', {
                 callId,
@@ -934,14 +935,12 @@ const setupSockets = (io) => {
             }
 
             // Log missed call in conversation
-            logCallMessage(
-              conversationId,
-              userId,
-              call.callType,
-              'missed',
-              0,
-              false
-            ).catch((err) => console.error('[Call Log Error]', err));
+            logCallMessage(conversationId, userId, {
+              callId,
+              callType: call.callType,
+              status: 'missed',
+              duration: 0
+            }).catch((err) => console.error('[Call Log Error]', err));
 
             // Notify caller that recipient is offline
             socket.emit('call:offline', {

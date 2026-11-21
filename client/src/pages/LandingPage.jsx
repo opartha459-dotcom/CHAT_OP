@@ -38,7 +38,7 @@ import {
 import { PulseLogo } from '../components/common/PulseLogo';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
-import { DEFAULT_LANDING_CONFIG, HeroBlendedImage } from '../components/admin/LandingCmsTab';
+import { DEFAULT_LANDING_CONFIG, HeroBlendedImage, STAT_THEMES } from '../components/admin/LandingCmsTab';
 import { SocialBrandIcon } from '../components/common/SocialBrandIcon';
 
 const ICON_MAP = {
@@ -1167,29 +1167,49 @@ export const LandingPage = () => {
 
         {/* ================= 4. QUANTIX PERFORMANCE METRICS ================= */}
         {stats && stats.length > 0 && (
-          <section id="metrics" className="w-full max-w-6xl mx-auto px-6 py-12 flex justify-center">
-            <div className="w-full rounded-3xl bg-gradient-to-b from-[#18102E]/80 to-[#120A24]/80 border border-violet-800/40 p-8 md:p-12 shadow-2xl backdrop-blur-xl relative overflow-hidden">
-              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-500/50 to-transparent" />
+          <section id="metrics" className="w-full max-w-6xl mx-auto px-6 py-14 flex justify-center relative">
+            {/* Ambient Multi-Hue Background Glow Aura */}
+            <div className="absolute inset-0 max-w-5xl mx-auto bg-gradient-to-r from-violet-600/15 via-fuchsia-600/10 to-cyan-600/15 rounded-3xl blur-3xl pointer-events-none -z-10" />
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-6 divide-y sm:divide-y-0 sm:divide-x divide-violet-900/40">
-                {stats.map((st, idx) => (
-                  <div
-                    key={idx}
-                    className="pt-6 sm:pt-0 sm:px-8 first:pt-0 sm:first:pl-2 sm:last:pr-2 flex flex-col items-center sm:items-start text-center sm:text-left mx-auto sm:mx-0 w-full"
-                  >
-                    <span className="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-violet-300 via-fuchsia-300 to-indigo-300 tracking-tight font-mono">
-                      {st.value}
-                    </span>
-                    <span className="text-xs font-bold text-white mt-2.5 uppercase tracking-wider font-mono">
-                      {st.label}
-                    </span>
-                    {st.description && (
-                      <span className="text-xs text-violet-300/70 mt-1 leading-relaxed">
-                        {st.description}
+            <div className="w-full rounded-3xl bg-gradient-to-b from-[#18102E]/90 to-[#100820]/95 border border-violet-800/40 p-6 sm:p-10 md:p-12 shadow-2xl backdrop-blur-2xl relative overflow-hidden">
+              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-400/80 to-transparent" />
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full">
+                {stats.map((st, idx) => {
+                  const fallbackColor = idx === 0 ? 'violet' : idx === 1 ? 'emerald' : 'cyan';
+                  const th = (STAT_THEMES && STAT_THEMES[st.accentColor]) || (STAT_THEMES && STAT_THEMES[fallbackColor]) || {
+                    border: 'border-violet-500/50',
+                    cardBg: 'bg-gradient-to-b from-[#1E1138]/90 to-[#140A26]/90',
+                    glowBox: 'shadow-[0_0_25px_rgba(168,85,247,0.3)]',
+                    topLaser: 'from-transparent via-violet-400 to-transparent',
+                    gradientText: 'from-violet-300 via-fuchsia-300 to-indigo-200'
+                  };
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`relative p-6 sm:p-8 rounded-2xl border ${th.border} ${th.cardBg} ${th.glowBox} flex flex-col items-center sm:items-start text-center sm:text-left transition-all duration-300 group overflow-hidden`}
+                    >
+                      {/* Top Glowing Laser Edge */}
+                      <div className={`absolute top-0 inset-x-4 h-[2px] bg-gradient-to-r ${th.topLaser} transition-opacity duration-300`} />
+
+                      {/* Ambient Accent Radial Glow */}
+                      <div className="absolute -top-12 -right-12 w-28 h-28 rounded-full blur-2xl pointer-events-none opacity-30 group-hover:opacity-70 transition duration-500" />
+
+                      <span className={`text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r ${th.gradientText} tracking-tight font-mono drop-shadow-[0_0_15px_rgba(255,255,255,0.12)]`}>
+                        {st.value}
                       </span>
-                    )}
-                  </div>
-                ))}
+                      <span className="text-xs font-bold text-white mt-3 uppercase tracking-wider font-mono">
+                        {st.label}
+                      </span>
+                      {(st.description || st.desc) && (
+                        <p className="text-xs sm:text-sm text-violet-200/90 mt-1.5 leading-relaxed font-sans">
+                          {st.description || st.desc}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </section>

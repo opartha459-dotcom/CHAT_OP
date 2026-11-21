@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { PulseLogo } from '../common/PulseLogo';
 import { SocialBrandIcon } from '../common/SocialBrandIcon';
+import { STAT_THEMES } from './LandingCmsTab';
 
 const ICON_MAP = {
   Lock,
@@ -741,15 +742,38 @@ export const LiveLandingPreview = ({
     if (!stats || stats.length === 0) return null;
     return (
       <section className="px-5 py-6 w-full max-w-3xl mx-auto">
-        <div className="rounded-2xl bg-[#140D27]/90 border border-violet-800/40 p-5 grid grid-cols-3 gap-4 text-center divide-x divide-violet-900/40">
-          {stats.map((st, i) => (
-            <div key={i} className="first:pl-0 pl-2">
-              <div className="text-xl sm:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-violet-300 to-indigo-300 font-mono">
-                {st.value}
-              </div>
-              <div className="text-[10px] font-bold text-white uppercase font-mono mt-1">{st.label}</div>
-            </div>
-          ))}
+        <div className="rounded-2xl bg-[#140D27]/90 border border-violet-800/40 p-4 sm:p-5 relative overflow-hidden">
+          <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-400/80 to-transparent" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {stats.map((st, i) => {
+              const fallbackColor = i === 0 ? 'violet' : i === 1 ? 'emerald' : 'cyan';
+              const th = (STAT_THEMES && STAT_THEMES[st.accentColor]) || (STAT_THEMES && STAT_THEMES[fallbackColor]) || {
+                border: 'border-violet-500/50',
+                cardBg: 'bg-gradient-to-b from-[#1E1138]/90 to-[#140A26]/90',
+                glowBox: 'shadow-[0_0_20px_rgba(168,85,247,0.25)]',
+                topLaser: 'from-transparent via-violet-400 to-transparent',
+                gradientText: 'from-violet-300 via-fuchsia-300 to-indigo-200'
+              };
+
+              return (
+                <div
+                  key={i}
+                  className={`p-3.5 rounded-xl border ${th.border} ${th.cardBg} ${th.glowBox} flex flex-col items-center sm:items-start text-center sm:text-left relative overflow-hidden transition-all duration-200`}
+                >
+                  <div className={`absolute top-0 inset-x-3 h-[2px] bg-gradient-to-r ${th.topLaser}`} />
+                  <div className={`text-xl sm:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r ${th.gradientText} font-mono`}>
+                    {st.value}
+                  </div>
+                  <div className="text-[10px] font-bold text-white uppercase font-mono mt-1">{st.label}</div>
+                  {(st.description || st.desc) && (
+                    <div className="text-[10px] text-violet-200/90 mt-1 leading-normal font-sans">
+                      {st.description || st.desc}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </section>
     );

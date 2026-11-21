@@ -189,13 +189,14 @@ const systemConfigSchema = new mongoose.Schema(
           {
             label: { type: String, default: '' },
             value: { type: String, default: '' },
-            description: { type: String, default: '' }
+            description: { type: String, default: '' },
+            accentColor: { type: String, default: 'violet' }
           }
         ],
         default: [
-          { label: 'Uptime', value: '99.99%', description: 'High availability' },
-          { label: 'Security', value: 'AES-256', description: 'Zero knowledge' },
-          { label: 'Latency', value: '< 50ms', description: 'Socket streaming' }
+          { label: 'Uptime', value: '99.99%', description: 'High availability', accentColor: 'violet' },
+          { label: 'Security', value: 'AES-256', description: 'Zero knowledge', accentColor: 'emerald' },
+          { label: 'Latency', value: '< 50ms', description: 'Socket streaming', accentColor: 'cyan' }
         ]
       },
       previewSection: {

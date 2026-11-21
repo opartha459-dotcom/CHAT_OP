@@ -336,6 +336,75 @@ export const FEATURE_CMS_CARD_THEMES = {
   }
 };
 
+export const STAT_THEMES = {
+  violet: {
+    id: 'violet',
+    name: 'Violet',
+    dot: 'bg-violet-500',
+    border: 'border-violet-500/50 hover:border-violet-400',
+    cardBg: 'bg-gradient-to-b from-[#1E1138]/90 to-[#140A26]/90',
+    glowBox: 'shadow-[0_0_25px_rgba(168,85,247,0.25)] hover:shadow-[0_0_35px_rgba(168,85,247,0.5)]',
+    topLaser: 'from-transparent via-violet-400 to-transparent',
+    gradientText: 'from-violet-300 via-fuchsia-300 to-indigo-200',
+    badge: 'bg-violet-500/20 text-violet-300 border-violet-500/40'
+  },
+  cyan: {
+    id: 'cyan',
+    name: 'Cyan',
+    dot: 'bg-cyan-500',
+    border: 'border-cyan-500/50 hover:border-cyan-400',
+    cardBg: 'bg-gradient-to-b from-[#0D1F33]/90 to-[#0A1524]/90',
+    glowBox: 'shadow-[0_0_25px_rgba(6,182,212,0.25)] hover:shadow-[0_0_35px_rgba(6,182,212,0.5)]',
+    topLaser: 'from-transparent via-cyan-400 to-transparent',
+    gradientText: 'from-cyan-300 via-teal-300 to-blue-200',
+    badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+  },
+  emerald: {
+    id: 'emerald',
+    name: 'Matrix',
+    dot: 'bg-emerald-500',
+    border: 'border-emerald-500/50 hover:border-emerald-400',
+    cardBg: 'bg-gradient-to-b from-[#0D261D]/90 to-[#0A1A14]/90',
+    glowBox: 'shadow-[0_0_25px_rgba(16,185,129,0.25)] hover:shadow-[0_0_35px_rgba(16,185,129,0.5)]',
+    topLaser: 'from-transparent via-emerald-400 to-transparent',
+    gradientText: 'from-emerald-300 via-teal-300 to-lime-200',
+    badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+  },
+  amber: {
+    id: 'amber',
+    name: 'Amber',
+    dot: 'bg-amber-500',
+    border: 'border-amber-500/50 hover:border-amber-400',
+    cardBg: 'bg-gradient-to-b from-[#2B1B0A]/90 to-[#1C1206]/90',
+    glowBox: 'shadow-[0_0_25px_rgba(245,158,11,0.25)] hover:shadow-[0_0_35px_rgba(245,158,11,0.5)]',
+    topLaser: 'from-transparent via-amber-400 to-transparent',
+    gradientText: 'from-amber-300 via-orange-300 to-yellow-200',
+    badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+  },
+  rose: {
+    id: 'rose',
+    name: 'Rose',
+    dot: 'bg-rose-500',
+    border: 'border-rose-500/50 hover:border-rose-400',
+    cardBg: 'bg-gradient-to-b from-[#2E0F21]/90 to-[#1F0916]/90',
+    glowBox: 'shadow-[0_0_25px_rgba(244,63,94,0.25)] hover:shadow-[0_0_35px_rgba(244,63,94,0.5)]',
+    topLaser: 'from-transparent via-rose-400 to-transparent',
+    gradientText: 'from-rose-300 via-pink-300 to-fuchsia-200',
+    badge: 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+  },
+  indigo: {
+    id: 'indigo',
+    name: 'Indigo',
+    dot: 'bg-indigo-500',
+    border: 'border-indigo-500/50 hover:border-indigo-400',
+    cardBg: 'bg-gradient-to-b from-[#14153B]/90 to-[#0D0E29]/90',
+    glowBox: 'shadow-[0_0_25px_rgba(99,102,241,0.25)] hover:shadow-[0_0_35px_rgba(99,102,241,0.5)]',
+    topLaser: 'from-transparent via-indigo-400 to-transparent',
+    gradientText: 'from-indigo-300 via-purple-300 to-sky-200',
+    badge: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+  }
+};
+
 export const DEFAULT_LANDING_CONFIG = {
   brandName: 'PulseChat',
   brandTagline: 'AES-256 E2EE',
@@ -432,9 +501,9 @@ export const DEFAULT_LANDING_CONFIG = {
     'Peer-to-Peer Encrypted Voice & Video'
   ],
   stats: [
-    { label: 'Uptime', value: '99.99%', description: 'High availability' },
-    { label: 'Security', value: 'AES-256', description: 'Zero knowledge' },
-    { label: 'Latency', value: '< 50ms', description: 'Socket streaming' }
+    { label: 'Uptime', value: '99.99%', description: 'High availability', accentColor: 'violet' },
+    { label: 'Security', value: 'AES-256', description: 'Zero knowledge', accentColor: 'emerald' },
+    { label: 'Latency', value: '< 50ms', description: 'Socket streaming', accentColor: 'cyan' }
   ],
   previewSection: {
     enabled: true,
@@ -1143,7 +1212,7 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
 
   // Stats helpers
   const handleAddStat = () => {
-    const newStat = { label: 'Metric', value: '100%', description: 'Highlight text' };
+    const newStat = { label: 'Metric', value: '100%', description: 'Highlight text', accentColor: 'violet' };
     setConfig((prev) => ({
       ...prev,
       stats: [...(prev.stats || []), newStat]
@@ -2538,61 +2607,97 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {(config.stats || []).map((st, idx) => (
-              <div
-                key={idx}
-                className="p-4 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2 relative"
-              >
-                <button
-                  type="button"
-                  onClick={() => handleDeleteStat(idx)}
-                  className="absolute top-2.5 right-2.5 text-slate-400 hover:text-rose-500 transition cursor-pointer"
-                  title="Remove Stat"
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {(config.stats || []).map((st, idx) => {
+              const th = STAT_THEMES[st.accentColor] || STAT_THEMES[idx === 0 ? 'violet' : idx === 1 ? 'emerald' : 'cyan'] || STAT_THEMES.violet;
+              return (
+                <div
+                  key={idx}
+                  className={`p-4 bg-slate-900/90 dark:bg-slate-950/80 border ${th.border} rounded-2xl space-y-3 relative overflow-hidden shadow-lg transition-all duration-300 group`}
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                  {/* Top Glowing Laser Edge */}
+                  <div className={`h-1 w-full bg-gradient-to-r ${th.topLaser} absolute top-0 inset-x-0`} />
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">
-                    Metric Value
-                  </label>
-                  <input
-                    type="text"
-                    value={st.value || ''}
-                    onChange={(e) => handleUpdateStat(idx, 'value', e.target.value)}
-                    placeholder="99.99%"
-                    className="w-full px-2.5 py-1 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <span className={`px-2 py-0.5 text-[10px] font-mono font-bold rounded-md border uppercase tracking-wider ${th.badge}`}>
+                      STAT #{idx + 1}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStat(idx)}
+                      className="text-slate-400 hover:text-rose-500 transition cursor-pointer p-1"
+                      title="Remove Stat"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">
-                    Label
-                  </label>
-                  <input
-                    type="text"
-                    value={st.label || ''}
-                    onChange={(e) => handleUpdateStat(idx, 'label', e.target.value)}
-                    placeholder="Uptime"
-                    className="w-full px-2.5 py-1 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Metric Value
+                    </label>
+                    <input
+                      type="text"
+                      value={st.value || ''}
+                      onChange={(e) => handleUpdateStat(idx, 'value', e.target.value)}
+                      placeholder="99.99%"
+                      className="w-full px-2.5 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-white font-bold font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">
-                    Description
-                  </label>
-                  <input
-                    type="text"
-                    value={st.description || ''}
-                    onChange={(e) => handleUpdateStat(idx, 'description', e.target.value)}
-                    placeholder="High availability"
-                    className="w-full px-2.5 py-1 text-[11px] rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Label
+                    </label>
+                    <input
+                      type="text"
+                      value={st.label || ''}
+                      onChange={(e) => handleUpdateStat(idx, 'label', e.target.value)}
+                      placeholder="Uptime"
+                      className="w-full px-2.5 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Description
+                    </label>
+                    <input
+                      type="text"
+                      value={st.description || ''}
+                      onChange={(e) => handleUpdateStat(idx, 'description', e.target.value)}
+                      placeholder="High availability"
+                      className="w-full px-2.5 py-1.5 text-[11px] rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  {/* GLOWING THEME & ACCENT COLOR CONTROL */}
+                  <div className="pt-1 border-t border-slate-800/80">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                      <span>Card Theme Glow / Accent Color</span>
+                      <span className="text-[9px] text-violet-400 font-mono">glow active</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-1">
+                      {Object.values(STAT_THEMES).map((themeOption) => (
+                        <button
+                          key={themeOption.id}
+                          type="button"
+                          onClick={() => handleUpdateStat(idx, 'accentColor', themeOption.id)}
+                          className={`py-1 px-1.5 rounded-lg text-[9px] font-semibold border flex items-center justify-center space-x-1 transition cursor-pointer ${
+                            (st.accentColor || 'violet') === themeOption.id
+                              ? 'border-indigo-400 ring-1 ring-indigo-400/50 bg-indigo-950/70 text-white font-bold shadow-xs'
+                              : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:text-white hover:border-slate-700'
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${themeOption.dot} shrink-0`} />
+                          <span>{themeOption.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
