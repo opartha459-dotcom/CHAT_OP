@@ -1345,6 +1345,7 @@ const updateLandingConfig = async (req, res) => {
       ...(config.landingPageConfig ? (config.landingPageConfig.toObject ? config.landingPageConfig.toObject() : config.landingPageConfig) : {}),
       ...landingPageConfig
     };
+    config.markModified('landingPageConfig');
     config.lastUpdatedBy = req.user._id;
     await config.save();
 

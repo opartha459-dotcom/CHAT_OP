@@ -839,7 +839,10 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
             footer: {
               ...DEFAULT_LANDING_CONFIG.footer,
               ...(data.landingPageConfig.footer || {})
-            }
+            },
+            highlightPoints: Array.isArray(data.landingPageConfig.highlightPoints)
+              ? data.landingPageConfig.highlightPoints
+              : DEFAULT_LANDING_CONFIG.highlightPoints
           };
           setConfig(merged);
           setSavedConfig(merged);
@@ -935,19 +938,39 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
   };
 
   // Highlight points helpers
-  const handleAddHighlight = () => {
-    if (!newHighlight.trim()) return;
+  const handleAddHighlight = (e) => {
+    if (e) {
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+    }
+    const text = newHighlight.trim();
+    if (!text) {
+      // If user clicks add without typing, provide a sensible default item to edit
+      setConfig((prev) => ({
+        ...prev,
+        highlightPoints: [...(prev.highlightPoints || []), 'New Trust & Compliance Point']
+      }));
+      return;
+    }
     setConfig((prev) => ({
       ...prev,
-      highlightPoints: [...(prev.highlightPoints || []), newHighlight.trim()]
+      highlightPoints: [...(prev.highlightPoints || []), text]
     }));
     setNewHighlight('');
+  };
+
+  const handleUpdateHighlight = (index, val) => {
+    setConfig((prev) => {
+      const updated = [...(prev.highlightPoints || [])];
+      updated[index] = val;
+      return { ...prev, highlightPoints: updated };
+    });
   };
 
   const handleDeleteHighlight = (index) => {
     setConfig((prev) => ({
       ...prev,
-      highlightPoints: prev.highlightPoints.filter((_, i) => i !== index)
+      highlightPoints: (prev.highlightPoints || []).filter((_, i) => i !== index)
     }));
   };
 
@@ -1921,53 +1944,87 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
 
       {/* SECTION 6: TRUST HIGHLIGHTS */}
       {activeSection === 'highlights' && (
-        <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs space-y-5">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Trust & Compliance Checkmarks</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Bullet points with checkmark icons displayed below the features grid.
-            </p>
+        <div className="p-5 sm:p-6 bg-[#231C38] border border-violet-900/30 rounded-2xl shadow-xl space-y-5 text-white">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Trust &amp; Compliance Checkmarks</span>
+              </h3>
+              <p className="text-xs text-violet-300/70 mt-0.5">
+                Bullet points with checkmark icons displayed below the features grid on your public homepage.
+              </p>
+            </div>
+            <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-[#19142B] border border-violet-900/40 text-violet-300 self-start sm:self-center">
+              {(config.highlightPoints || []).length} Checkmark{(config.highlightPoints || []).length !== 1 ? 's' : ''}
+            </span>
           </div>
 
+          {/* Add Checkmark Input Bar */}
           <div className="flex gap-2">
             <input
               type="text"
               value={newHighlight}
               onChange={(e) => setNewHighlight(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddHighlight()}
-              placeholder="e.g. ISO 27001 Readiness or Zero-Trace Logging"
-              className="flex-1 px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddHighlight();
+                }
+              }}
+              placeholder="e.g. ISO 27001 Readiness, Zero-Trace Logging, or Encrypted VoIP"
+              className="flex-1 px-3.5 py-2.5 text-xs rounded-xl bg-[#19142B] border border-violet-900/40 text-white placeholder-violet-300/40 focus:outline-none focus:ring-2 focus:ring-violet-500"
             />
             <button
               type="button"
               onClick={handleAddHighlight}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition active:scale-95 cursor-pointer"
+              className="px-4 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition active:scale-95 shadow-md shadow-violet-950/40 cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add</span>
+              <Plus className="w-4 h-4" />
+              <span>Add Checkmark</span>
             </button>
           </div>
 
+          {/* List of Checkmarks with Inline Editing */}
           <div className="space-y-2">
             {(config.highlightPoints || []).map((pt, idx) => (
               <div
                 key={idx}
-                className="flex items-center justify-between px-3.5 py-2 bg-slate-50 dark:bg-slate-950/50 rounded-xl border border-slate-200 dark:border-slate-800 text-xs"
+                className="flex items-center justify-between px-3.5 py-2.5 bg-[#19142B] rounded-xl border border-violet-900/30 text-xs transition hover:border-violet-700/50"
               >
-                <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>{pt}</span>
+                <div className="flex items-center space-x-2.5 flex-1 min-w-0 mr-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <input
+                    type="text"
+                    value={pt}
+                    onChange={(e) => handleUpdateHighlight(idx, e.target.value)}
+                    className="flex-1 bg-transparent border-0 border-b border-transparent hover:border-violet-700/50 focus:border-violet-400 focus:outline-none text-xs text-white px-1.5 py-0.5 font-medium transition"
+                    placeholder="Enter checkmark description..."
+                  />
                 </div>
                 <button
                   type="button"
                   onClick={() => handleDeleteHighlight(idx)}
-                  className="text-slate-400 hover:text-rose-500 transition cursor-pointer p-1"
+                  className="text-violet-400/60 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-950/30 transition cursor-pointer shrink-0"
                   title="Remove point"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
             ))}
+
+            {(!config.highlightPoints || config.highlightPoints.length === 0) && (
+              <div className="py-8 text-center bg-[#19142B]/50 rounded-xl border border-dashed border-violet-900/40 text-violet-300/60 text-xs space-y-2">
+                <p>No trust checkmarks added yet.</p>
+                <button
+                  type="button"
+                  onClick={() => handleAddHighlight()}
+                  className="px-3 py-1.5 bg-violet-600/30 hover:bg-violet-600/50 text-violet-200 border border-violet-500/30 rounded-lg text-xs font-semibold cursor-pointer transition"
+                >
+                  + Add First Checkmark
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
