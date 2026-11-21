@@ -405,6 +405,79 @@ export const STAT_THEMES = {
   }
 };
 
+export const STATS_WRAPPER_THEMES = {
+  aurora: {
+    id: 'aurora',
+    name: 'Multi-Hue Aurora',
+    dot: 'bg-gradient-to-r from-violet-500 via-fuchsia-500 to-cyan-400',
+    border: 'border-violet-500/40 hover:border-violet-400/80',
+    topLaser: 'from-violet-500 via-fuchsia-400 to-cyan-400',
+    ambientGlow: 'from-violet-600/25 via-fuchsia-600/15 to-cyan-600/25',
+    boxGlow: 'shadow-[0_0_40px_rgba(168,85,247,0.3)] hover:shadow-[0_0_55px_rgba(168,85,247,0.45)]',
+    containerBg: 'bg-gradient-to-b from-[#18102E]/90 to-[#100820]/95'
+  },
+  violet: {
+    id: 'violet',
+    name: 'Violet Glow',
+    dot: 'bg-violet-500',
+    border: 'border-violet-500/40 hover:border-violet-400/80',
+    topLaser: 'from-transparent via-violet-400 to-transparent',
+    ambientGlow: 'from-violet-600/30 via-purple-600/20 to-violet-600/30',
+    boxGlow: 'shadow-[0_0_40px_rgba(168,85,247,0.3)] hover:shadow-[0_0_55px_rgba(168,85,247,0.45)]',
+    containerBg: 'bg-gradient-to-b from-[#1C1035]/90 to-[#0C061A]/95'
+  },
+  cyan: {
+    id: 'cyan',
+    name: 'Cyan Glow',
+    dot: 'bg-cyan-500',
+    border: 'border-cyan-500/40 hover:border-cyan-400/80',
+    topLaser: 'from-transparent via-cyan-400 to-transparent',
+    ambientGlow: 'from-cyan-600/30 via-teal-600/20 to-cyan-600/30',
+    boxGlow: 'shadow-[0_0_40px_rgba(6,182,212,0.3)] hover:shadow-[0_0_55px_rgba(6,182,212,0.45)]',
+    containerBg: 'bg-gradient-to-b from-[#0A1D30]/90 to-[#040D17]/95'
+  },
+  emerald: {
+    id: 'emerald',
+    name: 'Matrix Emerald',
+    dot: 'bg-emerald-500',
+    border: 'border-emerald-500/40 hover:border-emerald-400/80',
+    topLaser: 'from-transparent via-emerald-400 to-transparent',
+    ambientGlow: 'from-emerald-600/30 via-teal-600/20 to-emerald-600/30',
+    boxGlow: 'shadow-[0_0_40px_rgba(16,185,129,0.3)] hover:shadow-[0_0_55px_rgba(16,185,129,0.45)]',
+    containerBg: 'bg-gradient-to-b from-[#0A241A]/90 to-[#04100C]/95'
+  },
+  amber: {
+    id: 'amber',
+    name: 'Amber Glow',
+    dot: 'bg-amber-500',
+    border: 'border-amber-500/40 hover:border-amber-400/80',
+    topLaser: 'from-transparent via-amber-400 to-transparent',
+    ambientGlow: 'from-amber-600/30 via-orange-600/20 to-amber-600/30',
+    boxGlow: 'shadow-[0_0_40px_rgba(245,158,11,0.3)] hover:shadow-[0_0_55px_rgba(245,158,11,0.45)]',
+    containerBg: 'bg-gradient-to-b from-[#2B1B0A]/90 to-[#120B03]/95'
+  },
+  rose: {
+    id: 'rose',
+    name: 'Neon Rose',
+    dot: 'bg-rose-500',
+    border: 'border-rose-500/40 hover:border-rose-400/80',
+    topLaser: 'from-transparent via-rose-400 to-transparent',
+    ambientGlow: 'from-rose-600/30 via-pink-600/20 to-rose-600/30',
+    boxGlow: 'shadow-[0_0_40px_rgba(244,63,94,0.3)] hover:shadow-[0_0_55px_rgba(244,63,94,0.45)]',
+    containerBg: 'bg-gradient-to-b from-[#2C0C1E]/90 to-[#12040C]/95'
+  },
+  indigo: {
+    id: 'indigo',
+    name: 'Deep Indigo',
+    dot: 'bg-indigo-500',
+    border: 'border-indigo-500/40 hover:border-indigo-400/80',
+    topLaser: 'from-transparent via-indigo-400 to-transparent',
+    ambientGlow: 'from-indigo-600/30 via-purple-600/20 to-indigo-600/30',
+    boxGlow: 'shadow-[0_0_40px_rgba(99,102,241,0.3)] hover:shadow-[0_0_55px_rgba(99,102,241,0.45)]',
+    containerBg: 'bg-gradient-to-b from-[#13133B]/90 to-[#070717]/95'
+  }
+};
+
 export const DEFAULT_LANDING_CONFIG = {
   brandName: 'PulseChat',
   brandTagline: 'AES-256 E2EE',
@@ -505,6 +578,8 @@ export const DEFAULT_LANDING_CONFIG = {
     { label: 'Security', value: 'AES-256', description: 'Zero knowledge', accentColor: 'emerald' },
     { label: 'Latency', value: '< 50ms', description: 'Socket streaming', accentColor: 'cyan' }
   ],
+  statsWrapperColor: 'aurora',
+  statsWrapperGlow: true,
   previewSection: {
     enabled: true,
     title: 'Engineered for speed, privacy, and modern teams.',
@@ -2605,6 +2680,55 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
               <Plus className="w-3.5 h-3.5" />
               <span>Add Stat</span>
             </button>
+          </div>
+
+          {/* SECTION WRAPPER GLOW & COLOR CONTROL */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-violet-950/40 via-slate-900/80 to-slate-900/80 border border-violet-800/40 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-violet-400 animate-pulse shadow-[0_0_8px_#A855F7]" />
+                <h4 className="text-xs font-bold text-white tracking-wide uppercase font-mono">
+                  Outer Wrapper Glow & Theme Color
+                </h4>
+              </div>
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <span className="text-[11px] text-slate-300 font-medium">Glow Effect:</span>
+                <input
+                  type="checkbox"
+                  checked={config.statsWrapperGlow ?? true}
+                  onChange={(e) => setConfig((prev) => ({ ...prev, statsWrapperGlow: e.target.checked }))}
+                  className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                />
+                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${config.statsWrapperGlow ?? true ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60' : 'bg-slate-800 text-slate-400'}`}>
+                  {config.statsWrapperGlow ?? true ? 'ON' : 'OFF'}
+                </span>
+              </label>
+            </div>
+
+            <p className="text-[11px] text-slate-400">
+              Control the glowing ambient aura, border illumination, and top laser edge surrounding all platform metric cards.
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5 pt-1">
+              {Object.values(STATS_WRAPPER_THEMES).map((wrapTheme) => {
+                const isSelected = (config.statsWrapperColor || 'aurora') === wrapTheme.id;
+                return (
+                  <button
+                    key={wrapTheme.id}
+                    type="button"
+                    onClick={() => setConfig((prev) => ({ ...prev, statsWrapperColor: wrapTheme.id }))}
+                    className={`py-2 px-2 rounded-xl text-[10px] font-semibold border flex flex-col items-center justify-center space-y-1 transition-all cursor-pointer ${
+                      isSelected
+                        ? 'border-indigo-400 ring-2 ring-indigo-400/50 bg-indigo-950/80 text-white font-bold shadow-md shadow-indigo-950/60'
+                        : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    <span className={`w-3.5 h-3.5 rounded-full ${wrapTheme.dot} shadow-xs shrink-0`} />
+                    <span className="truncate w-full text-center">{wrapTheme.name}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

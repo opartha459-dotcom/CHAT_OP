@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 import { PulseLogo } from '../common/PulseLogo';
 import { SocialBrandIcon } from '../common/SocialBrandIcon';
-import { STAT_THEMES } from './LandingCmsTab';
+import { STAT_THEMES, STATS_WRAPPER_THEMES } from './LandingCmsTab';
 
 const ICON_MAP = {
   Lock,
@@ -80,6 +80,8 @@ export const LiveLandingPreview = ({
     features = [],
     highlightPoints = [],
     stats = [],
+    statsWrapperColor = 'aurora',
+    statsWrapperGlow = true,
     previewSection,
     socialLinks = [],
     faqBadge = 'Architecture & Security',
@@ -740,10 +742,26 @@ export const LiveLandingPreview = ({
 
   const renderMetrics = () => {
     if (!stats || stats.length === 0) return null;
+    const wrapperColorKey = statsWrapperColor || 'aurora';
+    const isGlowEnabled = statsWrapperGlow !== false;
+    const wrapTh = (STATS_WRAPPER_THEMES && STATS_WRAPPER_THEMES[wrapperColorKey]) || STATS_WRAPPER_THEMES?.aurora || {
+      border: 'border-violet-500/40',
+      containerBg: 'bg-[#140D27]/90',
+      boxGlow: 'shadow-[0_0_25px_rgba(168,85,247,0.3)]',
+      topLaser: 'from-violet-500 via-fuchsia-400 to-cyan-400',
+      ambientGlow: 'from-violet-600/25 via-fuchsia-600/15 to-cyan-600/25'
+    };
+
     return (
-      <section className="px-5 py-6 w-full max-w-3xl mx-auto">
-        <div className="rounded-2xl bg-[#140D27]/90 border border-violet-800/40 p-4 sm:p-5 relative overflow-hidden">
-          <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-400/80 to-transparent" />
+      <section className="px-5 py-6 w-full max-w-3xl mx-auto relative">
+        {/* Ambient Halo Glow */}
+        {isGlowEnabled && (
+          <div className={`absolute inset-0 bg-gradient-to-r ${wrapTh.ambientGlow} rounded-2xl blur-2xl pointer-events-none -z-10`} />
+        )}
+        <div className={`rounded-2xl ${wrapTh.containerBg} border ${wrapTh.border} ${isGlowEnabled ? wrapTh.boxGlow : ''} p-4 sm:p-5 relative overflow-hidden transition-all duration-300`}>
+          {isGlowEnabled && (
+            <div className={`absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r ${wrapTh.topLaser}`} />
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {stats.map((st, i) => {
               const fallbackColor = i === 0 ? 'violet' : i === 1 ? 'emerald' : 'cyan';

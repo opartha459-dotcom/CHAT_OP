@@ -199,6 +199,8 @@ const systemConfigSchema = new mongoose.Schema(
           { label: 'Latency', value: '< 50ms', description: 'Socket streaming', accentColor: 'cyan' }
         ]
       },
+      statsWrapperColor: { type: String, default: 'aurora' },
+      statsWrapperGlow: { type: Boolean, default: true },
       previewSection: {
         enabled: { type: Boolean, default: true },
         title: { type: String, default: 'Engineered for speed, privacy, and modern teams.' },

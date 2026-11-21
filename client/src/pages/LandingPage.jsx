@@ -38,7 +38,7 @@ import {
 import { PulseLogo } from '../components/common/PulseLogo';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
-import { DEFAULT_LANDING_CONFIG, HeroBlendedImage, STAT_THEMES } from '../components/admin/LandingCmsTab';
+import { DEFAULT_LANDING_CONFIG, HeroBlendedImage, STAT_THEMES, STATS_WRAPPER_THEMES } from '../components/admin/LandingCmsTab';
 import { SocialBrandIcon } from '../components/common/SocialBrandIcon';
 
 const ICON_MAP = {
@@ -1166,54 +1166,75 @@ export const LandingPage = () => {
         )}
 
         {/* ================= 4. QUANTIX PERFORMANCE METRICS ================= */}
-        {stats && stats.length > 0 && (
-          <section id="metrics" className="w-full max-w-6xl mx-auto px-6 py-14 flex justify-center relative">
-            {/* Ambient Multi-Hue Background Glow Aura */}
-            <div className="absolute inset-0 max-w-5xl mx-auto bg-gradient-to-r from-violet-600/15 via-fuchsia-600/10 to-cyan-600/15 rounded-3xl blur-3xl pointer-events-none -z-10" />
+        {stats && stats.length > 0 && (() => {
+          const wrapperColorKey = config.statsWrapperColor || 'aurora';
+          const isGlowEnabled = config.statsWrapperGlow !== false;
+          const wrapTh = (STATS_WRAPPER_THEMES && STATS_WRAPPER_THEMES[wrapperColorKey]) || STATS_WRAPPER_THEMES?.aurora || {
+            border: 'border-violet-500/40',
+            containerBg: 'bg-gradient-to-b from-[#18102E]/90 to-[#100820]/95',
+            boxGlow: 'shadow-[0_0_40px_rgba(168,85,247,0.3)]',
+            topLaser: 'from-violet-500 via-fuchsia-400 to-cyan-400',
+            ambientGlow: 'from-violet-600/25 via-fuchsia-600/15 to-cyan-600/25'
+          };
 
-            <div className="w-full rounded-3xl bg-gradient-to-b from-[#18102E]/90 to-[#100820]/95 border border-violet-800/40 p-6 sm:p-10 md:p-12 shadow-2xl backdrop-blur-2xl relative overflow-hidden">
-              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-400/80 to-transparent" />
+          return (
+            <section id="metrics" className="w-full max-w-6xl mx-auto px-6 py-14 flex justify-center relative">
+              {/* Ambient Background Aura Glow controlled by Admin */}
+              {isGlowEnabled && (
+                <div
+                  className={`absolute inset-0 max-w-5xl mx-auto bg-gradient-to-r ${wrapTh.ambientGlow} rounded-3xl blur-3xl pointer-events-none -z-10`}
+                />
+              )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full">
-                {stats.map((st, idx) => {
-                  const fallbackColor = idx === 0 ? 'violet' : idx === 1 ? 'emerald' : 'cyan';
-                  const th = (STAT_THEMES && STAT_THEMES[st.accentColor]) || (STAT_THEMES && STAT_THEMES[fallbackColor]) || {
-                    border: 'border-violet-500/50',
-                    cardBg: 'bg-gradient-to-b from-[#1E1138]/90 to-[#140A26]/90',
-                    glowBox: 'shadow-[0_0_25px_rgba(168,85,247,0.3)]',
-                    topLaser: 'from-transparent via-violet-400 to-transparent',
-                    gradientText: 'from-violet-300 via-fuchsia-300 to-indigo-200'
-                  };
+              <div
+                className={`w-full rounded-3xl ${wrapTh.containerBg} border ${wrapTh.border} ${isGlowEnabled ? wrapTh.boxGlow : ''} p-6 sm:p-10 md:p-12 shadow-2xl backdrop-blur-2xl relative overflow-hidden transition-all duration-500`}
+              >
+                {/* Top Glowing Laser Edge controlled by Admin */}
+                {isGlowEnabled && (
+                  <div className={`absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r ${wrapTh.topLaser}`} />
+                )}
 
-                  return (
-                    <div
-                      key={idx}
-                      className={`relative p-6 sm:p-8 rounded-2xl border ${th.border} ${th.cardBg} ${th.glowBox} flex flex-col items-center sm:items-start text-center sm:text-left transition-all duration-300 group overflow-hidden`}
-                    >
-                      {/* Top Glowing Laser Edge */}
-                      <div className={`absolute top-0 inset-x-4 h-[2px] bg-gradient-to-r ${th.topLaser} transition-opacity duration-300`} />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full">
+                  {stats.map((st, idx) => {
+                    const fallbackColor = idx === 0 ? 'violet' : idx === 1 ? 'emerald' : 'cyan';
+                    const th = (STAT_THEMES && STAT_THEMES[st.accentColor]) || (STAT_THEMES && STAT_THEMES[fallbackColor]) || {
+                      border: 'border-violet-500/50',
+                      cardBg: 'bg-gradient-to-b from-[#1E1138]/90 to-[#140A26]/90',
+                      glowBox: 'shadow-[0_0_25px_rgba(168,85,247,0.3)]',
+                      topLaser: 'from-transparent via-violet-400 to-transparent',
+                      gradientText: 'from-violet-300 via-fuchsia-300 to-indigo-200'
+                    };
 
-                      {/* Ambient Accent Radial Glow */}
-                      <div className="absolute -top-12 -right-12 w-28 h-28 rounded-full blur-2xl pointer-events-none opacity-30 group-hover:opacity-70 transition duration-500" />
+                    return (
+                      <div
+                        key={idx}
+                        className={`relative p-6 sm:p-8 rounded-2xl border ${th.border} ${th.cardBg} ${th.glowBox} flex flex-col items-center sm:items-start text-center sm:text-left transition-all duration-300 group overflow-hidden`}
+                      >
+                        {/* Top Glowing Laser Edge */}
+                        <div className={`absolute top-0 inset-x-4 h-[2px] bg-gradient-to-r ${th.topLaser} transition-opacity duration-300`} />
 
-                      <span className={`text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r ${th.gradientText} tracking-tight font-mono drop-shadow-[0_0_15px_rgba(255,255,255,0.12)]`}>
-                        {st.value}
-                      </span>
-                      <span className="text-xs font-bold text-white mt-3 uppercase tracking-wider font-mono">
-                        {st.label}
-                      </span>
-                      {(st.description || st.desc) && (
-                        <p className="text-xs sm:text-sm text-violet-200/90 mt-1.5 leading-relaxed font-sans">
-                          {st.description || st.desc}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
+                        {/* Ambient Accent Radial Glow */}
+                        <div className="absolute -top-12 -right-12 w-28 h-28 rounded-full blur-2xl pointer-events-none opacity-30 group-hover:opacity-70 transition duration-500" />
+
+                        <span className={`text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r ${th.gradientText} tracking-tight font-mono drop-shadow-[0_0_15px_rgba(255,255,255,0.12)]`}>
+                          {st.value}
+                        </span>
+                        <span className="text-xs font-bold text-white mt-3 uppercase tracking-wider font-mono">
+                          {st.label}
+                        </span>
+                        {(st.description || st.desc) && (
+                          <p className="text-xs sm:text-sm text-violet-200/90 mt-1.5 leading-relaxed font-sans">
+                            {st.description || st.desc}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          </section>
-        )}
+            </section>
+          );
+        })()}
 
         {/* ================= 5. QUANTIX APP INTERFACE SHOWCASE ================= */}
         {previewSection?.enabled && (
