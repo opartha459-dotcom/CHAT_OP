@@ -2134,7 +2134,7 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className={`grid gap-5 ${viewMode === 'split' ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'}`}>
             {(config.features || []).map((feat, idx) => {
               const cardTh = FEATURE_CMS_CARD_THEMES[feat.accentColor] || FEATURE_CMS_CARD_THEMES.violet;
               const isMinimalIcon = feat.layout === 'icon' || feat.imageSize === 'icon';

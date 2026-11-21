@@ -802,7 +802,7 @@ export const LandingPage = () => {
             </div>
 
             {/* Asymmetrical Perfectly Balanced Bento Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full mx-auto text-left">
+            <div className={`grid grid-cols-1 ${features.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-3'} gap-6 w-full mx-auto text-left`}>
               {features.map((feat, idx) => {
                 // Determine responsive column span:
                 // - Respect explicit CMS override feat.colSpan if set ('wide' | 'normal' | 'full')
@@ -824,7 +824,10 @@ export const LandingPage = () => {
                   isHighlight = false;
                 } else {
                   const total = features.length;
-                  if (total === 4) {
+                  if (feat.layout === 'split') {
+                    spanClass = 'col-span-1 md:col-span-2 lg:col-span-2';
+                    isHighlight = true;
+                  } else if (total === 4) {
                     // Staggered balanced diagonal bento: Card 0 and Card 3 are wide
                     if (idx === 0 || idx === 3) {
                       spanClass = 'col-span-1 md:col-span-2 lg:col-span-2';
@@ -916,7 +919,7 @@ export const LandingPage = () => {
                   imgHeightClass = 'h-52 sm:h-64';
                 }
 
-                const isSplitLayout = layout === 'split' && hasImage && imageSize !== 'icon' && isHighlight;
+                const isSplitLayout = layout === 'split' && hasImage && imageSize !== 'icon';
                 const isOverlayLayout = layout === 'card-overlay' && hasImage;
                 const isBottomLayout = layout === 'banner-bottom' && hasImage && imageSize !== 'icon';
 

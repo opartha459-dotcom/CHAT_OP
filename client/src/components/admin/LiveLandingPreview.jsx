@@ -368,7 +368,12 @@ export const LiveLandingPreview = ({
       {/* Bento Grid — columns driven by device state, NOT Tailwind breakpoints */}
       {(() => {
         // Determine actual column count for the simulated device viewport
-        const deviceCols = device === 'mobile' ? 1 : device === 'tablet' ? 2 : 3;
+        const deviceCols =
+          device === 'mobile'
+            ? 1
+            : device === 'tablet'
+            ? 2
+            : (features.length <= 2 ? Math.max(1, features.length) : 3);
         const gridStyle = { display: 'grid', gridTemplateColumns: `repeat(${deviceCols}, minmax(0, 1fr))`, gap: '1rem' };
 
         return (
@@ -388,8 +393,17 @@ export const LiveLandingPreview = ({
                 colSpanVal = 1;
               } else {
                 // Auto-balance
-                if (deviceCols > 1) {
-                  if (features.length === 4 && (idx === 0 || idx === 3)) {
+                if (feat.layout === 'split') {
+                  colSpanVal = Math.min(2, deviceCols);
+                  isHighlight = colSpanVal > 1;
+                } else if (deviceCols > 1) {
+                  if (features.length === 1) {
+                    colSpanVal = deviceCols;
+                    isHighlight = true;
+                  } else if (features.length === 2) {
+                    colSpanVal = 1;
+                    isHighlight = true;
+                  } else if (features.length === 4 && (idx === 0 || idx === 3)) {
                     colSpanVal = Math.min(2, deviceCols);
                     isHighlight = colSpanVal > 1;
                   } else if (features.length === 5 && idx === 0) {
@@ -398,9 +412,6 @@ export const LiveLandingPreview = ({
                   } else if (features.length >= 6 && (idx === 0 || idx === 5)) {
                     colSpanVal = Math.min(2, deviceCols);
                     isHighlight = colSpanVal > 1;
-                  } else if (features.length === 1) {
-                    colSpanVal = deviceCols;
-                    isHighlight = true;
                   }
                 }
               }
@@ -419,7 +430,7 @@ export const LiveLandingPreview = ({
               if (imageSize === 'compact') imgH = 'h-16';
               if (isHighlight && imageSize === 'banner') imgH = 'h-36';
 
-              const isSplitLayout = layout === 'split' && hasImage && isHighlight;
+              const isSplitLayout = layout === 'split' && hasImage;
               const isOverlayLayout = layout === 'card-overlay' && hasImage;
               const isBottomLayout = layout === 'banner-bottom' && hasImage;
 
@@ -572,8 +583,11 @@ export const LiveLandingPreview = ({
                   </div>
                 </>
               ) : isSplitLayout ? (
-                /* SPLIT LAYOUT */
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center h-full relative z-10">
+                /* SPLIT LAYOUT — inline style so it respects device width, not viewport */
+                <div
+                  style={{ display: 'grid', gridTemplateColumns: colSpanVal >= 2 ? '1fr 1fr' : '1fr', gap: '1rem' }}
+                  className="items-center h-full relative z-10"
+                >
                   <div className="flex flex-col justify-between h-full">
                     <div>
                       <div className="flex items-center justify-between mb-3">
