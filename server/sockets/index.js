@@ -511,6 +511,13 @@ const setupSockets = (io) => {
         await broadcastPresence(userId, 'online', now);
       }
 
+      // Immediately send current list of live online user IDs to the connected client
+      socket.emit('users:online', Array.from(onlineUsers.keys()));
+
+      socket.on('users:get_online', () => {
+        socket.emit('users:online', Array.from(onlineUsers.keys()));
+      });
+
       // Send current maintenance state to the connected client
       try {
         const { getCurrentMaintenanceState } = require('../jobs/maintenanceScheduler');

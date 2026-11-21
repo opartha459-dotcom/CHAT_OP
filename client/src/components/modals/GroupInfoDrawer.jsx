@@ -26,6 +26,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { useCall } from '../../context/CallContext';
+import { useSocket } from '../../context/SocketContext';
 import { Avatar } from '../common/Avatar';
 import { shareContent, copyToClipboard } from '../../utils/share';
 
@@ -33,6 +34,7 @@ export const GroupInfoDrawer = ({ isOpen, onClose, group }) => {
   const { user } = useAuth();
   const { authHeaders, selectConversation, fetchConversations } = useChat();
   const { startCall } = useCall();
+  const { onlineUsers = new Set() } = useSocket() || {};
 
   const [copied, setCopied] = useState(false);
   const [inviteCode, setInviteCode] = useState(group?.groupDetails?.inviteCode || '');
@@ -723,7 +725,7 @@ export const GroupInfoDrawer = ({ isOpen, onClose, group }) => {
                           name={member.nickname || member.username}
                           size="sm"
                           showOnlineStatus={true}
-                          isOnline={member.status === 'online'}
+                          isOnline={Boolean(member._id && onlineUsers.has(member._id.toString()))}
                         />
                         <div className="min-w-0">
                           <div className="flex items-center space-x-1.5">

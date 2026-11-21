@@ -50,9 +50,8 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
     ? activeConversation.groupDetails?.avatar
     : activeConversation.otherUser?.avatar;
 
-  const isOnline = !isGroup && (
-    onlineUsers.has(activeConversation.otherUser?._id) || activeConversation.otherUser?.status === 'online'
-  );
+  const otherUserId = activeConversation.otherUser?._id?.toString();
+  const isOnline = !isGroup && Boolean(otherUserId && onlineUsers.has(otherUserId));
 
   const rawTypers = typingMap[activeConversation._id] || [];
   const typers = rawTypers

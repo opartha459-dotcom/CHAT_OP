@@ -152,7 +152,7 @@ export const NewChatModal = ({ isOpen, onClose }) => {
             </div>
           ) : (
             users.map((targetUser) => {
-              const isOnline = onlineUsers.has(targetUser._id) || targetUser.status === 'online';
+              const isOnline = Boolean(targetUser._id && onlineUsers.has(targetUser._id.toString()));
               return (
                 <div
                   key={targetUser._id}

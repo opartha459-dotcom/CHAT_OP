@@ -62,6 +62,8 @@ export const SocketProvider = ({ children }) => {
       watchedEmailsRef.current.forEach((em) => {
         socketInstance.emit('auth:watch_email', { email: em });
       });
+      // Fetch initial live online users
+      socketInstance.emit('users:get_online');
     });
 
     socketInstance.on('disconnect', (reason) => {
@@ -74,13 +76,19 @@ export const SocketProvider = ({ children }) => {
       setIsConnected(false);
     });
 
+    socketInstance.on('users:online', (onlineUserIds) => {
+      setOnlineUsers(new Set((onlineUserIds || []).map((id) => (id?.toString ? id.toString() : String(id)))));
+    });
+
     socketInstance.on('user:status', ({ userId, status }) => {
+      if (!userId) return;
+      const idStr = userId.toString();
       setOnlineUsers((prev) => {
         const next = new Set(prev);
         if (status === 'online') {
-          next.add(userId);
+          next.add(idStr);
         } else {
-          next.delete(userId);
+          next.delete(idStr);
         }
         return next;
       });

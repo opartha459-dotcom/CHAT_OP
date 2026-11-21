@@ -395,6 +395,15 @@ async function startServer() {
     console.log('[JOBS] Initializing maintenance scheduler...');
     initMaintenanceScheduler(app);
 
+    // Reset any stale 'online' statuses left from unexpected server restarts
+    try {
+      const User = require('./models/User');
+      await User.updateMany({ status: 'online' }, { status: 'offline' });
+      console.log('[PRESENCE] Stale online statuses reset to offline.');
+    } catch (presenceErr) {
+      console.warn('[PRESENCE] Could not reset stale statuses:', presenceErr.message);
+    }
+
     // 4. Register Socket.IO event handlers.
     console.log('[SOCKET.IO] Initializing socket handlers...');
 

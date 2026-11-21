@@ -805,8 +805,8 @@ export const Sidebar = () => {
                     ? conv.groupDetails?.name || 'Group'
                     : conv.otherUser?.nickname || conv.otherUser?.username || 'User';
                   const avatarUrl = isGroup ? conv.groupDetails?.avatar : conv.otherUser?.avatar;
-                  const otherUserId = conv.otherUser?._id;
-                  const isOnline = !isGroup && (onlineUsers.has(otherUserId) || conv.otherUser?.status === 'online');
+                  const otherUserId = conv.otherUser?._id?.toString();
+                  const isOnline = !isGroup && Boolean(otherUserId && onlineUsers.has(otherUserId));
 
                   const hasStatus = !isGroup && hasActiveStatus(otherUserId);
                   const hasUnviewed = !isGroup && hasUnviewedStatus(otherUserId);

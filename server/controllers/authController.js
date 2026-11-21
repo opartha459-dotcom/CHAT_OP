@@ -510,8 +510,7 @@ const login = async (req, res) => {
       user.role = 'admin';
     }
 
-    // Update status to online
-    user.status = 'online';
+    // Ensure lastSeen timestamp is updated
     user.lastSeen = new Date();
     await user.save();
 

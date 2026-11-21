@@ -93,6 +93,12 @@ const searchUsers = async (req, res) => {
       .limit(30)
       .lean();
 
+    let liveOnlineUsers = null;
+    try {
+      const setupSockets = require('../sockets');
+      liveOnlineUsers = setupSockets.getOnlineUsers ? setupSockets.getOnlineUsers() : null;
+    } catch (e) { }
+
     const sanitizedUsers = users.map((user) => {
       const profileVisible =
         user.privacySettings?.profileVisibility !== 'nobody';
@@ -100,13 +106,16 @@ const searchUsers = async (req, res) => {
       const lastSeenVisible =
         user.privacySettings?.lastSeenVisibility !== 'nobody';
 
+      const uId = user._id.toString();
+      const isOnline = Boolean(liveOnlineUsers && liveOnlineUsers.has(uId) && liveOnlineUsers.get(uId)?.size > 0);
+
       return {
         _id: user._id,
         username: user.username,
         nickname: user.nickname || user.username,
         avatar: profileVisible ? user.avatar : '',
         bio: profileVisible ? user.bio : '',
-        status: lastSeenVisible ? user.status : 'offline',
+        status: lastSeenVisible ? (isOnline ? 'online' : 'offline') : 'offline',
         lastSeen: lastSeenVisible ? user.lastSeen : null,
         e2eePublicKey: user.e2eePublicKey || ''
       };
@@ -185,6 +194,15 @@ const getUserProfile = async (req, res) => {
       const lastSeenVisible =
         targetUser.privacySettings?.lastSeenVisibility !== 'nobody';
 
+      let liveOnlineUsers = null;
+      try {
+        const setupSockets = require('../sockets');
+        liveOnlineUsers = setupSockets.getOnlineUsers ? setupSockets.getOnlineUsers() : null;
+      } catch (e) { }
+
+      const tId = targetUser._id.toString();
+      const isOnline = Boolean(liveOnlineUsers && liveOnlineUsers.has(tId) && liveOnlineUsers.get(tId)?.size > 0);
+
       return res.json({
         success: true,
         user: {
@@ -193,7 +211,7 @@ const getUserProfile = async (req, res) => {
           nickname: targetUser.nickname || targetUser.username,
           avatar: profileVisible ? targetUser.avatar : '',
           bio: profileVisible ? targetUser.bio : '',
-          status: lastSeenVisible ? targetUser.status : 'offline',
+          status: lastSeenVisible ? (isOnline ? 'online' : 'offline') : 'offline',
           lastSeen: lastSeenVisible ? targetUser.lastSeen : null,
           e2eePublicKey: targetUser.e2eePublicKey || '',
           createdAt: targetUser.createdAt

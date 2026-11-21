@@ -22,6 +22,13 @@ const getConversations = async (req, res) => {
       .sort({ updatedAt: -1 })
       .lean();
 
+    // Retrieve live in-memory online users to return accurate real-time presence
+    let liveOnlineUsers = null;
+    try {
+      const setupSockets = require('../sockets');
+      liveOnlineUsers = setupSockets.getOnlineUsers ? setupSockets.getOnlineUsers() : null;
+    } catch (e) { }
+
     // Map through conversations and compute per-user flags
     const formattedConversations = conversations.map((conv) => {
       const isPinned = conv.pinnedBy?.some((id) => id.toString() === currentUserId.toString()) || false;
@@ -31,16 +38,30 @@ const getConversations = async (req, res) => {
 
       const unreadCount = (conv.unreadCounts && conv.unreadCounts[currentUserId.toString()]) || 0;
 
+      // Adjust participants' status to reflect true socket presence
+      const participants = (conv.participants || []).map((p) => {
+        if (!p || !p._id) return p;
+        const pId = p._id.toString();
+        const isOnline = Boolean(liveOnlineUsers && liveOnlineUsers.has(pId) && liveOnlineUsers.get(pId)?.size > 0);
+        return {
+          ...p,
+          status: isOnline ? 'online' : 'offline'
+        };
+      });
+
       // For 1-on-1 private chat, identify the other party
       let otherUser = null;
       if (conv.type === 'private') {
-        otherUser = conv.participants.find((p) => p._id.toString() !== currentUserId.toString()) || conv.participants[0];
+        const found = participants.find((p) => p._id.toString() !== currentUserId.toString()) || participants[0];
+        if (found) {
+          otherUser = { ...found };
+        }
       }
 
       return {
         _id: conv._id,
         type: conv.type,
-        participants: conv.participants,
+        participants,
         groupDetails: conv.groupDetails,
         lastMessage: conv.lastMessage,
         isEncrypted: conv.isEncrypted,
