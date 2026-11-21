@@ -24,7 +24,7 @@ const ICE_SERVERS = {
 
 export const CallProvider = ({ children }) => {
   const { user } = useAuth();
-  const { socket } = useSocket();
+  const { socket, onlineUsers } = useSocket();
 
   // Call status: 'idle' | 'outgoing' | 'incoming' | 'connected'
   const [callState, setCallState] = useState('idle');
@@ -306,17 +306,40 @@ export const CallProvider = ({ children }) => {
   }, []);
 
   // Initiate an outgoing call (1-on-1 or Group)
-  const startCall = useCallback(async ({ conversationId, isGroup = false, callType = 'video', targetUser = null, participants = [] }) => {
+  const startCall = useCallback(async (arg1, arg2, arg3) => {
     if (!socket || !user) {
       alert('Real-time connection is not active. Please check your internet connection.');
+      return;
+    }
+
+    let conversationId, isGroup, callType, targetUser, participants;
+    if (typeof arg1 === 'object' && arg1 !== null && !Array.isArray(arg1) && !arg1._bsontype) {
+      ({
+        conversationId,
+        isGroup = false,
+        callType = 'video',
+        targetUser = null,
+        participants = []
+      } = arg1);
+    } else {
+      conversationId = arg1;
+      callType = arg2 || 'video';
+      targetUser = arg3 || null;
+      isGroup = false;
+      participants = [];
+    }
+
+    const targetId = (targetUser?._id || targetUser)?.toString();
+
+    // Client-side instant check: if 1-on-1 and recipient is offline in active onlineUsers Set
+    if (!isGroup && targetId && onlineUsers && !onlineUsers.has(targetId)) {
+      alert(`${targetUser?.nickname || targetUser?.username || 'User'} is currently offline.`);
       return;
     }
 
     try {
       const stream = await acquireMedia(callType);
       const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-      const targetId = (targetUser?._id || targetUser)?.toString();
 
       const callInfo = {
         callId,
@@ -351,7 +374,7 @@ export const CallProvider = ({ children }) => {
       alert(err.message || 'Could not start call.');
       cleanupCall();
     }
-  }, [socket, user, acquireMedia, cleanupCall]);
+  }, [socket, user, onlineUsers, acquireMedia, cleanupCall]);
 
   // Reject incoming call
   const rejectCall = useCallback(() => {
@@ -1002,6 +1025,19 @@ useEffect(() => {
     cleanupCall();
   });
 
+  // Offline listener (recipient is offline or no group members are online)
+  socket.on('call:offline', ({ message }) => {
+    stopRingtone();
+    playCallEndedSound();
+    alert(message || 'User is currently offline.');
+    cleanupCall();
+  });
+
+  // User offline listener when attempting to invite an offline user
+  socket.on('call:user-offline', ({ message }) => {
+    alert(message || 'The user is currently offline.');
+  });
+
   // Call Rejected listener
   socket.on('call:rejected', ({ byUser }) => {
     stopRingtone();
@@ -1301,6 +1337,8 @@ useEffect(() => {
     socket.off('call:user-left');
     socket.off('call:reaction-received');
     socket.off('call:hand-toggled');
+    socket.off('call:offline');
+    socket.off('call:user-offline');
   };
 }, [socket, createPeerConnection, removePeer, endCall, cleanupCall]);
 

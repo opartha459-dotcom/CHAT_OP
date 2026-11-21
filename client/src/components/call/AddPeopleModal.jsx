@@ -3,12 +3,14 @@ import { X, Search, UserPlus, Check, Users } from 'lucide-react';
 import { useCall } from '../../context/CallContext';
 import { useChat } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 import { Avatar } from '../common/Avatar';
 
 export const AddPeopleModal = () => {
   const { isAddPeopleOpen, setIsAddPeopleOpen, inviteUserToCall, remoteStreams } = useCall();
   const { conversations, activeConversation } = useChat();
   const { user } = useAuth();
+  const { onlineUsers } = useSocket();
 
   const [search, setSearch] = useState('');
   const [invitedMap, setInvitedMap] = useState({});
@@ -49,7 +51,11 @@ export const AddPeopleModal = () => {
     );
   });
 
-  const handleInvite = (targetUserId) => {
+  const handleInvite = (targetUserId, isOnline, name) => {
+    if (!isOnline) {
+      alert(`${name || 'User'} is currently offline.`);
+      return;
+    }
     inviteUserToCall(targetUserId);
     setInvitedMap((prev) => ({ ...prev, [targetUserId]: true }));
   };
@@ -94,6 +100,9 @@ export const AddPeopleModal = () => {
           ) : (
             filteredCandidates.map((candidate) => {
               const isInvited = invitedMap[candidate._id];
+              const isOnline = Boolean(candidate._id && onlineUsers?.has(candidate._id.toString()));
+              const displayName = candidate.nickname || candidate.username;
+
               return (
                 <div
                   key={candidate._id}
@@ -102,12 +111,25 @@ export const AddPeopleModal = () => {
                   <div className="flex items-center space-x-3">
                     <Avatar
                       src={candidate.avatar}
-                      name={candidate.nickname || candidate.username}
+                      name={displayName}
                       size="sm"
+                      showOnlineStatus={true}
+                      isOnline={isOnline}
                     />
                     <div>
-                      <div className="text-xs font-semibold text-white">
-                        {candidate.nickname || candidate.username}
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-semibold text-white">
+                          {displayName}
+                        </span>
+                        <span
+                          className={`inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
+                            isOnline
+                              ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
+                              : 'bg-slate-800 text-slate-500 border border-slate-700/50'
+                          }`}
+                        >
+                          {isOnline ? 'Online' : 'Offline'}
+                        </span>
                       </div>
                       <div className="text-[10px] text-slate-400">
                         @{candidate.username}
@@ -116,11 +138,13 @@ export const AddPeopleModal = () => {
                   </div>
 
                   <button
-                    onClick={() => handleInvite(candidate._id)}
-                    disabled={isInvited}
+                    onClick={() => handleInvite(candidate._id, isOnline, displayName)}
+                    disabled={isInvited || !isOnline}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition ${
                       isInvited
                         ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800 cursor-default'
+                        : !isOnline
+                        ? 'bg-slate-800/60 text-slate-500 border border-slate-700/40 cursor-not-allowed opacity-60'
                         : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md active:scale-95'
                     }`}
                   >
@@ -129,6 +153,8 @@ export const AddPeopleModal = () => {
                         <Check className="w-3.5 h-3.5" />
                         <span>Invited</span>
                       </>
+                    ) : !isOnline ? (
+                      <span>Offline</span>
                     ) : (
                       <>
                         <UserPlus className="w-3.5 h-3.5" />

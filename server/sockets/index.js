@@ -916,30 +916,113 @@ const setupSockets = (io) => {
           ? participants.filter((id) => id !== userId)
           : (targetUserId && targetUserId !== userId ? [targetUserId] : []);
 
-        recipients.forEach((recipientId) => {
-          call.invitedUsers.add(recipientId);
+        if (!isGroup) {
+          const recipientId = recipients[0];
+          const isRecipientOnline = Boolean(
+            recipientId &&
+            onlineUsers.has(recipientId.toString()) &&
+            onlineUsers.get(recipientId.toString()).size > 0
+          );
 
-          const isRecipientOnline = onlineUsers.has(recipientId) && onlineUsers.get(recipientId).size > 0;
+          if (!isRecipientOnline) {
+            // Recipient is offline! Clean up call state immediately.
+            activeCalls.delete(callId);
+            removeUserCall(userId, callId);
+            socket.leave(`call:${callId}`);
+            if (socketCallMap.has(socket.id)) {
+              socketCallMap.get(socket.id).delete(callId);
+            }
 
-          if (isRecipientOnline) {
-            io.to(`user:${recipientId}`).emit(
-              'call:incoming',
-              incomingPayload
-            );
+            // Log missed call in conversation
+            logCallMessage(
+              conversationId,
+              userId,
+              call.callType,
+              'missed',
+              0,
+              false
+            ).catch((err) => console.error('[Call Log Error]', err));
+
+            // Notify caller that recipient is offline
+            socket.emit('call:offline', {
+              callId,
+              targetUserId: recipientId,
+              message: 'User is currently offline.'
+            });
+
+            // Push notification to recipient
+            if (recipientId) {
+              notifyCallPush(recipientId, {
+                callId,
+                conversationId: conversationId.toString(),
+                callType: call.callType,
+                callerName: caller.nickname || caller.username,
+                callerAvatar: caller.avatar,
+                callerId: userId,
+                isGroup: false
+              });
+            }
+            return;
           }
 
+          // Online recipient: invite & ring
+          call.invitedUsers.add(recipientId);
+          io.to(`user:${recipientId}`).emit(
+            'call:incoming',
+            incomingPayload
+          );
           notifyCallPush(recipientId, {
             callId,
             conversationId: conversationId.toString(),
             callType: call.callType,
-            callerName: isGroup
-              ? `${caller.nickname || caller.username} (Group Call)`
-              : caller.nickname || caller.username,
+            callerName: caller.nickname || caller.username,
             callerAvatar: caller.avatar,
             callerId: userId,
-            isGroup
+            isGroup: false
           });
-        });
+        } else {
+          // Group call: only ring group members who are currently online
+          const onlineRecipients = recipients.filter((rId) => {
+            const sid = rId?.toString();
+            return sid && onlineUsers.has(sid) && onlineUsers.get(sid).size > 0;
+          });
+
+          if (onlineRecipients.length === 0) {
+            // No other group members are online! Clean up call state immediately.
+            activeCalls.delete(callId);
+            removeUserCall(userId, callId);
+            socket.leave(`call:${callId}`);
+            if (socketCallMap.has(socket.id)) {
+              socketCallMap.get(socket.id).delete(callId);
+            }
+
+            socket.emit('call:offline', {
+              callId,
+              message: 'No other group members are currently online.'
+            });
+            return;
+          }
+
+          // Ring only online group members
+          onlineRecipients.forEach((recipientId) => {
+            call.invitedUsers.add(recipientId.toString());
+
+            io.to(`user:${recipientId}`).emit(
+              'call:incoming',
+              incomingPayload
+            );
+
+            notifyCallPush(recipientId, {
+              callId,
+              conversationId: conversationId.toString(),
+              callType: call.callType,
+              callerName: `${caller.nickname || caller.username} (Group Call)`,
+              callerAvatar: caller.avatar,
+              callerId: userId,
+              isGroup: true
+            });
+          });
+        }
       } catch (error) {
         console.error('[Call Initiate]', error);
         socket.emit('call:error', {
@@ -1207,33 +1290,37 @@ const setupSockets = (io) => {
 
         if (
           !call ||
-          !call.isGroup ||
           !call.participants.has(socket.id) ||
-          call.conversationId !== conversationId?.toString() ||
           !isValidId(targetUserId)
         ) {
           return;
         }
 
-        const conversation = await getConversationForUser(
-          conversationId,
-          userId
+        // If active call was 1-on-1, upgrade it to group call now
+        if (!call.isGroup) {
+          call.isGroup = true;
+        }
+
+        const targetIdStr = targetUserId.toString();
+
+        // Check if invited user is currently online
+        const isTargetOnline = Boolean(
+          onlineUsers.has(targetIdStr) &&
+          onlineUsers.get(targetIdStr).size > 0
         );
 
-        if (
-          !conversation ||
-          conversation.type !== 'group' ||
-          !conversation.participants.some(
-            (participant) => participant.toString() === targetUserId.toString()
-          )
-        ) {
-          socket.emit('call:error', {
-            message: 'The invited user is not a member of this group.'
+        if (!isTargetOnline) {
+          socket.emit('call:user-offline', {
+            targetUserId: targetIdStr,
+            message: 'The user is currently offline.'
           });
           return;
         }
 
-        if (call.invitedUsers.has(targetUserId.toString())) {
+        if (call.invitedUsers.has(targetIdStr)) {
+          socket.emit('call:error', {
+            message: 'User has already been invited.'
+          });
           return;
         }
 
@@ -1243,31 +1330,42 @@ const setupSockets = (io) => {
           isDeactivated: false,
           isEmailVerified: true,
           deletionStatus: 'active'
-        }).select('_id');
+        }).select('_id username nickname avatar');
 
         if (!target) return;
 
-        call.invitedUsers.add(targetUserId.toString());
+        call.invitedUsers.add(targetIdStr);
 
         const caller = getPublicUser(socket.user);
 
         io.to(`user:${targetUserId}`).emit('call:incoming', {
           callId,
-          conversationId: conversationId.toString(),
+          conversationId: (conversationId || call.conversationId)?.toString(),
           isGroup: true,
           callType: call.callType,
           caller,
           isInvitation: true
         });
 
-        await notifyCallPush(targetUserId.toString(), {
+        await notifyCallPush(targetIdStr, {
           callId,
-          conversationId: conversationId.toString(),
+          conversationId: (conversationId || call.conversationId)?.toString(),
           callType: call.callType,
           callerName: caller.nickname || caller.username,
           callerAvatar: caller.avatar,
           callerId: userId,
           isGroup: true
+        });
+
+        io.to(`call:${callId}`).emit('call:user-invited', {
+          callId,
+          targetUserId: targetIdStr,
+          user: {
+            _id: target._id,
+            username: target.username,
+            nickname: target.nickname || target.username,
+            avatar: target.avatar
+          }
         });
       } catch (error) {
         console.error('[Call Invite]', error);
