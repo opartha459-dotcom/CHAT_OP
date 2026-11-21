@@ -102,6 +102,9 @@ const systemConfigSchema = new mongoose.Schema(
         blendIntensity: { type: Number, default: 75 },
         blendMode: { type: String, default: 'normal' }
       },
+      featuresBadge: { type: String, default: 'Platform Architecture' },
+      featuresTitle: { type: String, default: 'Built for security, engineered for scale.' },
+      featuresSubtitle: { type: String, default: 'A modern bento architecture combining client-side Web Crypto, real-time Socket.IO, and peer-to-peer WebRTC calling.' },
       features: {
         type: [
           {
@@ -206,6 +209,9 @@ const systemConfigSchema = new mongoose.Schema(
           { platform: 'telegram', label: 'Telegram', url: 'https://t.me', iconUrl: '', autoFetch: true, enabled: true }
         ]
       },
+      faqBadge: { type: String, default: 'Architecture & Security' },
+      faqTitle: { type: String, default: 'Frequently Asked Questions' },
+      faqSubtitle: { type: String, default: 'Everything you need to know about our cryptographic model, data sovereignty, and WebRTC protocols.' },
       faqs: {
         type: [
           {

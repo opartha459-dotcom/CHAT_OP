@@ -187,11 +187,17 @@ export const LandingPage = () => {
     brandLogo,
     announcementBadge,
     hero,
+    featuresBadge = 'Platform Architecture',
+    featuresTitle = 'Built for security, engineered for scale.',
+    featuresSubtitle = 'A modern bento architecture combining client-side Web Crypto, real-time Socket.IO, and peer-to-peer WebRTC calling.',
     features = [],
     highlightPoints = [],
     stats = [],
     previewSection,
     socialLinks = [],
+    faqBadge = 'Architecture & Security',
+    faqTitle = 'Frequently Asked Questions',
+    faqSubtitle = 'Everything you need to know about our cryptographic model, data sovereignty, and WebRTC protocols.',
     faqs = [],
     ctaBanner,
     footer
@@ -785,13 +791,13 @@ export const LandingPage = () => {
           <section id="capabilities" className="w-full max-w-6xl mx-auto px-6 py-16 md:py-24 flex flex-col items-center">
             <div className="text-center max-w-2xl mx-auto mb-16 flex flex-col items-center">
               <span className="px-3.5 py-1 rounded-full bg-violet-600/20 border border-violet-500/30 text-[10px] font-mono font-bold uppercase tracking-widest text-violet-300 mx-auto">
-                Platform Architecture
+                {featuresBadge}
               </span>
               <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mt-4 text-center">
-                Built for security, engineered for scale.
+                {featuresTitle}
               </h2>
               <p className="text-xs sm:text-sm text-violet-300/70 mt-3 leading-relaxed text-center">
-                A modern bento architecture combining client-side Web Crypto, real-time Socket.IO, and peer-to-peer WebRTC calling.
+                {featuresSubtitle}
               </p>
             </div>
 
@@ -1019,13 +1025,13 @@ export const LandingPage = () => {
             <section id="faq" className="w-full max-w-5xl mx-auto px-6 py-16 md:py-24 flex flex-col items-center">
               <div className="text-center max-w-2xl mx-auto mb-12 flex flex-col items-center">
                 <span className="px-3.5 py-1 rounded-full bg-violet-600/20 border border-violet-500/30 text-[10px] font-mono font-bold uppercase tracking-widest text-violet-300 mx-auto">
-                  Architecture & Security
+                  {faqBadge}
                 </span>
                 <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mt-4 text-center">
-                  Frequently Asked Questions
+                  {faqTitle}
                 </h2>
                 <p className="text-xs sm:text-sm text-violet-300/70 mt-2.5 text-center">
-                  Everything you need to know about our cryptographic model, data sovereignty, and WebRTC protocols.
+                  {faqSubtitle}
                 </p>
               </div>
 

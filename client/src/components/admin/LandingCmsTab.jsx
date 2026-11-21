@@ -325,6 +325,9 @@ export const DEFAULT_LANDING_CONFIG = {
     blendIntensity: 75,
     blendMode: 'normal'
   },
+  featuresBadge: 'Platform Architecture',
+  featuresTitle: 'Built for security, engineered for scale.',
+  featuresSubtitle: 'A modern bento architecture combining client-side Web Crypto, real-time Socket.IO, and peer-to-peer WebRTC calling.',
   features: [
     {
       title: 'End-to-End Encryption',
@@ -391,6 +394,9 @@ export const DEFAULT_LANDING_CONFIG = {
     { platform: 'discord', label: 'Discord', url: 'https://discord.gg', iconUrl: '', autoFetch: true, enabled: true },
     { platform: 'telegram', label: 'Telegram', url: 'https://t.me', iconUrl: '', autoFetch: true, enabled: true }
   ],
+  faqBadge: 'Architecture & Security',
+  faqTitle: 'Frequently Asked Questions',
+  faqSubtitle: 'Everything you need to know about our cryptographic model, data sovereignty, and WebRTC protocols.',
   faqs: [
     {
       question: 'How does client-side End-to-End Encryption (E2EE) work?',
@@ -1164,7 +1170,10 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
   const handleAddFaq = () => {
     setConfig((prev) => ({
       ...prev,
-      faqs: [
+      faqBadge: 'Architecture & Security',
+  faqTitle: 'Frequently Asked Questions',
+  faqSubtitle: 'Everything you need to know about our cryptographic model, data sovereignty, and WebRTC protocols.',
+  faqs: [
         ...(prev.faqs || []),
         {
           question: 'New Question',
@@ -1852,7 +1861,7 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">Feature Showcase Cards</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Manage the interactive feature cards displayed on the homepage.
+                Manage the section headlines and interactive feature cards displayed on the homepage.
               </p>
             </div>
             <button
@@ -1863,6 +1872,48 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
               <Plus className="w-3.5 h-3.5" />
               <span>Add Feature</span>
             </button>
+          </div>
+
+          {/* Section Heading Settings */}
+          <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs space-y-3">
+            <span className="text-[11px] font-bold text-indigo-500 uppercase tracking-wider font-mono">
+              Features Section Header
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Section Pill Badge
+                </label>
+                <input
+                  type="text"
+                  value={config.featuresBadge ?? 'Platform Architecture'}
+                  onChange={(e) => setConfig((prev) => ({ ...prev, featuresBadge: e.target.value }))}
+                  className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Section Main Headline
+                </label>
+                <input
+                  type="text"
+                  value={config.featuresTitle ?? 'Built for security, engineered for scale.'}
+                  onChange={(e) => setConfig((prev) => ({ ...prev, featuresTitle: e.target.value }))}
+                  className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Section Subtitle / Description
+              </label>
+              <input
+                type="text"
+                value={config.featuresSubtitle ?? 'A modern bento architecture combining client-side Web Crypto, real-time Socket.IO, and peer-to-peer WebRTC calling.'}
+                onChange={(e) => setConfig((prev) => ({ ...prev, featuresSubtitle: e.target.value }))}
+                className="w-full px-3 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2570,6 +2621,48 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Question</span>
               </button>
+            </div>
+          </div>
+
+          {/* FAQ Section Header Inputs */}
+          <div className="p-4 bg-[#18122B] border border-violet-900/40 rounded-2xl space-y-3">
+            <span className="text-[11px] font-bold text-violet-300 uppercase tracking-wider font-mono">
+              FAQ Section Header
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-violet-300/80 mb-1">
+                  Section Pill Badge
+                </label>
+                <input
+                  type="text"
+                  value={config.faqBadge ?? 'Architecture & Security'}
+                  onChange={(e) => setConfig((prev) => ({ ...prev, faqBadge: e.target.value }))}
+                  className="w-full px-3 py-1.5 text-xs rounded-xl bg-[#130D24] border border-violet-900/40 text-white font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-violet-300/80 mb-1">
+                  Section Main Headline
+                </label>
+                <input
+                  type="text"
+                  value={config.faqTitle ?? 'Frequently Asked Questions'}
+                  onChange={(e) => setConfig((prev) => ({ ...prev, faqTitle: e.target.value }))}
+                  className="w-full px-3 py-1.5 text-xs rounded-xl bg-[#130D24] border border-violet-900/40 text-white font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-violet-300/80 mb-1">
+                Section Subtitle / Description
+              </label>
+              <input
+                type="text"
+                value={config.faqSubtitle ?? 'Everything you need to know about our cryptographic model, data sovereignty, and WebRTC protocols.'}
+                onChange={(e) => setConfig((prev) => ({ ...prev, faqSubtitle: e.target.value }))}
+                className="w-full px-3 py-1.5 text-xs rounded-xl bg-[#130D24] border border-violet-900/40 text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+              />
             </div>
           </div>
 
