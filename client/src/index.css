@@ -268,19 +268,20 @@ html.dark body {
 
 .quantix-animated-grid {
   background-image: 
-    linear-gradient(to right, rgba(168, 85, 247, 0.13) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(168, 85, 247, 0.13) 1px, transparent 1px);
+    linear-gradient(to right, var(--grid-line-color, rgba(168, 85, 247, 0.13)) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line-color, rgba(168, 85, 247, 0.13)) 1px, transparent 1px);
   background-size: 50px 50px;
   animation: cyberGridScroll 16s linear infinite;
 }
 
 .quantix-animated-dots {
-  background-image: radial-gradient(circle at 1px 1px, rgba(192, 132, 252, 0.25) 1.5px, transparent 0);
+  background-image: radial-gradient(circle at 1px 1px, var(--grid-dot-color, rgba(192, 132, 252, 0.25)) 1.5px, transparent 0);
   background-size: 25px 25px;
   animation: cyberGridScroll 22s linear infinite;
 }
 
 .quantix-laser-scanline {
+  background: linear-gradient(to bottom, transparent, var(--grid-laser-color, rgba(168, 85, 247, 0.2)), transparent);
   animation: cyberLaserScan 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 

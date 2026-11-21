@@ -35,9 +35,9 @@ export const PulseLogo = ({
           }`}
         style={{ width: iconPx, height: iconPx }}
       >
-        {/* Ambient neon backdrop glow */}
+        {/* Ambient clean backdrop glow */}
         <div
-          className={`absolute inset-0 rounded-2xl bg-gradient-to-tr from-cyan-500 via-indigo-600 to-fuchsia-500 opacity-60 blur-md pointer-events-none ${animated ? 'group-hover:opacity-100 group-hover:blur-lg transition-all duration-300' : ''
+          className={`absolute inset-0 rounded-2xl bg-gradient-to-tr from-violet-600 via-indigo-600 to-cyan-500 opacity-25 blur-md pointer-events-none ${animated ? 'group-hover:opacity-50 group-hover:blur-lg transition-all duration-300' : ''
             }`}
         />
 
@@ -46,38 +46,36 @@ export const PulseLogo = ({
           viewBox="0 0 100 100"
           width={iconPx}
           height={iconPx}
-          className="relative z-10 drop-shadow-xl"
+          className="relative z-10 drop-shadow-md"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
           <defs>
-            {/* Deep Cyber Squircle Gradient */}
+            {/* Deep Clean Squircle Gradient */}
             <linearGradient id="plSquircleBg" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#0f172a" />
-              <stop offset="50%" stopColor="#1e1b4b" />
-              <stop offset="100%" stopColor="#0b0f19" />
+              <stop offset="0%" stopColor="#0f111a" />
+              <stop offset="50%" stopColor="#151226" />
+              <stop offset="100%" stopColor="#0b0a14" />
             </linearGradient>
 
-            {/* Glowing Border Gradient */}
+            {/* Glowing Border Gradient - Unified Indigo/Violet */}
             <linearGradient id="plBorderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#38bdf8" />
-              <stop offset="35%" stopColor="#818cf8" />
-              <stop offset="70%" stopColor="#c084fc" />
-              <stop offset="100%" stopColor="#f43f5e" />
+              <stop offset="0%" stopColor="#818cf8" />
+              <stop offset="50%" stopColor="#a855f7" />
+              <stop offset="100%" stopColor="#6366f1" />
             </linearGradient>
 
-            {/* Electric Pulse Wave Gradient */}
+            {/* Electric Pulse Wave Gradient - Clean Cyan to Violet */}
             <linearGradient id="plWaveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#00f2fe" />
-              <stop offset="30%" stopColor="#38bdf8" />
-              <stop offset="65%" stopColor="#a855f7" />
-              <stop offset="100%" stopColor="#f43f5e" />
+              <stop offset="0%" stopColor="#38bdf8" />
+              <stop offset="45%" stopColor="#818cf8" />
+              <stop offset="100%" stopColor="#c084fc" />
             </linearGradient>
 
             {/* Bubble Shimmer Gradient */}
             <linearGradient id="plBubbleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#6366f1" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="#a855f7" stopOpacity="0.12" />
+              <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#a855f7" stopOpacity="0.08" />
             </linearGradient>
 
             {/* Drop shadow / glow filters */}
@@ -101,7 +99,7 @@ export const PulseLogo = ({
             rx="24"
             fill="url(#plSquircleBg)"
             stroke="url(#plBorderGrad)"
-            strokeWidth="2.5"
+            strokeWidth="2"
           />
 
           {/* Inner glass accent contour */}
@@ -131,16 +129,16 @@ export const PulseLogo = ({
           <path
             d="M 77 37 C 82 42, 82 50, 77 55"
             stroke="#38bdf8"
-            strokeWidth="2.2"
+            strokeWidth="2"
             strokeLinecap="round"
-            opacity="0.8"
+            opacity="0.75"
           />
           <path
             d="M 83 31 C 90 39, 90 53, 83 61"
             stroke="#c084fc"
-            strokeWidth="1.8"
+            strokeWidth="1.6"
             strokeLinecap="round"
-            opacity="0.45"
+            opacity="0.4"
           />
 
           {/* Dynamic Heartbeat / Pulse Wave through the center */}
@@ -148,16 +146,16 @@ export const PulseLogo = ({
             d="M 21 48 L 33 48 L 39 36 L 47 61 L 54 33 L 61 54 L 67 48 L 79 48"
             fill="none"
             stroke="url(#plWaveGrad)"
-            strokeWidth="4.2"
+            strokeWidth="4"
             strokeLinecap="round"
             strokeLinejoin="round"
             filter="url(#plGlow)"
           />
 
           {/* Glowing Pulse Apex Nodes (Energy Sparks) */}
-          <circle cx="39" cy="36" r="2.8" fill="#00f2fe" filter="url(#plSparkle)" />
-          <circle cx="54" cy="33" r="3.2" fill="#ffffff" filter="url(#plSparkle)" />
-          <circle cx="47" cy="61" r="2.8" fill="#ec4899" filter="url(#plSparkle)" />
+          <circle cx="39" cy="36" r="2.5" fill="#38bdf8" filter="url(#plSparkle)" />
+          <circle cx="54" cy="33" r="2.8" fill="#ffffff" filter="url(#plSparkle)" />
+          <circle cx="47" cy="61" r="2.5" fill="#a855f7" filter="url(#plSparkle)" />
 
           {/* Central security spark (diamond twinkle) */}
           <path

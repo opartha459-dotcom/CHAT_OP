@@ -478,6 +478,156 @@ export const STATS_WRAPPER_THEMES = {
   }
 };
 
+export const GRID_COLOR_PRESETS = [
+  { id: 'violet', label: 'Cosmic Violet', hex: '#a855f7', rgb: '168, 85, 247', dot: 'bg-violet-500' },
+  { id: 'cyan', label: 'Cyber Cyan', hex: '#06b6d4', rgb: '6, 182, 212', dot: 'bg-cyan-500' },
+  { id: 'emerald', label: 'Matrix Emerald', hex: '#10b981', rgb: '16, 185, 129', dot: 'bg-emerald-500' },
+  { id: 'amber', label: 'Cyber Gold', hex: '#f59e0b', rgb: '245, 158, 11', dot: 'bg-amber-500' },
+  { id: 'rose', label: 'Crimson Rose', hex: '#f43f5e', rgb: '244, 63, 94', dot: 'bg-rose-500' },
+  { id: 'indigo', label: 'Electric Indigo', hex: '#6366f1', rgb: '99, 102, 241', dot: 'bg-indigo-500' },
+  { id: 'fuchsia', label: 'Synthwave Fuchsia', hex: '#d946ef', rgb: '217, 70, 239', dot: 'bg-fuchsia-500' },
+  { id: 'slate', label: 'Monochrome Slate', hex: '#94a3b8', rgb: '148, 163, 184', dot: 'bg-slate-400' },
+  { id: 'custom', label: 'Custom Hex', hex: '#a855f7', rgb: '168, 85, 247', dot: 'bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500' }
+];
+
+export const getGridStyles = (gridColorKey = 'violet', customHex = '#a855f7', opacity = 22) => {
+  let rgb = '168, 85, 247';
+  if (gridColorKey === 'custom' && customHex) {
+    const clean = customHex.replace('#', '');
+    if (clean.length === 6) {
+      const r = parseInt(clean.substring(0, 2), 16);
+      const g = parseInt(clean.substring(2, 4), 16);
+      const b = parseInt(clean.substring(4, 6), 16);
+      if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+        rgb = `${r}, ${g}, ${b}`;
+      }
+    }
+  } else {
+    const found = GRID_COLOR_PRESETS.find((p) => p.id === gridColorKey);
+    if (found) rgb = found.rgb;
+  }
+
+  const alphaLine = ((opacity ?? 22) / 100) * 0.7;
+  const alphaDot = Math.min(1, ((opacity ?? 22) / 100) * 1.15);
+
+  return {
+    '--grid-line-color': `rgba(${rgb}, ${alphaLine.toFixed(3)})`,
+    '--grid-dot-color': `rgba(${rgb}, ${alphaDot.toFixed(3)})`,
+    '--grid-laser-color': `rgba(${rgb}, 0.25)`,
+    '--grid-spotlight-color': `rgba(${rgb}, 0.3)`
+  };
+};
+
+export const BOX_GLOW_INTENSITIES = [
+  { id: 'subtle', label: 'Subtle', desc: 'Gentle 15px ambient shadow' },
+  { id: 'medium', label: 'Balanced', desc: 'Modern 30px neon glow' },
+  { id: 'intense', label: 'Luminous', desc: 'Rich 50px cyber aura' },
+  { id: 'neon', label: 'Ultra Neon', desc: 'High-contrast double glow' }
+];
+
+export const TEXT_GLOW_INTENSITIES = [
+  { id: 'subtle', label: 'Subtle', desc: 'Soft 12px text illumination' },
+  { id: 'medium', label: 'Radiant', desc: 'Vibrant 20px headline glow' },
+  { id: 'intense', label: 'Ultra Beam', desc: 'Multi-layered 35px neon beam' }
+];
+
+export const GLOW_COLOR_OPTIONS = [
+  { id: 'auto', label: 'Auto Theme', dot: 'bg-gradient-to-r from-violet-500 via-fuchsia-500 to-cyan-500' },
+  { id: 'violet', label: 'Cosmic Violet', dot: 'bg-violet-500' },
+  { id: 'cyan', label: 'Cyber Cyan', dot: 'bg-cyan-500' },
+  { id: 'emerald', label: 'Matrix Emerald', dot: 'bg-emerald-500' },
+  { id: 'amber', label: 'Cyber Gold', dot: 'bg-amber-500' },
+  { id: 'rose', label: 'Crimson Rose', dot: 'bg-rose-500' },
+  { id: 'indigo', label: 'Electric Indigo', dot: 'bg-indigo-500' }
+];
+
+export const getTextGlowStyle = (textGlowEnabled, intensity = 'medium', color = 'auto') => {
+  if (textGlowEnabled === false) return { textShadow: 'none' };
+  
+  const colorRgbMap = {
+    violet: '168, 85, 247',
+    cyan: '6, 182, 212',
+    emerald: '16, 185, 129',
+    amber: '245, 158, 11',
+    rose: '244, 63, 94',
+    indigo: '99, 102, 241',
+    white: '255, 255, 255',
+    auto: '168, 85, 247'
+  };
+
+  const rgb = colorRgbMap[color] || colorRgbMap.violet;
+
+  if (intensity === 'subtle') {
+    return {
+      textShadow: `0 0 12px rgba(${rgb}, 0.35)`
+    };
+  }
+  if (intensity === 'intense') {
+    return {
+      textShadow: `0 0 15px rgba(${rgb}, 0.8), 0 0 35px rgba(${rgb}, 0.5), 0 0 65px rgba(${rgb}, 0.3)`
+    };
+  }
+  return {
+    textShadow: `0 0 20px rgba(${rgb}, 0.55), 0 0 40px rgba(${rgb}, 0.25)`
+  };
+};
+
+export const getBoxGlowClass = (boxGlowEnabled, intensity = 'medium', fallbackGlow = '', color = 'auto') => {
+  if (boxGlowEnabled === false) return 'shadow-sm';
+  
+  const colorMap = {
+    violet: {
+      subtle: 'shadow-[0_0_15px_rgba(168,85,247,0.2)]',
+      medium: 'shadow-[0_0_25px_rgba(168,85,247,0.35)]',
+      intense: 'shadow-[0_0_45px_rgba(168,85,247,0.55)]',
+      neon: 'shadow-[0_0_60px_rgba(168,85,247,0.7),0_0_20px_rgba(217,70,239,0.5)]'
+    },
+    cyan: {
+      subtle: 'shadow-[0_0_15px_rgba(6,182,212,0.2)]',
+      medium: 'shadow-[0_0_25px_rgba(6,182,212,0.35)]',
+      intense: 'shadow-[0_0_45px_rgba(6,182,212,0.55)]',
+      neon: 'shadow-[0_0_60px_rgba(6,182,212,0.7),0_0_20px_rgba(34,211,238,0.5)]'
+    },
+    emerald: {
+      subtle: 'shadow-[0_0_15px_rgba(16,185,129,0.2)]',
+      medium: 'shadow-[0_0_25px_rgba(16,185,129,0.35)]',
+      intense: 'shadow-[0_0_45px_rgba(16,185,129,0.55)]',
+      neon: 'shadow-[0_0_60px_rgba(16,185,129,0.7),0_0_20px_rgba(52,211,153,0.5)]'
+    },
+    amber: {
+      subtle: 'shadow-[0_0_15px_rgba(245,158,11,0.2)]',
+      medium: 'shadow-[0_0_25px_rgba(245,158,11,0.35)]',
+      intense: 'shadow-[0_0_45px_rgba(245,158,11,0.55)]',
+      neon: 'shadow-[0_0_60px_rgba(245,158,11,0.7),0_0_20px_rgba(251,191,36,0.5)]'
+    },
+    rose: {
+      subtle: 'shadow-[0_0_15px_rgba(244,63,94,0.2)]',
+      medium: 'shadow-[0_0_25px_rgba(244,63,94,0.35)]',
+      intense: 'shadow-[0_0_45px_rgba(244,63,94,0.55)]',
+      neon: 'shadow-[0_0_60px_rgba(244,63,94,0.7),0_0_20px_rgba(251,113,133,0.5)]'
+    },
+    indigo: {
+      subtle: 'shadow-[0_0_15px_rgba(99,102,241,0.2)]',
+      medium: 'shadow-[0_0_25px_rgba(99,102,241,0.35)]',
+      intense: 'shadow-[0_0_45px_rgba(99,102,241,0.55)]',
+      neon: 'shadow-[0_0_60px_rgba(99,102,241,0.7),0_0_20px_rgba(129,140,248,0.5)]'
+    }
+  };
+
+  if (color && color !== 'auto' && colorMap[color]) {
+    return colorMap[color][intensity] || colorMap[color].medium;
+  }
+
+  if (fallbackGlow) {
+    if (intensity === 'subtle') return fallbackGlow.replace(/rgba\((\d+,\s*\d+,\s*\d+),\s*0\.\d+\)/g, 'rgba($1,0.15)');
+    if (intensity === 'intense') return fallbackGlow.replace(/rgba\((\d+,\s*\d+,\s*\d+),\s*0\.\d+\)/g, 'rgba($1,0.55)');
+    if (intensity === 'neon') return `${fallbackGlow} shadow-[0_0_50px_rgba(168,85,247,0.5)]`;
+    return fallbackGlow;
+  }
+
+  return colorMap.violet[intensity] || colorMap.violet.medium;
+};
+
 export const DEFAULT_LANDING_CONFIG = {
   brandName: 'PulseChat',
   brandTagline: 'AES-256 E2EE',
@@ -580,6 +730,21 @@ export const DEFAULT_LANDING_CONFIG = {
   ],
   statsWrapperColor: 'aurora',
   statsWrapperGlow: true,
+  statsAlignment: 'center',
+  // Master Box Glow & Typography Text Glow
+  boxGlow: true,
+  boxGlowIntensity: 'medium',
+  boxGlowColor: 'auto',
+  textGlow: true,
+  textGlowIntensity: 'medium',
+  textGlowColor: 'auto',
+  // Cyber Background Grid (Greed) Controls
+  gridColor: 'violet',
+  gridCustomHex: '#a855f7',
+  gridOpacity: 22,
+  gridStyle: 'grid-dots',
+  gridScanline: true,
+  gridSpotlight: true,
   previewSection: {
     enabled: true,
     title: 'Engineered for speed, privacy, and modern teams.',
@@ -589,6 +754,7 @@ export const DEFAULT_LANDING_CONFIG = {
   },
   footer: {
     copyrightText: 'PulseChat © 2026. Built with React, Tailwind CSS, Express, Socket.IO & MongoDB.',
+    bigText: 'YOUR_BRAIN',
     links: [
       { label: 'Privacy Policy', url: '#' },
       { label: 'Terms of Service', url: '#' },
@@ -1462,6 +1628,7 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
   }
 
   const SECTIONS = [
+    { id: 'visuals', label: 'Glow & Cyber Grid', icon: Palette },
     { id: 'hero', label: 'Hero Section', icon: Sparkles },
     { id: 'brand', label: 'Branding & Badge', icon: Globe },
     { id: 'features', label: 'Features Bento Grid', icon: Layers },
@@ -1610,6 +1777,446 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
                 );
               })}
             </div>
+
+      {/* ================= SECTION 0: GLOBAL GLOW & CYBER GRID ENGINE ================= */}
+      {activeSection === 'visuals' && (
+        <div className="p-6 bg-[#130E26] border border-violet-800/50 rounded-2xl shadow-xl space-y-7 animate-fadeIn">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-violet-900/40 gap-3">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 via-fuchsia-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-900/50">
+                <Palette className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white tracking-tight flex items-center space-x-2">
+                  <span>Global Glow & Cyber Grid Engine</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-violet-950 text-violet-300 border border-violet-700/60 font-semibold">
+                    Full Canvas
+                  </span>
+                </h3>
+                <p className="text-xs text-violet-300/80 mt-0.5">
+                  Real-time master controls for background cyber grid colors, box glow halos, and independent glowing text typography.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 shrink-0">
+              <span className="text-[11px] font-mono text-violet-400">Live Studio Sync</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34D399]" />
+            </div>
+          </div>
+
+          {/* 1. BACKGROUND CYBER GRID (GREED) COLOR CONTROL */}
+          <div className="p-5 rounded-2xl bg-[#1A1233]/90 border border-violet-700/40 space-y-4 shadow-lg">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2 border-b border-violet-900/30">
+              <div className="space-y-0.5">
+                <h4 className="text-sm font-bold text-white flex items-center space-x-2">
+                  <span>Background Cyber Grid & Matrix Color</span>
+                  <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-300">
+                    Grid Control
+                  </span>
+                </h4>
+                <p className="text-xs text-violet-300/70">
+                  Select the neon color theme and vector grid pattern covering the entire background of the landing page.
+                </p>
+              </div>
+              <div className="flex items-center space-x-2 text-xs font-mono text-violet-300 shrink-0">
+                <span>Active:</span>
+                <span className="font-bold text-white uppercase px-2 py-0.5 rounded bg-[#231845] border border-violet-600/40">
+                  {config.gridColor || 'violet'}
+                </span>
+              </div>
+            </div>
+
+            {/* Grid Color Palette Swatches */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-violet-200">Grid Color Palette</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+                {GRID_COLOR_PRESETS.map((preset) => {
+                  const isSelected = (config.gridColor || 'violet') === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setConfig((prev) => ({ ...prev, gridColor: preset.id }))}
+                      className={`p-2.5 rounded-xl border flex items-center space-x-2.5 transition text-left cursor-pointer ${
+                        isSelected
+                          ? 'border-white bg-[#2A1D4E] shadow-lg shadow-violet-900/50 ring-2 ring-violet-400/50'
+                          : 'border-violet-900/40 bg-[#160E2C]/70 hover:bg-[#221642] hover:border-violet-700/60 text-slate-300'
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-full ${preset.dot} shadow-xs shrink-0`} />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white truncate">{preset.label}</div>
+                        <div className="text-[10px] font-mono text-violet-400/80 truncate">{preset.hex}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Custom Hex Color Input (when 'custom' is selected) */}
+              {config.gridColor === 'custom' && (
+                <div className="mt-3 p-3.5 rounded-xl bg-[#231845] border border-violet-700/50 flex flex-wrap items-center gap-3 animate-fadeIn">
+                  <span className="text-xs font-semibold text-violet-200">Custom Hex Code:</span>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="color"
+                      value={config.gridCustomHex || '#a855f7'}
+                      onChange={(e) => setConfig((prev) => ({ ...prev, gridCustomHex: e.target.value }))}
+                      className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0"
+                    />
+                    <input
+                      type="text"
+                      value={config.gridCustomHex || '#a855f7'}
+                      onChange={(e) => setConfig((prev) => ({ ...prev, gridCustomHex: e.target.value }))}
+                      placeholder="#a855f7"
+                      className="w-28 px-3 py-1.5 rounded-lg bg-[#140D26] border border-violet-600/50 text-white font-mono text-xs focus:ring-1 focus:ring-violet-400 outline-none"
+                    />
+                  </div>
+                  <span className="text-[11px] text-violet-300/70">
+                    Custom RGB lines, dot matrix, and laser scanline will automatically generate.
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Grid Pattern Style & Opacity Controls */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-violet-900/30">
+              {/* Pattern Style */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-violet-200">Pattern Matrix Style</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'grid-dots', label: 'Grid & Dots', desc: 'Full Cyber Matrix' },
+                    { id: 'grid', label: 'Grid Only', desc: 'Vector Wireframe' },
+                    { id: 'dots', label: 'Dots Only', desc: 'Subtle Matrix' },
+                    { id: 'none', label: 'Clean Canvas', desc: 'No Grid Pattern' }
+                  ].map((styleOpt) => {
+                    const isStyleSelected = (config.gridStyle || 'grid-dots') === styleOpt.id;
+                    return (
+                      <button
+                        key={styleOpt.id}
+                        type="button"
+                        onClick={() => setConfig((prev) => ({ ...prev, gridStyle: styleOpt.id }))}
+                        className={`p-2 rounded-xl border text-left transition cursor-pointer ${
+                          isStyleSelected
+                            ? 'border-indigo-400 bg-indigo-950/60 text-white shadow-xs'
+                            : 'border-violet-900/30 bg-[#140D26]/70 hover:bg-[#20143D] text-violet-300'
+                        }`}
+                      >
+                        <div className="text-xs font-bold">{styleOpt.label}</div>
+                        <div className="text-[10px] text-violet-400/80">{styleOpt.desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Grid Opacity Slider & Presets */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-violet-200">Grid Opacity & Prominence</label>
+                  <span className="text-xs font-mono font-bold text-violet-300 px-2 py-0.5 rounded bg-[#150D2B] border border-violet-800/40">
+                    {config.gridOpacity ?? 22}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="70"
+                  step="1"
+                  value={config.gridOpacity ?? 22}
+                  onChange={(e) => setConfig((prev) => ({ ...prev, gridOpacity: Number(e.target.value) }))}
+                  className="w-full accent-violet-500 cursor-pointer"
+                />
+                <div className="flex items-center justify-between gap-1 pt-1">
+                  {[
+                    { val: 12, label: 'Subtle (12%)' },
+                    { val: 22, label: 'Default (22%)' },
+                    { val: 35, label: 'Bold (35%)' },
+                    { val: 55, label: 'Vivid (55%)' }
+                  ].map((lvl) => (
+                    <button
+                      key={lvl.val}
+                      type="button"
+                      onClick={() => setConfig((prev) => ({ ...prev, gridOpacity: lvl.val }))}
+                      className={`px-2 py-1 rounded text-[10px] font-mono transition cursor-pointer ${
+                        (config.gridOpacity ?? 22) === lvl.val
+                          ? 'bg-violet-600 text-white font-bold'
+                          : 'bg-[#180E30] text-violet-300/80 hover:text-white'
+                      }`}
+                    >
+                      {lvl.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Scanline and Spotlight Animation Toggles */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-violet-900/30">
+              <label className="p-3 rounded-xl bg-[#140D26]/80 border border-violet-800/40 flex items-center justify-between cursor-pointer hover:border-violet-600/50 transition">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-semibold text-white block">Cyber Laser Scanline</span>
+                  <span className="text-[10px] text-violet-300/70 block">Periodic sweeping neon beam across the page</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={config.gridScanline !== false}
+                  onChange={(e) => setConfig((prev) => ({ ...prev, gridScanline: e.target.checked }))}
+                  className="rounded border-violet-700 bg-slate-900 text-violet-500 focus:ring-violet-400 w-4 h-4 cursor-pointer"
+                />
+              </label>
+
+              <label className="p-3 rounded-xl bg-[#140D26]/80 border border-violet-800/40 flex items-center justify-between cursor-pointer hover:border-violet-600/50 transition">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-semibold text-white block">Top Ambient Spotlight Aura</span>
+                  <span className="text-[10px] text-violet-300/70 block">Breathing radial spotlight behind hero header</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={config.gridSpotlight !== false}
+                  onChange={(e) => setConfig((prev) => ({ ...prev, gridSpotlight: e.target.checked }))}
+                  className="rounded border-violet-700 bg-slate-900 text-violet-500 focus:ring-violet-400 w-4 h-4 cursor-pointer"
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* 2. ALL BOX GLOW MASTER CONTROL */}
+          <div className="p-5 rounded-2xl bg-[#1A1233]/90 border border-violet-700/40 space-y-4 shadow-lg">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2 border-b border-violet-900/30">
+              <div className="space-y-0.5">
+                <h4 className="text-sm font-bold text-white flex items-center space-x-2">
+                  <span>All Box Glow & Card Lighting</span>
+                  <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-300">
+                    Master Box Shadow
+                  </span>
+                </h4>
+                <p className="text-xs text-violet-300/70">
+                  Control ambient halos, glowing borders, and top laser bevels surrounding all boxes and cards across the entire landing page.
+                </p>
+              </div>
+
+              {/* Master Box Glow Toggle */}
+              <div className="flex items-center space-x-2 shrink-0">
+                <span className="text-xs font-semibold text-violet-200">Box Glow:</span>
+                <button
+                  type="button"
+                  onClick={() => setConfig((prev) => ({ ...prev, boxGlow: !((prev.boxGlow ?? true)) }))}
+                  className={`px-3 py-1 rounded-xl text-xs font-mono font-bold transition flex items-center space-x-1.5 cursor-pointer ${
+                    (config.boxGlow ?? true)
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/50'
+                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${config.boxGlow ?? true ? 'bg-white animate-ping' : 'bg-slate-500'}`} />
+                  <span>{config.boxGlow ?? true ? 'ENABLED' : 'DISABLED'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Box Glow Intensity & Color Controls */}
+            {(config.boxGlow ?? true) && (
+              <div className="space-y-4 animate-fadeIn">
+                {/* Intensity Selector */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-violet-200">Box Glow Intensity</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    {BOX_GLOW_INTENSITIES.map((lvl) => {
+                      const isLvlSelected = (config.boxGlowIntensity || 'medium') === lvl.id;
+                      return (
+                        <button
+                          key={lvl.id}
+                          type="button"
+                          onClick={() => setConfig((prev) => ({ ...prev, boxGlowIntensity: lvl.id }))}
+                          className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                            isLvlSelected
+                              ? 'border-violet-400 bg-violet-950/70 text-white shadow-md shadow-violet-900/50 ring-1 ring-violet-400'
+                              : 'border-violet-900/30 bg-[#140D26]/70 hover:bg-[#20143D] text-violet-300'
+                          }`}
+                        >
+                          <div className="text-xs font-bold text-white">{lvl.label}</div>
+                          <div className="text-[10px] text-violet-400/80">{lvl.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Box Glow Color Tint */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-violet-200">Box Glow Color Theme</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {GLOW_COLOR_OPTIONS.map((c) => {
+                      const isColorSelected = (config.boxGlowColor || 'auto') === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setConfig((prev) => ({ ...prev, boxGlowColor: c.id }))}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-2 border transition cursor-pointer ${
+                            isColorSelected
+                              ? 'border-white bg-[#281A4E] text-white shadow-sm ring-1 ring-violet-400'
+                              : 'border-violet-900/40 bg-[#150E29] text-violet-300 hover:text-white'
+                          }`}
+                        >
+                          <span className={`w-3 h-3 rounded-full ${c.dot}`} />
+                          <span>{c.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-violet-300/60 mt-1">
+                    "Auto Theme" preserves each individual card's accent color (e.g., violet for uptime, emerald for security, cyan for latency), while specific colors synchronize all cards together.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3. TEXT GLOW CONTROL (SEPARATED FROM BOX GLOW) */}
+          <div className="p-5 rounded-2xl bg-[#1A1233]/90 border border-violet-700/40 space-y-4 shadow-lg">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2 border-b border-violet-900/30">
+              <div className="space-y-0.5">
+                <h4 className="text-sm font-bold text-white flex items-center space-x-2">
+                  <span>Text Glow & Typography Illumination</span>
+                  <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-fuchsia-950/80 text-fuchsia-300 border border-fuchsia-800/40 font-bold">
+                    Separated Control
+                  </span>
+                </h4>
+                <p className="text-xs text-violet-300/70">
+                  Separated lighting specifically for headlines, section titles, hero badges, and metric values — fully independent from box glow.
+                </p>
+              </div>
+
+              {/* Master Text Glow Toggle */}
+              <div className="flex items-center space-x-2 shrink-0">
+                <span className="text-xs font-semibold text-violet-200">Text Glow:</span>
+                <button
+                  type="button"
+                  onClick={() => setConfig((prev) => ({ ...prev, textGlow: !((prev.textGlow ?? true)) }))}
+                  className={`px-3 py-1 rounded-xl text-xs font-mono font-bold transition flex items-center space-x-1.5 cursor-pointer ${
+                    (config.textGlow ?? true)
+                      ? 'bg-fuchsia-600 text-white shadow-md shadow-fuchsia-900/50'
+                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${config.textGlow ?? true ? 'bg-white animate-ping' : 'bg-slate-500'}`} />
+                  <span>{config.textGlow ?? true ? 'ENABLED' : 'DISABLED'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Text Glow Intensity & Color Controls */}
+            {(config.textGlow ?? true) && (
+              <div className="space-y-4 animate-fadeIn">
+                {/* Intensity Selector */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-violet-200">Text Glow Intensity</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {TEXT_GLOW_INTENSITIES.map((lvl) => {
+                      const isLvlSelected = (config.textGlowIntensity || 'medium') === lvl.id;
+                      return (
+                        <button
+                          key={lvl.id}
+                          type="button"
+                          onClick={() => setConfig((prev) => ({ ...prev, textGlowIntensity: lvl.id }))}
+                          className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                            isLvlSelected
+                              ? 'border-fuchsia-400 bg-fuchsia-950/70 text-white shadow-md shadow-fuchsia-900/50 ring-1 ring-fuchsia-400'
+                              : 'border-violet-900/30 bg-[#140D26]/70 hover:bg-[#20143D] text-violet-300'
+                          }`}
+                        >
+                          <div className="text-xs font-bold text-white">{lvl.label}</div>
+                          <div className="text-[10px] text-fuchsia-300/80">{lvl.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Text Glow Color Tint */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-violet-200">Text Glow Color Tint</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[
+                      ...GLOW_COLOR_OPTIONS,
+                      { id: 'white', label: 'Crisp White', dot: 'bg-white' }
+                    ].map((c) => {
+                      const isColorSelected = (config.textGlowColor || 'auto') === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setConfig((prev) => ({ ...prev, textGlowColor: c.id }))}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-2 border transition cursor-pointer ${
+                            isColorSelected
+                              ? 'border-white bg-[#281A4E] text-white shadow-sm ring-1 ring-fuchsia-400'
+                              : 'border-violet-900/40 bg-[#150E29] text-violet-300 hover:text-white'
+                          }`}
+                        >
+                          <span className={`w-3 h-3 rounded-full ${c.dot}`} />
+                          <span>{c.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 4. LIVE INTERACTIVE ENGINE SANDBOX */}
+          <div className="p-5 rounded-2xl bg-[#0F0A1E] border border-violet-700/50 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white uppercase font-mono tracking-wider flex items-center space-x-2">
+                <Sparkles className="w-4 h-4 text-violet-400" />
+                <span>Interactive Visuals Sandbox</span>
+              </span>
+              <span className="text-[10px] font-mono text-violet-400">
+                Dynamic CSS Var & SVG Test
+              </span>
+            </div>
+
+            {/* Simulated Canvas Box */}
+            <div
+              style={getGridStyles(config.gridColor || 'violet', config.gridCustomHex || '#a855f7', config.gridOpacity ?? 22)}
+              className="relative p-6 sm:p-8 rounded-2xl bg-[#07050E] border border-violet-800/40 overflow-hidden flex flex-col items-center justify-center text-center space-y-4"
+            >
+              {/* Background Grid Simulation */}
+              {config.gridStyle !== 'dots' && config.gridStyle !== 'none' && (
+                <div className="absolute inset-0 pointer-events-none quantix-animated-grid opacity-80" />
+              )}
+              {config.gridStyle !== 'grid' && config.gridStyle !== 'none' && (
+                <div className="absolute inset-0 pointer-events-none quantix-animated-dots opacity-80" />
+              )}
+
+              {/* Sample Glowing Headline */}
+              <h2
+                style={getTextGlowStyle(config.textGlow ?? true, config.textGlowIntensity || 'medium', config.textGlowColor || 'auto')}
+                className="text-xl sm:text-2xl font-black text-white relative z-10 tracking-tight"
+              >
+                Next-Generation Sovereign Encrypted Chat
+              </h2>
+
+              {/* Sample Glowing Box Card */}
+              <div
+                className={`relative z-10 p-4 rounded-xl border border-violet-500/40 bg-[#160E2A]/90 backdrop-blur-md max-w-sm transition-all duration-300 ${
+                  getBoxGlowClass(config.boxGlow ?? true, config.boxGlowIntensity || 'medium', 'shadow-[0_0_35px_rgba(168,85,247,0.35)]', config.boxGlowColor || 'auto')
+                }`}
+              >
+                <div className="text-2xl font-black font-mono text-transparent bg-clip-text bg-gradient-to-r from-violet-300 via-fuchsia-300 to-indigo-200">
+                  99.99% UPTIME
+                </div>
+                <div className="text-[11px] text-violet-300/80 mt-1">
+                  Card with active Box Glow and live background Cyber Grid.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SECTION 1: HERO SECTION */}
       {activeSection === 'hero' && (
@@ -2729,6 +3336,35 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
                 );
               })}
             </div>
+
+            {/* Alignment Selector */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+              <span className="text-[11px] font-semibold text-slate-300">Content Alignment:</span>
+              <div className="flex items-center space-x-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setConfig((prev) => ({ ...prev, statsAlignment: 'center' }))}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    (config.statsAlignment || 'center') === 'center'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Centered
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfig((prev) => ({ ...prev, statsAlignment: 'left' }))}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    config.statsAlignment === 'left'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Left-Aligned
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -3631,6 +4267,27 @@ export const LandingCmsTab = ({ authHeaders, showFeedback, token }) => {
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">Footer & Legal Links</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Customize copyright text and navigation links in the website footer.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Massive Signature Banner Text (Scroll Open/Close Animation)
+            </label>
+            <input
+              type="text"
+              value={config.footer?.bigText !== undefined ? config.footer.bigText : 'YOUR_BRAIN'}
+              onChange={(e) =>
+                setConfig((prev) => ({
+                  ...prev,
+                  footer: { ...prev.footer, bigText: e.target.value }
+                }))
+              }
+              placeholder="YOUR_BRAIN"
+              className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono tracking-wider font-bold"
+            />
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+              Displays as a massive kinetic typography banner at the bottom of the landing page that expands (opens) and contracts (closes) dynamically with scroll.
             </p>
           </div>
 

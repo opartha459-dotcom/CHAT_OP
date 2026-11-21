@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ShieldCheck,
@@ -38,7 +38,16 @@ import {
 import { PulseLogo } from '../components/common/PulseLogo';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
-import { DEFAULT_LANDING_CONFIG, HeroBlendedImage, STAT_THEMES, STATS_WRAPPER_THEMES } from '../components/admin/LandingCmsTab';
+import {
+  DEFAULT_LANDING_CONFIG,
+  HeroBlendedImage,
+  STAT_THEMES,
+  STATS_WRAPPER_THEMES,
+  GRID_COLOR_PRESETS,
+  getGridStyles,
+  getBoxGlowClass,
+  getTextGlowStyle
+} from '../components/admin/LandingCmsTab';
 import { SocialBrandIcon } from '../components/common/SocialBrandIcon';
 
 const ICON_MAP = {
@@ -91,6 +100,26 @@ export const LandingPage = () => {
   // Quantix interactive tabs state in Hero Showcase
   const [activeShowcaseTab, setActiveShowcaseTab] = useState('chat'); // 'chat' | 'call' | 'security'
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
+
+  // Modern scroll-driven open & close kinetic animation for bottom signature
+  const [footerScrollFactor, setFooterScrollFactor] = useState(0);
+  const footerSignatureRef = useRef(null);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!footerSignatureRef.current) return;
+      const rect = footerSignatureRef.current.getBoundingClientRect();
+      const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+      // Calculate scroll progress [0 -> 1] as signature banner scrolls up into the viewport
+      const distFromBottom = windowHeight - rect.top;
+      const progress = Math.max(0, Math.min(1, distFromBottom / (windowHeight * 0.75)));
+      setFooterScrollFactor(progress);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -206,62 +235,96 @@ export const LandingPage = () => {
   const hasHeroImage = Boolean(hero?.showHeroImage && hero?.heroImage);
   const activeSocialLinks = (socialLinks || []).filter((s) => s.enabled && s.url);
 
+  // Dynamic Grid & Glow Engine
+  const gridStyles = getGridStyles(
+    config.gridColor || 'violet',
+    config.gridCustomHex || '#a855f7',
+    config.gridOpacity ?? 22
+  );
+  const isBoxGlow = config.boxGlow !== false;
+  const boxGlowIntensity = config.boxGlowIntensity || 'medium';
+  const boxGlowColor = config.boxGlowColor || 'auto';
+  const isTextGlow = config.textGlow !== false;
+  const textGlowIntensity = config.textGlowIntensity || 'medium';
+  const textGlowColor = config.textGlowColor || 'auto';
+  const textGlowStyle = getTextGlowStyle(isTextGlow, textGlowIntensity, textGlowColor);
+
   return (
-    <div className="min-h-screen bg-[#07050E] text-slate-100 flex flex-col items-center selection:bg-violet-600 selection:text-white relative overflow-x-hidden w-full font-sans antialiased">
+    <div
+      style={gridStyles}
+      className="min-h-screen bg-[#07050E] text-slate-100 flex flex-col items-center selection:bg-violet-600 selection:text-white relative overflow-x-hidden w-full font-sans antialiased"
+    >
       {/* ================= QUANTIX FUTURISTIC AMBIENT CANVAS ================= */}
       {/* 1. Quantix Animated Cyber Grid */}
-      <div className="fixed inset-0 pointer-events-none quantix-animated-grid opacity-[0.22] z-0" />
+      {config.gridStyle !== 'dots' && config.gridStyle !== 'none' && (
+        <div className="fixed inset-0 pointer-events-none quantix-animated-grid z-0" />
+      )}
 
       {/* 2. Quantix Cyber Dot Matrix */}
-      <div className="fixed inset-0 pointer-events-none quantix-animated-dots opacity-[0.28] z-0" />
+      {config.gridStyle !== 'grid' && config.gridStyle !== 'none' && (
+        <div className="fixed inset-0 pointer-events-none quantix-animated-dots z-0" />
+      )}
 
       {/* 3. Quantix Sweeping Laser Scanline */}
-      <div className="quantix-laser-scanline fixed inset-x-0 h-48 bg-gradient-to-b from-transparent via-violet-500/15 to-transparent pointer-events-none z-0" />
+      {config.gridScanline !== false && (
+        <div className="quantix-laser-scanline fixed inset-x-0 h-48 pointer-events-none z-0" />
+      )}
 
-      {/* 4. Top Centered Quantum Purple Spotlight with Breathing Glow Pulse */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1300px] h-[650px] bg-gradient-to-b from-violet-600/30 via-purple-600/15 to-transparent rounded-full blur-[160px] pointer-events-none quantix-glow-pulse z-0" />
+      {/* 4. Top Centered Quantum Spotlight with Breathing Glow Pulse */}
+      {config.gridSpotlight !== false && (
+        <div
+          style={{
+            background: 'radial-gradient(circle, var(--grid-spotlight-color, rgba(168, 85, 247, 0.3)) 0%, transparent 70%)'
+          }}
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-[1300px] h-[650px] rounded-full blur-[160px] pointer-events-none quantix-glow-pulse z-0"
+        />
+      )}
 
       {/* 5. Secondary Lateral Glow Beams */}
-      <div className="absolute top-[850px] right-[-100px] w-[550px] h-[550px] bg-fuchsia-600/10 rounded-full blur-[200px] pointer-events-none z-0" />
-      <div className="absolute top-[1700px] left-[-100px] w-[650px] h-[650px] bg-indigo-600/10 rounded-full blur-[220px] pointer-events-none z-0" />
+      {isBoxGlow && (
+        <>
+          <div className="absolute top-[850px] right-[-100px] w-[550px] h-[550px] bg-fuchsia-600/10 rounded-full blur-[200px] pointer-events-none z-0" />
+          <div className="absolute top-[1700px] left-[-100px] w-[650px] h-[650px] bg-indigo-600/10 rounded-full blur-[220px] pointer-events-none z-0" />
+        </>
+      )}
 
-      {/* ================= QUANTIX FLOATING PILL NAVBAR ================= */}
-      <div className="sticky top-0 z-50 w-full px-4 sm:px-6 pt-4 flex justify-center">
-        <header className="w-full max-w-6xl mx-auto h-16 px-5 sm:px-7 rounded-2xl border border-violet-800/40 bg-[#0E0820]/85 backdrop-blur-2xl shadow-2xl shadow-black/80 flex items-center justify-between transition-all">
+      {/* ================= CLEAN MODERN FLOATING NAVBAR ================= */}
+      <div className="sticky top-0 z-50 w-full px-4 sm:px-6 pt-3 sm:pt-4 flex justify-center">
+        <header className="w-full max-w-6xl mx-auto h-16 px-5 sm:px-6 rounded-2xl border border-white/10 bg-[#0c081e]/80 backdrop-blur-xl shadow-lg shadow-black/50 flex items-center justify-between transition-all">
           {/* Brand Identity */}
-          <Link to="/" className="group flex items-center space-x-3 transition hover:opacity-95">
+          <Link to="/" className="group flex items-center space-x-2.5 transition hover:opacity-90">
             {brandLogo ? (
               <img
                 src={brandLogo}
                 alt={brandName}
-                className="h-8 max-w-[130px] object-contain rounded-lg shadow-sm"
+                className="h-8 max-w-[130px] object-contain rounded-lg shadow-xs"
               />
             ) : (
-              <PulseLogo size="md" animated={true} />
+              <PulseLogo size={34} iconOnly={true} animated={true} />
             )}
-            <span className="text-base font-extrabold text-white tracking-tight">
+            <span className="text-base font-bold text-white tracking-tight">
               {brandName}
             </span>
           </Link>
 
-          {/* Quantix Centered Nav Links */}
-          <nav className="hidden md:flex items-center space-x-8 text-xs font-medium text-violet-200/75">
+          {/* Clean Centered Nav Links */}
+          <nav className="hidden md:flex items-center space-x-7 text-xs font-medium text-slate-300">
             {features.length > 0 && (
-              <a href="#capabilities" className="hover:text-white transition duration-150 py-1">
+              <a href="#capabilities" className="hover:text-white transition-colors duration-150 py-1">
                 Capabilities
               </a>
             )}
             {previewSection?.enabled && (
-              <a href="#showcase" className="hover:text-white transition duration-150 py-1">
+              <a href="#showcase" className="hover:text-white transition-colors duration-150 py-1">
                 Showcase
               </a>
             )}
             {activeSocialLinks.length > 0 && (
-              <a href="#community" className="hover:text-white transition duration-150 py-1">
+              <a href="#community" className="hover:text-white transition-colors duration-150 py-1">
                 Community
               </a>
             )}
-            <a href="#faq" className="hover:text-white transition duration-150 py-1">
+            <a href="#faq" className="hover:text-white transition-colors duration-150 py-1">
               Architecture FAQ
             </a>
           </nav>
@@ -273,7 +336,7 @@ export const LandingPage = () => {
                 {user?.role === 'admin' && (
                   <Link
                     to="/admin"
-                    className="px-3 py-1.5 rounded-xl text-violet-300 hover:text-white bg-[#1A1233] hover:bg-violet-900/40 border border-violet-800/40 transition hidden sm:inline-flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                    className="px-3 py-1.5 rounded-xl text-violet-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition hidden sm:inline-flex items-center space-x-1.5 cursor-pointer shadow-xs"
                   >
                     <ShieldCheck className="w-3.5 h-3.5 text-violet-400" />
                     <span>Admin</span>
@@ -281,7 +344,7 @@ export const LandingPage = () => {
                 )}
                 <Link
                   to="/chat"
-                  className="px-4.5 py-2 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 hover:brightness-110 text-white font-bold shadow-lg shadow-violet-900/50 transition hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap flex items-center space-x-2 cursor-pointer"
+                  className="px-4.5 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold shadow-md shadow-violet-900/30 transition hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap flex items-center space-x-2 cursor-pointer"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
                   <span>Open Chat</span>
@@ -291,15 +354,16 @@ export const LandingPage = () => {
               <>
                 <Link
                   to={hero?.secondaryCtaLink || '/login'}
-                  className="px-3.5 py-2 rounded-xl text-violet-200/80 hover:text-white hover:bg-white/5 transition whitespace-nowrap cursor-pointer font-medium"
+                  className="px-3.5 py-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-white/5 transition duration-150 font-medium"
                 >
                   Sign In
                 </Link>
                 <Link
                   to={hero?.primaryCtaLink || '/register'}
-                  className="px-4.5 py-2 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 hover:brightness-110 text-white font-bold shadow-lg shadow-violet-900/40 transition hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold shadow-md shadow-violet-900/30 transition hover:scale-[1.02] active:scale-[0.98] flex items-center space-x-1.5 cursor-pointer"
                 >
-                  Get Started
+                  <span>{hero?.primaryCtaText || 'Get Started'}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               </>
             )}
@@ -330,7 +394,10 @@ export const LandingPage = () => {
           )}
 
           {/* High-Impact Hero Headline */}
-          <h1 className="text-4xl sm:text-6xl lg:text-[76px] font-extrabold tracking-tight text-white max-w-4xl mx-auto leading-[1.06] text-center">
+          <h1
+            style={textGlowStyle}
+            className="text-4xl sm:text-6xl lg:text-[76px] font-extrabold tracking-tight text-white max-w-4xl mx-auto leading-[1.06] text-center"
+          >
             <span className="bg-gradient-to-b from-white via-slate-100 to-violet-300 bg-clip-text text-transparent">
               {hero?.headline || 'Next-Generation Encrypted Real-Time Messaging.'}
             </span>
@@ -793,7 +860,10 @@ export const LandingPage = () => {
               <span className="px-3.5 py-1 rounded-full bg-violet-600/20 border border-violet-500/30 text-[10px] font-mono font-bold uppercase tracking-widest text-violet-300 mx-auto">
                 {featuresBadge}
               </span>
-              <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mt-4 text-center">
+              <h2
+                style={textGlowStyle}
+                className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mt-4 text-center"
+              >
                 {featuresTitle}
               </h2>
               <p className="text-xs sm:text-sm text-violet-300/70 mt-3 leading-relaxed text-center">
@@ -922,16 +992,19 @@ export const LandingPage = () => {
                 const isSplitLayout = layout === 'split' && hasImage && imageSize !== 'icon';
                 const isOverlayLayout = layout === 'card-overlay' && hasImage;
                 const isBottomLayout = layout === 'banner-bottom' && hasImage && imageSize !== 'icon';
+                const cardGlow = isBoxGlow ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, th.glow, boxGlowColor) : 'shadow-md';
 
                 return (
                   <div
                     key={idx}
-                    className={`relative p-7 sm:p-8 rounded-3xl ${th.cardBg} border ${th.border} transition-all duration-300 flex flex-col justify-between group overflow-hidden shadow-xl ${th.glow} hover:-translate-y-1 backdrop-blur-xl min-w-0 ${spanClass} ${
+                    className={`relative p-7 sm:p-8 rounded-3xl ${th.cardBg} border ${th.border} transition-all duration-300 flex flex-col justify-between group overflow-hidden ${cardGlow} hover:-translate-y-1 backdrop-blur-xl min-w-0 ${spanClass} ${
                       isHighlight ? th.highlightBg : ''
                     }`}
                   >
                     {/* Glowing Top Bevel Edge */}
-                    <div className={`absolute top-0 inset-x-8 h-px bg-gradient-to-r from-transparent via-violet-500/0 ${th.topGlow} to-transparent transition-all duration-300 z-20`} />
+                    {isBoxGlow && (
+                      <div className={`absolute top-0 inset-x-8 h-px bg-gradient-to-r from-transparent via-violet-500/0 ${th.topGlow} to-transparent transition-all duration-300 z-20`} />
+                    )}
 
                     {/* OVERLAY LAYOUT: Full-Bleed Artwork Backdrop */}
                     {isOverlayLayout && (
@@ -968,7 +1041,10 @@ export const LandingPage = () => {
                                 </span>
                               )}
                             </div>
-                            <h3 className="font-bold text-white mb-2.5 tracking-tight text-xl sm:text-2xl">
+                            <h3
+                              style={textGlowStyle}
+                              className="font-bold text-white mb-2.5 tracking-tight text-xl sm:text-2xl"
+                            >
                               {feat.title}
                             </h3>
                             <p className="text-xs sm:text-sm text-violet-300/70 leading-relaxed">
@@ -1020,7 +1096,10 @@ export const LandingPage = () => {
                         </div>
 
                         <div className="p-5 rounded-2xl bg-[#0B0716]/80 border border-violet-700/30 backdrop-blur-md mt-6 shadow-2xl">
-                          <h3 className={`font-bold text-white mb-2 tracking-tight ${isHighlight ? 'text-xl sm:text-2xl' : 'text-base sm:text-lg'}`}>
+                          <h3
+                            style={textGlowStyle}
+                            className={`font-bold text-white mb-2 tracking-tight ${isHighlight ? 'text-xl sm:text-2xl' : 'text-base sm:text-lg'}`}
+                          >
                             {feat.title}
                           </h3>
                           <p className="text-xs sm:text-sm text-violet-200/80 leading-relaxed">
@@ -1168,7 +1247,8 @@ export const LandingPage = () => {
         {/* ================= 4. QUANTIX PERFORMANCE METRICS ================= */}
         {stats && stats.length > 0 && (() => {
           const wrapperColorKey = config.statsWrapperColor || 'aurora';
-          const isGlowEnabled = config.statsWrapperGlow !== false;
+          const isGlowEnabled = isBoxGlow && config.statsWrapperGlow !== false;
+          const isCentered = config.statsAlignment !== 'left';
           const wrapTh = (STATS_WRAPPER_THEMES && STATS_WRAPPER_THEMES[wrapperColorKey]) || STATS_WRAPPER_THEMES?.aurora || {
             border: 'border-violet-500/40',
             containerBg: 'bg-gradient-to-b from-[#18102E]/90 to-[#100820]/95',
@@ -1176,6 +1256,9 @@ export const LandingPage = () => {
             topLaser: 'from-violet-500 via-fuchsia-400 to-cyan-400',
             ambientGlow: 'from-violet-600/25 via-fuchsia-600/15 to-cyan-600/25'
           };
+          const wrapperBoxGlow = isGlowEnabled
+            ? getBoxGlowClass(true, boxGlowIntensity, wrapTh.boxGlow, boxGlowColor)
+            : 'shadow-lg';
 
           return (
             <section id="metrics" className="w-full max-w-6xl mx-auto px-6 py-14 flex justify-center relative">
@@ -1187,7 +1270,7 @@ export const LandingPage = () => {
               )}
 
               <div
-                className={`w-full rounded-3xl ${wrapTh.containerBg} border ${wrapTh.border} ${isGlowEnabled ? wrapTh.boxGlow : ''} p-6 sm:p-10 md:p-12 shadow-2xl backdrop-blur-2xl relative overflow-hidden transition-all duration-500`}
+                className={`w-full rounded-3xl ${wrapTh.containerBg} border ${wrapTh.border} ${wrapperBoxGlow} p-6 sm:p-10 md:p-12 shadow-2xl backdrop-blur-2xl relative overflow-hidden transition-all duration-500`}
               >
                 {/* Top Glowing Laser Edge controlled by Admin */}
                 {isGlowEnabled && (
@@ -1204,26 +1287,38 @@ export const LandingPage = () => {
                       topLaser: 'from-transparent via-violet-400 to-transparent',
                       gradientText: 'from-violet-300 via-fuchsia-300 to-indigo-200'
                     };
+                    const statCardGlow = isBoxGlow
+                      ? getBoxGlowClass(true, boxGlowIntensity, th.glowBox, boxGlowColor)
+                      : 'shadow-sm';
 
                     return (
                       <div
                         key={idx}
-                        className={`relative p-6 sm:p-8 rounded-2xl border ${th.border} ${th.cardBg} ${th.glowBox} flex flex-col items-center sm:items-start text-center sm:text-left transition-all duration-300 group overflow-hidden`}
+                        className={`relative p-6 sm:p-8 rounded-2xl border ${th.border} ${th.cardBg} ${statCardGlow} flex flex-col ${
+                          isCentered ? 'items-center text-center justify-center' : 'items-start text-left justify-start'
+                        } transition-all duration-300 group overflow-hidden w-full`}
                       >
                         {/* Top Glowing Laser Edge */}
-                        <div className={`absolute top-0 inset-x-4 h-[2px] bg-gradient-to-r ${th.topLaser} transition-opacity duration-300`} />
+                        {isBoxGlow && (
+                          <div className={`absolute top-0 inset-x-4 h-[2px] bg-gradient-to-r ${th.topLaser} transition-opacity duration-300`} />
+                        )}
 
                         {/* Ambient Accent Radial Glow */}
-                        <div className="absolute -top-12 -right-12 w-28 h-28 rounded-full blur-2xl pointer-events-none opacity-30 group-hover:opacity-70 transition duration-500" />
+                        {isBoxGlow && (
+                          <div className="absolute -top-12 -right-12 w-28 h-28 rounded-full blur-2xl pointer-events-none opacity-30 group-hover:opacity-70 transition duration-500" />
+                        )}
 
-                        <span className={`text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r ${th.gradientText} tracking-tight font-mono drop-shadow-[0_0_15px_rgba(255,255,255,0.12)]`}>
+                        <span
+                          style={textGlowStyle}
+                          className={`text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r ${th.gradientText} tracking-tight font-mono ${isCentered ? 'text-center' : ''}`}
+                        >
                           {st.value}
                         </span>
-                        <span className="text-xs font-bold text-white mt-3 uppercase tracking-wider font-mono">
+                        <span className={`text-xs font-bold text-white mt-3 uppercase tracking-wider font-mono ${isCentered ? 'text-center' : ''}`}>
                           {st.label}
                         </span>
                         {(st.description || st.desc) && (
-                          <p className="text-xs sm:text-sm text-violet-200/90 mt-1.5 leading-relaxed font-sans">
+                          <p className={`text-xs sm:text-sm text-violet-200/90 mt-1.5 leading-relaxed font-sans ${isCentered ? 'text-center' : ''}`}>
                             {st.description || st.desc}
                           </p>
                         )}
@@ -1237,49 +1332,68 @@ export const LandingPage = () => {
         })()}
 
         {/* ================= 5. QUANTIX APP INTERFACE SHOWCASE ================= */}
-        {previewSection?.enabled && (
-          <section id="showcase" className="w-full max-w-6xl mx-auto px-6 py-16 md:py-24 flex justify-center">
-            <div className="w-full rounded-[2.5rem] bg-gradient-to-b from-[#1C1236] to-[#120B24] border border-violet-800/40 p-8 sm:p-14 lg:p-16 relative overflow-hidden shadow-2xl text-center mx-auto">
-              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-violet-500/50 to-transparent" />
+        {previewSection?.enabled && (() => {
+          const showcaseGlow = isBoxGlow
+            ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_60px_rgba(168,85,247,0.35)]', boxGlowColor)
+            : 'shadow-2xl';
+          const innerFrameGlow = isBoxGlow
+            ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_40px_rgba(168,85,247,0.3)]', boxGlowColor)
+            : 'shadow-2xl';
 
-              <div className="max-w-2xl mx-auto space-y-4 flex flex-col items-center">
-                <span className="inline-flex items-center justify-center px-4 py-1 bg-violet-600/20 text-violet-300 border border-violet-500/30 text-[10px] font-bold rounded-full uppercase tracking-widest mx-auto font-mono">
-                  Full-Featured Interface
-                </span>
-                <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight text-center">
-                  {previewSection.title}
-                </h2>
-                <p className="text-xs sm:text-sm text-violet-300/70 leading-relaxed text-center">
-                  {previewSection.description}
-                </p>
-              </div>
-
-              {previewSection.imageUrl && (
-                <div className="mt-12 max-w-5xl mx-auto rounded-2xl overflow-hidden border border-violet-800/40 bg-[#16102C] shadow-2xl">
-                  {/* Encrypted Session Top Bar */}
-                  <div className="px-4 py-3 bg-[#1A1233] border-b border-violet-900/40 flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <span className="w-3 h-3 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: '#FF5F56', boxShadow: '0 0 8px rgba(255, 95, 86, 0.8)' }} />
-                      <span className="w-3 h-3 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: '#FFBD2E', boxShadow: '0 0 8px rgba(255, 189, 46, 0.8)' }} />
-                      <span className="w-3 h-3 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: '#27C93F', boxShadow: '0 0 8px rgba(39, 201, 63, 0.8)' }} />
-                    </div>
-                    <div className="flex items-center space-x-1.5 text-[10px] font-mono text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-3 py-0.5 rounded-full">
-                      <Lock className="w-2.5 h-2.5" />
-                      <span>{brandTagline || 'END-TO-END ENCRYPTED'}</span>
-                    </div>
-                    <div className="w-10" />
-                  </div>
-
-                  <img
-                    src={previewSection.imageUrl}
-                    alt="App Showcase"
-                    className="w-full h-auto max-h-[520px] object-cover mx-auto"
-                  />
-                </div>
+          return (
+            <section id="showcase" className="w-full max-w-6xl mx-auto px-6 py-16 md:py-24 flex justify-center relative">
+              {/* Ambient Glow Halo */}
+              {isBoxGlow && (
+                <div className="absolute inset-0 max-w-5xl mx-auto bg-gradient-to-r from-violet-600/25 via-fuchsia-600/15 to-cyan-600/25 rounded-[3rem] blur-3xl pointer-events-none -z-10" />
               )}
-            </div>
-          </section>
-        )}
+
+              <div className={`w-full rounded-[2.5rem] bg-gradient-to-b from-[#1C1236] to-[#120B24] border border-violet-800/40 p-8 sm:p-14 lg:p-16 relative overflow-hidden ${showcaseGlow} text-center mx-auto transition-all duration-500`}>
+                {isBoxGlow && (
+                  <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-violet-500 via-fuchsia-400 to-cyan-400" />
+                )}
+
+                <div className="max-w-2xl mx-auto space-y-4 flex flex-col items-center">
+                  <span className="inline-flex items-center justify-center px-4 py-1 bg-violet-600/20 text-violet-300 border border-violet-500/30 text-[10px] font-bold rounded-full uppercase tracking-widest mx-auto font-mono">
+                    Full-Featured Interface
+                  </span>
+                  <h2
+                    style={textGlowStyle}
+                    className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight text-center"
+                  >
+                    {previewSection.title}
+                  </h2>
+                  <p className="text-xs sm:text-sm text-violet-300/70 leading-relaxed text-center">
+                    {previewSection.description}
+                  </p>
+                </div>
+
+                {previewSection.imageUrl && (
+                  <div className={`mt-12 max-w-5xl mx-auto rounded-2xl overflow-hidden border border-violet-800/40 bg-[#16102C] ${innerFrameGlow} transition-all duration-500`}>
+                    {/* Encrypted Session Top Bar */}
+                    <div className="px-4 py-3 bg-[#1A1233] border-b border-violet-900/40 flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-3 h-3 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: '#FF5F56', boxShadow: '0 0 8px rgba(255, 95, 86, 0.8)' }} />
+                        <span className="w-3 h-3 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: '#FFBD2E', boxShadow: '0 0 8px rgba(255, 189, 46, 0.8)' }} />
+                        <span className="w-3 h-3 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: '#27C93F', boxShadow: '0 0 8px rgba(39, 201, 63, 0.8)' }} />
+                      </div>
+                      <div className="flex items-center space-x-1.5 text-[10px] font-mono text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-3 py-0.5 rounded-full">
+                        <Lock className="w-2.5 h-2.5" />
+                        <span>{brandTagline || 'END-TO-END ENCRYPTED'}</span>
+                      </div>
+                      <div className="w-10" />
+                    </div>
+
+                    <img
+                      src={previewSection.imageUrl}
+                      alt="App Showcase"
+                      className="w-full h-auto max-h-[520px] object-cover mx-auto"
+                    />
+                  </div>
+                )}
+              </div>
+            </section>
+          );
+        })()}
 
         {/* ================= 6. QUANTIX ARCHITECTURAL FAQ ACCORDION ================= */}
         {(() => {
@@ -1295,7 +1409,10 @@ export const LandingPage = () => {
                 <span className="px-3.5 py-1 rounded-full bg-violet-600/20 border border-violet-500/30 text-[10px] font-mono font-bold uppercase tracking-widest text-violet-300 mx-auto">
                   {faqBadge}
                 </span>
-                <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mt-4 text-center">
+                <h2
+                  style={textGlowStyle}
+                  className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mt-4 text-center"
+                >
                   {faqTitle}
                 </h2>
                 <p className="text-xs sm:text-sm text-violet-300/70 mt-2.5 text-center">
@@ -1303,28 +1420,48 @@ export const LandingPage = () => {
                 </p>
               </div>
 
-              <div className="w-full space-y-3">
+              <div className="w-full space-y-3.5">
                 {activeFaqs.map((faq, idx) => {
                   const isOpen = openFaqIndex === idx;
+                  const faqBoxGlow = isBoxGlow
+                    ? (isOpen
+                        ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_25px_rgba(168,85,247,0.35)]', boxGlowColor)
+                        : getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_15px_rgba(168,85,247,0.15)]', boxGlowColor))
+                    : 'shadow-sm';
+                  const faqBorder = isOpen
+                    ? 'border-violet-400/80 bg-[#1C1236]/90 ring-1 ring-violet-400/40'
+                    : 'border-violet-800/40 bg-[#160E2C]/80 hover:border-violet-500/60 hover:bg-[#1A1135]';
+
                   return (
                     <div
                       key={idx}
-                      className="rounded-2xl bg-[#160E2C]/80 border border-violet-800/40 overflow-hidden transition-all duration-200"
+                      className={`relative rounded-2xl ${faqBorder} ${faqBoxGlow} overflow-hidden transition-all duration-300 group`}
                     >
+                      {/* Top glowing laser line on active or hover */}
+                      {isBoxGlow && (
+                        <div className={`absolute top-0 inset-x-4 h-[1.5px] bg-gradient-to-r from-transparent via-violet-400 to-transparent transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-30 group-hover:opacity-80'}`} />
+                      )}
+
                       <button
                         type="button"
                         onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
-                        className="w-full px-6 py-4.5 flex items-center justify-between text-left cursor-pointer hover:bg-violet-900/20 transition"
+                        className="w-full px-6 py-4.5 flex items-center justify-between text-left cursor-pointer hover:bg-violet-900/20 transition relative z-10"
                       >
-                        <span className="font-bold text-sm text-white pr-4">{faq.question}</span>
+                        <span
+                          style={isOpen ? textGlowStyle : {}}
+                          className={`font-bold text-sm text-white pr-4 transition-colors ${isOpen ? 'text-violet-200' : 'group-hover:text-violet-200'}`}
+                        >
+                          {faq.question}
+                        </span>
                         <ChevronDown
-                          className={`w-4 h-4 text-violet-400 transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180 text-fuchsia-400' : ''
-                            }`}
+                          className={`w-4 h-4 text-violet-400 transition-transform duration-200 shrink-0 ${
+                            isOpen ? 'rotate-180 text-fuchsia-400 drop-shadow-[0_0_6px_#E879F9]' : 'group-hover:text-violet-300'
+                          }`}
                         />
                       </button>
 
                       {isOpen && (
-                        <div className="px-6 pb-5 pt-1 text-xs text-violet-200/70 leading-relaxed border-t border-violet-900/30 animate-fadeIn">
+                        <div className="px-6 pb-5 pt-1 text-xs text-violet-200/80 leading-relaxed border-t border-violet-900/40 animate-fadeIn">
                           {faq.answer}
                         </div>
                       )}
@@ -1339,7 +1476,9 @@ export const LandingPage = () => {
         {/* ================= 7. QUANTIX FINAL CONVERSION IMAGE BANNER ================= */}
         {ctaBanner?.enabled !== false && (
           <section className="w-full max-w-6xl mx-auto px-6 py-14 md:py-20 flex justify-center">
-            <div className="w-full rounded-[2.5rem] overflow-hidden border border-violet-800/40 relative shadow-2xl bg-[#120B24] group min-h-[360px] sm:min-h-[420px] flex items-center justify-center">
+            <div className={`w-full rounded-[2.5rem] overflow-hidden border border-violet-800/40 relative ${
+              isBoxGlow ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_50px_rgba(168,85,247,0.35)]', boxGlowColor) : 'shadow-xl'
+            } bg-[#120B24] group min-h-[360px] sm:min-h-[420px] flex items-center justify-center`}>
               {/* Background Image (replacing plain gradient) */}
               <img
                 src={ctaBanner?.imageUrl || hero?.heroImage || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1600&q=80'}
@@ -1358,7 +1497,10 @@ export const LandingPage = () => {
                   <span>{ctaBanner?.badgeText || 'Get Started in Under 30 Seconds'}</span>
                 </span>
 
-                <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight drop-shadow-[0_4px_16px_rgba(0,0,0,0.8)]">
+                <h2
+                  style={textGlowStyle}
+                  className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight drop-shadow-[0_4px_16px_rgba(0,0,0,0.8)]"
+                >
                   {ctaBanner?.title || 'Ready to Experience Truly Sovereign Communication?'}
                 </h2>
 
@@ -1389,8 +1531,8 @@ export const LandingPage = () => {
       </main>
 
       {/* ================= QUANTIX RICH FOOTER ================= */}
-      <footer className="border-t border-violet-900/40 bg-[#0C071A] relative z-10 w-full flex justify-center">
-        <div className="max-w-6xl w-full mx-auto px-6 py-14 flex flex-col space-y-10">
+      <footer className="border-t border-violet-900/40 bg-[#0C071A] relative z-10 w-full flex flex-col items-center">
+        <div className="max-w-6xl w-full mx-auto px-6 pt-14 pb-10 flex flex-col space-y-10">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 pb-8 border-b border-violet-900/30">
             {/* Brand identity column */}
             <div className="space-y-3 max-w-sm">
@@ -1398,7 +1540,7 @@ export const LandingPage = () => {
                 {brandLogo ? (
                   <img src={brandLogo} alt={brandName} className="h-7 object-contain rounded-md" />
                 ) : (
-                  <PulseLogo size="sm" />
+                  <PulseLogo size={28} iconOnly={true} />
                 )}
                 <span className="font-extrabold text-lg text-white tracking-tight">{brandName}</span>
               </div>
@@ -1459,6 +1601,38 @@ export const LandingPage = () => {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* ================= MASSIVE KINETIC "YOUR_BRAIN" FULL-WIDTH SCROLL BANNER ================= */}
+        <div
+          ref={footerSignatureRef}
+          className="w-full pt-8 pb-4 px-2 overflow-hidden flex flex-col items-center justify-center relative select-none border-t border-violet-900/30"
+        >
+          {/* Ambient dynamic glow halo */}
+          <div
+            className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-6xl h-52 bg-gradient-to-t from-violet-600/35 via-fuchsia-600/20 to-transparent rounded-full blur-3xl pointer-events-none transition-opacity duration-700"
+            style={{
+              opacity: 0.2 + footerScrollFactor * 0.8,
+              transform: `scale(${0.9 + footerScrollFactor * 0.2})`
+            }}
+          />
+
+          {/* Kinetic Letter-spacing "Open and Close" on Scroll Typography */}
+          <div
+            className="w-full text-center flex items-center justify-center transition-all duration-300 ease-out py-2"
+            style={{
+              letterSpacing: `${(0.02 + footerScrollFactor * 0.20).toFixed(3)}em`,
+              transform: `scale(${0.90 + footerScrollFactor * 0.10}) translateZ(0)`,
+              opacity: 0.35 + footerScrollFactor * 0.65
+            }}
+          >
+            <span
+              style={textGlowStyle}
+              className="w-full block font-black text-[14vw] sm:text-[15vw] md:text-[16vw] lg:text-[17vw] leading-none tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white via-violet-200/90 to-violet-950 font-mono uppercase drop-shadow-[0_0_40px_rgba(168,85,247,0.4)] hover:tracking-[0.26em] transition-all duration-500 cursor-default"
+            >
+              {footer?.bigText || 'YOUR_BRAIN'}
+            </span>
           </div>
         </div>
       </footer>

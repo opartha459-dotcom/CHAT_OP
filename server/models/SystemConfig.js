@@ -201,6 +201,20 @@ const systemConfigSchema = new mongoose.Schema(
       },
       statsWrapperColor: { type: String, default: 'aurora' },
       statsWrapperGlow: { type: Boolean, default: true },
+      statsAlignment: { type: String, default: 'center' },
+      // Master Glow & Cyber Grid Visual Controls
+      boxGlow: { type: Boolean, default: true },
+      boxGlowIntensity: { type: String, default: 'medium' },
+      boxGlowColor: { type: String, default: 'auto' },
+      textGlow: { type: Boolean, default: true },
+      textGlowIntensity: { type: String, default: 'medium' },
+      textGlowColor: { type: String, default: 'auto' },
+      gridColor: { type: String, default: 'violet' },
+      gridCustomHex: { type: String, default: '#a855f7' },
+      gridOpacity: { type: Number, default: 22 },
+      gridStyle: { type: String, default: 'grid-dots' },
+      gridScanline: { type: Boolean, default: true },
+      gridSpotlight: { type: Boolean, default: true },
       previewSection: {
         enabled: { type: Boolean, default: true },
         title: { type: String, default: 'Engineered for speed, privacy, and modern teams.' },
@@ -209,6 +223,7 @@ const systemConfigSchema = new mongoose.Schema(
       },
       footer: {
         copyrightText: { type: String, default: 'PulseChat © 2026. Built with React, Tailwind CSS, Express, Socket.IO & MongoDB.' },
+        bigText: { type: String, default: 'YOUR_BRAIN' },
         links: {
           type: [
             {

@@ -33,7 +33,14 @@ import {
 } from 'lucide-react';
 import { PulseLogo } from '../common/PulseLogo';
 import { SocialBrandIcon } from '../common/SocialBrandIcon';
-import { STAT_THEMES, STATS_WRAPPER_THEMES } from './LandingCmsTab';
+import {
+  STAT_THEMES,
+  STATS_WRAPPER_THEMES,
+  GRID_COLOR_PRESETS,
+  getGridStyles,
+  getBoxGlowClass,
+  getTextGlowStyle
+} from './LandingCmsTab';
 
 const ICON_MAP = {
   Lock,
@@ -82,6 +89,19 @@ export const LiveLandingPreview = ({
     stats = [],
     statsWrapperColor = 'aurora',
     statsWrapperGlow = true,
+    statsAlignment = 'center',
+    boxGlow = true,
+    boxGlowIntensity = 'medium',
+    boxGlowColor = 'auto',
+    textGlow = true,
+    textGlowIntensity = 'medium',
+    textGlowColor = 'auto',
+    gridColor = 'violet',
+    gridCustomHex = '#a855f7',
+    gridOpacity = 22,
+    gridStyle = 'grid-dots',
+    gridScanline = true,
+    gridSpotlight = true,
     previewSection,
     socialLinks = [],
     faqBadge = 'Architecture & Security',
@@ -91,6 +111,11 @@ export const LiveLandingPreview = ({
     ctaBanner,
     footer
   } = config || {};
+
+  const gridStyles = getGridStyles(gridColor, gridCustomHex, gridOpacity);
+  const isBoxGlow = boxGlow !== false;
+  const isTextGlow = textGlow !== false;
+  const textGlowStyle = getTextGlowStyle(isTextGlow, textGlowIntensity, textGlowColor);
 
   const activeSocialLinks = (socialLinks || []).filter((s) => s.enabled && s.url);
   const hasHeroImage = Boolean(hero?.showHeroImage && hero?.heroImage);
@@ -231,20 +256,20 @@ export const LiveLandingPreview = ({
 
   // Helper renderers
   const renderNavbar = () => (
-    <nav className="w-full border-b border-violet-900/30 bg-[#07050E]/90 backdrop-blur-md px-4 py-3 flex items-center justify-between text-xs">
-      <div className="flex items-center space-x-2">
-        <PulseLogo size={24} className="text-violet-500 shrink-0" />
-        <span className="font-extrabold tracking-tight text-white font-mono">{brandName}</span>
+    <nav className="w-full border-b border-white/10 bg-[#0c081e]/85 backdrop-blur-md px-4 py-3 flex items-center justify-between text-xs transition-all">
+      <div className="flex items-center space-x-2.5">
+        <PulseLogo size={24} iconOnly={true} className="shrink-0" />
+        <span className="font-bold tracking-tight text-white font-sans text-xs sm:text-sm">{brandName}</span>
         {brandTagline && (
-          <span className="hidden sm:inline-block px-1.5 py-0.5 rounded text-[9px] font-mono bg-violet-900/40 text-violet-300 border border-violet-700/40">
+          <span className="hidden sm:inline-block px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/5 text-slate-300 border border-white/10">
             {brandTagline}
           </span>
         )}
       </div>
 
       <div className="flex items-center space-x-3">
-        <span className="text-violet-200/70 hover:text-white transition">Sign In</span>
-        <span className="px-3 py-1 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-lg font-semibold shadow-xs">
+        <span className="text-slate-300 hover:text-white transition cursor-pointer">Sign In</span>
+        <span className="px-3 py-1 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-lg font-semibold shadow-xs cursor-pointer">
           Get Started
         </span>
       </div>
@@ -263,7 +288,10 @@ export const LiveLandingPreview = ({
       )}
 
       {/* Main Headline */}
-      <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight max-w-3xl leading-tight">
+      <h1
+        style={textGlowStyle}
+        className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight max-w-3xl leading-tight"
+      >
         {hero?.headline || 'Next-Generation Encrypted Real-Time Messaging.'}
       </h1>
 
@@ -351,7 +379,10 @@ export const LiveLandingPreview = ({
         <span className="px-3 py-0.5 rounded-full bg-violet-600/20 border border-violet-500/30 text-[9px] font-mono font-bold uppercase tracking-widest text-violet-300">
           {featuresBadge}
         </span>
-        <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mt-2.5">
+        <h2
+          style={textGlowStyle}
+          className="text-xl sm:text-2xl font-extrabold text-white tracking-tight mt-2.5"
+        >
           {featuresTitle}
         </h2>
         <p className="text-[11px] sm:text-xs text-violet-300/70 mt-1.5 leading-relaxed">
@@ -445,6 +476,10 @@ export const LiveLandingPreview = ({
                 full: '3 Cols (Full)'
               };
 
+              const previewCardGlow = isBoxGlow
+                ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, th.glow || 'shadow-violet-900/30', boxGlowColor)
+                : 'shadow-sm';
+
               return (
                 <div
                   key={idx}
@@ -453,12 +488,14 @@ export const LiveLandingPreview = ({
                   onDragStart={(e) => handleDragStart(e, idx)}
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, idx)}
-                  className={`relative p-5 rounded-2xl ${th.cardBg} border ${th.border} transition-all duration-200 flex flex-col justify-between group overflow-hidden shadow-lg min-w-0 ${
+                  className={`relative p-5 rounded-2xl ${th.cardBg} border ${th.border} transition-all duration-200 flex flex-col justify-between group overflow-hidden ${previewCardGlow} min-w-0 ${
                     isHighlight ? th.highlightBg : ''
                   } ${draggedIdx === idx ? 'opacity-40 border-dashed border-indigo-400' : ''}`}
                 >
               {/* Glowing Top Bevel */}
-              <div className={`absolute top-0 inset-x-6 h-px bg-gradient-to-r from-transparent via-violet-500/0 ${th.topGlow} to-transparent z-20`} />
+              {isBoxGlow && (
+                <div className={`absolute top-0 inset-x-6 h-px bg-gradient-to-r from-transparent via-violet-500/0 ${th.topGlow} to-transparent z-20`} />
+              )}
 
               {/* CURSOR GRID BUILDER TOOLBAR (DIRECT MOUSE CONTROLS) */}
               {cursorBuilder && (
@@ -721,21 +758,43 @@ export const LiveLandingPreview = ({
 
   const renderAppShowcase = () => {
     if (!previewSection?.enabled) return null;
+    const showcaseGlow = isBoxGlow
+      ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_50px_rgba(168,85,247,0.35)]', boxGlowColor)
+      : 'shadow-xl';
+    const innerFrameGlow = isBoxGlow
+      ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_35px_rgba(168,85,247,0.3)]', boxGlowColor)
+      : 'shadow-lg';
+
     return (
-      <section className="px-5 py-8 w-full max-w-3xl mx-auto text-center">
-        <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight">
-          {previewSection.title || 'Engineered for speed, privacy, and modern teams.'}
-        </h3>
-        {previewSection.description && (
-          <p className="text-xs text-violet-300/70 mt-2 max-w-xl mx-auto">
-            {previewSection.description}
-          </p>
+      <section className="px-5 py-8 w-full max-w-3xl mx-auto text-center relative">
+        {/* Ambient Glow Halo */}
+        {isBoxGlow && (
+          <div className="absolute inset-0 bg-gradient-to-r from-violet-600/25 via-fuchsia-600/15 to-cyan-600/25 rounded-3xl blur-2xl pointer-events-none -z-10" />
         )}
-        {previewSection.imageUrl && (
-          <div className="mt-5 rounded-2xl overflow-hidden border border-violet-800/40 bg-[#110A22] shadow-xl">
-            <img src={previewSection.imageUrl} alt="Showcase" className="w-full object-cover max-h-[300px]" />
-          </div>
-        )}
+        <div className={`p-6 rounded-2xl bg-gradient-to-b from-[#1C1236] to-[#120B24] border border-violet-800/40 relative overflow-hidden ${showcaseGlow} transition-all duration-300`}>
+          {isBoxGlow && (
+            <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-violet-500 via-fuchsia-400 to-cyan-400" />
+          )}
+          <span className="inline-flex items-center justify-center px-3 py-0.5 bg-violet-600/20 text-violet-300 border border-violet-500/30 text-[9px] font-bold rounded-full uppercase tracking-widest mx-auto font-mono mb-2">
+            Full-Featured Interface
+          </span>
+          <h3
+            style={textGlowStyle}
+            className="text-lg sm:text-xl font-bold text-white tracking-tight"
+          >
+            {previewSection.title || 'Engineered for speed, privacy, and modern teams.'}
+          </h3>
+          {previewSection.description && (
+            <p className="text-xs text-violet-300/70 mt-2 max-w-xl mx-auto">
+              {previewSection.description}
+            </p>
+          )}
+          {previewSection.imageUrl && (
+            <div className={`mt-5 rounded-2xl overflow-hidden border border-violet-800/40 bg-[#110A22] ${innerFrameGlow} transition-all duration-300`}>
+              <img src={previewSection.imageUrl} alt="Showcase" className="w-full object-cover max-h-[300px]" />
+            </div>
+          )}
+        </div>
       </section>
     );
   };
@@ -743,7 +802,8 @@ export const LiveLandingPreview = ({
   const renderMetrics = () => {
     if (!stats || stats.length === 0) return null;
     const wrapperColorKey = statsWrapperColor || 'aurora';
-    const isGlowEnabled = statsWrapperGlow !== false;
+    const isGlowEnabled = isBoxGlow && statsWrapperGlow !== false;
+    const isCentered = statsAlignment !== 'left';
     const wrapTh = (STATS_WRAPPER_THEMES && STATS_WRAPPER_THEMES[wrapperColorKey]) || STATS_WRAPPER_THEMES?.aurora || {
       border: 'border-violet-500/40',
       containerBg: 'bg-[#140D27]/90',
@@ -751,6 +811,9 @@ export const LiveLandingPreview = ({
       topLaser: 'from-violet-500 via-fuchsia-400 to-cyan-400',
       ambientGlow: 'from-violet-600/25 via-fuchsia-600/15 to-cyan-600/25'
     };
+    const wrapperBoxGlow = isGlowEnabled
+      ? getBoxGlowClass(true, boxGlowIntensity, wrapTh.boxGlow, boxGlowColor)
+      : 'shadow-sm';
 
     return (
       <section className="px-5 py-6 w-full max-w-3xl mx-auto relative">
@@ -758,7 +821,7 @@ export const LiveLandingPreview = ({
         {isGlowEnabled && (
           <div className={`absolute inset-0 bg-gradient-to-r ${wrapTh.ambientGlow} rounded-2xl blur-2xl pointer-events-none -z-10`} />
         )}
-        <div className={`rounded-2xl ${wrapTh.containerBg} border ${wrapTh.border} ${isGlowEnabled ? wrapTh.boxGlow : ''} p-4 sm:p-5 relative overflow-hidden transition-all duration-300`}>
+        <div className={`rounded-2xl ${wrapTh.containerBg} border ${wrapTh.border} ${wrapperBoxGlow} p-4 sm:p-5 relative overflow-hidden transition-all duration-300`}>
           {isGlowEnabled && (
             <div className={`absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r ${wrapTh.topLaser}`} />
           )}
@@ -772,19 +835,29 @@ export const LiveLandingPreview = ({
                 topLaser: 'from-transparent via-violet-400 to-transparent',
                 gradientText: 'from-violet-300 via-fuchsia-300 to-indigo-200'
               };
+              const statCardGlow = isBoxGlow
+                ? getBoxGlowClass(true, boxGlowIntensity, th.glowBox, boxGlowColor)
+                : 'shadow-sm';
 
               return (
                 <div
                   key={i}
-                  className={`p-3.5 rounded-xl border ${th.border} ${th.cardBg} ${th.glowBox} flex flex-col items-center sm:items-start text-center sm:text-left relative overflow-hidden transition-all duration-200`}
+                  className={`p-3.5 rounded-xl border ${th.border} ${th.cardBg} ${statCardGlow} flex flex-col ${
+                    isCentered ? 'items-center text-center justify-center' : 'items-start text-left justify-start'
+                  } relative overflow-hidden transition-all duration-200 w-full`}
                 >
-                  <div className={`absolute top-0 inset-x-3 h-[2px] bg-gradient-to-r ${th.topLaser}`} />
-                  <div className={`text-xl sm:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r ${th.gradientText} font-mono`}>
+                  {isBoxGlow && (
+                    <div className={`absolute top-0 inset-x-3 h-[2px] bg-gradient-to-r ${th.topLaser}`} />
+                  )}
+                  <div
+                    style={textGlowStyle}
+                    className={`text-xl sm:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r ${th.gradientText} font-mono ${isCentered ? 'text-center' : ''}`}
+                  >
                     {st.value}
                   </div>
-                  <div className="text-[10px] font-bold text-white uppercase font-mono mt-1">{st.label}</div>
+                  <div className={`text-[10px] font-bold text-white uppercase font-mono mt-1 ${isCentered ? 'text-center' : ''}`}>{st.label}</div>
                   {(st.description || st.desc) && (
-                    <div className="text-[10px] text-violet-200/90 mt-1 leading-normal font-sans">
+                    <div className={`text-[10px] text-violet-200/90 mt-1 leading-normal font-sans ${isCentered ? 'text-center' : ''}`}>
                       {st.description || st.desc}
                     </div>
                   )}
@@ -844,24 +917,47 @@ export const LiveLandingPreview = ({
           <span className="px-2.5 py-0.5 rounded-full bg-violet-600/20 text-violet-300 text-[9px] font-mono font-bold uppercase">
             {faqBadge}
           </span>
-          <h3 className="text-base font-bold text-white mt-1.5">{faqTitle}</h3>
+          <h3 style={textGlowStyle} className="text-base font-bold text-white mt-1.5">{faqTitle}</h3>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {faqs.map((faq, i) => {
             const isOpen = openFaqIndex === i;
+            const qText = faq.question || faq.q;
+            const aText = faq.answer || faq.a;
+            const faqBoxGlow = isBoxGlow
+              ? (isOpen
+                  ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_25px_rgba(168,85,247,0.35)]', boxGlowColor)
+                  : getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_15px_rgba(168,85,247,0.15)]', boxGlowColor))
+              : 'shadow-sm';
+            const faqBorder = isOpen
+              ? 'border-violet-400/80 bg-[#1C1236]/90'
+              : 'border-violet-800/40 bg-[#150E28] hover:border-violet-500/60 hover:bg-[#1A1135]';
+
             return (
-              <div key={i} className="rounded-xl bg-[#150E28] border border-violet-800/40 overflow-hidden">
+              <div key={i} className={`relative rounded-xl ${faqBorder} ${faqBoxGlow} overflow-hidden transition-all duration-300 group`}>
+                {isBoxGlow && (
+                  <div className={`absolute top-0 inset-x-3 h-[1.5px] bg-gradient-to-r from-transparent via-violet-400 to-transparent transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-30 group-hover:opacity-80'}`} />
+                )}
                 <button
                   type="button"
                   onClick={() => setOpenFaqIndex(isOpen ? null : i)}
-                  className="w-full p-3 text-left flex items-center justify-between text-xs font-semibold text-white cursor-pointer"
+                  className="w-full p-3 text-left flex items-center justify-between text-xs font-semibold text-white cursor-pointer relative z-10"
                 >
-                  <span>{faq.q}</span>
-                  {isOpen ? <ChevronUp className="w-3.5 h-3.5 text-violet-400" /> : <ChevronDown className="w-3.5 h-3.5 text-violet-400" />}
+                  <span
+                    style={isOpen ? textGlowStyle : {}}
+                    className={`transition-colors ${isOpen ? 'text-violet-200' : 'group-hover:text-violet-200'}`}
+                  >
+                    {qText}
+                  </span>
+                  {isOpen ? (
+                    <ChevronUp className="w-3.5 h-3.5 text-fuchsia-400 drop-shadow-[0_0_6px_#E879F9] shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5 text-violet-400 group-hover:text-violet-300 shrink-0" />
+                  )}
                 </button>
                 {isOpen && (
-                  <div className="p-3 pt-0 text-[11px] text-violet-300/80 leading-relaxed border-t border-violet-900/30">
-                    {faq.a}
+                  <div className="p-3 pt-0 text-[11px] text-violet-300/80 leading-relaxed border-t border-violet-900/30 animate-fadeIn">
+                    {aText}
                   </div>
                 )}
               </div>
@@ -927,9 +1023,16 @@ export const LiveLandingPreview = ({
           </span>
         ))}
       </div>
-      <p className="text-[10px] font-mono">
+      <p className="text-[10px] font-mono mb-4">
         {footer?.copyrightText || `© ${new Date().getFullYear()} PulseChat. Zero Server Plaintext.`}
       </p>
+
+      {/* Massive Kinetic Text Signature in Preview */}
+      <div className="pt-4 border-t border-violet-900/30 overflow-hidden text-center select-none">
+        <span className="font-black text-2xl sm:text-4xl font-mono uppercase tracking-[0.16em] text-transparent bg-clip-text bg-gradient-to-b from-white via-violet-200/90 to-violet-950/80">
+          {footer?.bigText || 'YOUR_BRAIN'}
+        </span>
+      </div>
     </footer>
   );
 
@@ -1076,15 +1179,57 @@ export const LiveLandingPreview = ({
 
           {/* Canvas Render Area */}
           <div
-            className={`min-h-full bg-[#07050E] text-slate-100 flex flex-col relative w-full antialiased ${
-              gridBg ? 'quantix-animated-grid' : ''
-            }`}
+            style={gridStyles}
+            className="min-h-full bg-[#07050E] text-slate-100 flex flex-col relative w-full antialiased overflow-hidden"
           >
+            {/* Animated Cyber Grid */}
+            {gridStyle !== 'dots' && gridStyle !== 'none' && gridBg && (
+              <div className="absolute inset-0 pointer-events-none quantix-animated-grid z-0" />
+            )}
+
+            {/* Cyber Dot Matrix */}
+            {gridStyle !== 'grid' && gridStyle !== 'none' && gridBg && (
+              <div className="absolute inset-0 pointer-events-none quantix-animated-dots z-0" />
+            )}
+
+            {/* Sweeping Laser Scanline */}
+            {gridScanline !== false && gridBg && (
+              <div className="quantix-laser-scanline absolute inset-x-0 h-48 pointer-events-none z-0" />
+            )}
+
+            {/* Top Spotlight Pulse */}
+            {gridSpotlight !== false && gridBg && (
+              <div
+                style={{
+                  background: 'radial-gradient(circle, var(--grid-spotlight-color, rgba(168, 85, 247, 0.3)) 0%, transparent 70%)'
+                }}
+                className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[350px] rounded-full blur-[90px] pointer-events-none quantix-glow-pulse z-0"
+              />
+            )}
+
             {renderNavbar()}
 
             {viewScope === 'active' ? (
               // FOCUS VIEW: Renders the active section being configured in CMS
-              <div className="py-4">
+              <div className="py-4 relative z-10">
+                {activeSection === 'visuals' && (
+                  <div className="space-y-6 relative z-10 p-2">
+                    <div className="p-4 rounded-xl bg-[#140D26]/90 border border-violet-800/40 text-center space-y-1 mx-4 shadow-lg">
+                      <span className="text-[10px] font-mono text-violet-400 uppercase tracking-widest font-bold">
+                        Lighting Engine Preview
+                      </span>
+                      <h4 style={textGlowStyle} className="text-lg font-bold text-white">
+                        Full-Page Cyber Atmosphere
+                      </h4>
+                      <p className="text-[11px] text-violet-300/70">
+                        Live preview of cyber grid color, master box glow, and independent text glow.
+                      </p>
+                    </div>
+                    {renderHeroSection()}
+                    {renderFeaturesBentoGrid()}
+                    {renderMetrics()}
+                  </div>
+                )}
                 {activeSection === 'hero' && renderHeroSection()}
                 {activeSection === 'brand' && (
                   <div className="p-8 text-center">
