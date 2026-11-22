@@ -4,6 +4,7 @@ const Message = require('../models/Message');
 const Report = require('../models/Report');
 const Session = require('../models/Session');
 const AuditLog = require('../models/AuditLog');
+const Status = require('../models/Status');
 const emailService = require('../services/emailService');
 
 // @desc Get moderation dashboard overview statistics
@@ -2635,7 +2636,269 @@ const deleteSingleMaintenance = async (req, res) => {
   }
 };
 
+// @desc Get all official PulseChat stories for admin management
+// @route GET /api/admin/stories
+const getAdminStories = async (req, res) => {
+  try {
+    const stories = await Status.find({ isAdminStory: true })
+      .sort({ createdAt: -1 })
+      .populate('user', 'username nickname avatar')
+      .populate('viewers.user', 'username nickname avatar')
+      .populate('reactions.user', 'username nickname avatar')
+      .populate('poll.options.votes', 'username nickname avatar')
+      .populate('replies.user', 'username nickname avatar email')
+      .lean();
+
+    return res.json({
+      success: true,
+      stories
+    });
+  } catch (error) {
+    console.error('[Get Admin Stories Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve admin stories.' });
+  }
+};
+
+// @desc Get all replies to official PulseChat stories (and all stories)
+// @route GET /api/admin/stories/replies
+const getAdminStoryReplies = async (req, res) => {
+  try {
+    const storiesWithReplies = await Status.find({
+      $or: [
+        { isAdminStory: true },
+        { 'replies.0': { $exists: true } }
+      ]
+    })
+      .sort({ createdAt: -1 })
+      .populate('user', 'username nickname avatar')
+      .populate('replies.user', 'username nickname avatar email')
+      .lean();
+
+    const flattenedReplies = [];
+    storiesWithReplies.forEach((story) => {
+      (story.replies || []).forEach((r) => {
+        flattenedReplies.push({
+          _id: r._id,
+          message: r.message,
+          createdAt: r.createdAt,
+          conversationId: r.conversationId,
+          user: r.user,
+          story: {
+            _id: story._id,
+            text: story.text,
+            mediaUrl: story.mediaUrl,
+            type: story.type,
+            style: story.style,
+            isAdminStory: story.isAdminStory,
+            officialAuthorName: story.officialAuthorName || 'PulseChat',
+            officialAuthorAvatar: story.officialAuthorAvatar || '',
+            createdAt: story.createdAt,
+            expiresAt: story.expiresAt
+          }
+        });
+      });
+    });
+
+    flattenedReplies.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    return res.json({
+      success: true,
+      replies: flattenedReplies
+    });
+  } catch (error) {
+    console.error('[Get Admin Story Replies Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve story replies.' });
+  }
+};
+
+// @desc Create and publish a new official PulseChat story
+// @route POST /api/admin/stories
+const createAdminStory = async (req, res) => {
+  try {
+    const {
+      officialAuthorName = 'PulseChat',
+      officialAuthorAvatar = '',
+      type = 'text',
+      text = '',
+      mediaUrl = '',
+      style,
+      hasPoll = false,
+      poll,
+      durationHours = 24
+    } = req.body;
+
+    const cleanAuthorName = (officialAuthorName || 'PulseChat').trim();
+    const cleanText = (text || '').trim();
+
+    if (type === 'text' && !cleanText && !hasPoll) {
+      return res.status(400).json({ success: false, message: 'Story text or poll is required.' });
+    }
+
+    if (type === 'media' && !mediaUrl) {
+      return res.status(400).json({ success: false, message: 'Media URL is required for media stories.' });
+    }
+
+    let pollData = null;
+    if (hasPoll && poll && Array.isArray(poll.options)) {
+      const validOptions = poll.options
+        .map((opt) => (typeof opt === 'string' ? opt.trim() : opt?.text?.trim() || ''))
+        .filter(Boolean);
+
+      const uniqueOptions = [...new Set(validOptions)];
+      if (uniqueOptions.length < 2 || uniqueOptions.length > 6) {
+        return res.status(400).json({ success: false, message: 'A poll must have between 2 and 6 unique options.' });
+      }
+
+      pollData = {
+        question: (poll.question || cleanText || 'Official PulseChat Poll').trim(),
+        options: uniqueOptions.map((optText) => ({ text: optText, votes: [] })),
+        isClosed: false
+      };
+    }
+
+    const defaultStyle = {
+      background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+      font: 'sans',
+      textColor: '#ffffff',
+      bold: false,
+      italic: false
+    };
+
+    const hours = Math.max(1, Math.min(720, Number(durationHours) || 24));
+    const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+
+    const story = await Status.create({
+      user: req.user._id,
+      isAdminStory: true,
+      officialAuthorName: cleanAuthorName,
+      officialAuthorAvatar: officialAuthorAvatar || '',
+      type,
+      text: cleanText,
+      mediaUrl: mediaUrl || '',
+      style: { ...defaultStyle, ...(style || {}) },
+      privacy: {
+        audience: 'everyone',
+        allowedUsers: [],
+        excludedUsers: []
+      },
+      hasPoll: Boolean(pollData),
+      poll: pollData,
+      expiresAt
+    });
+
+    const populated = await Status.findById(story._id)
+      .populate('user', 'username nickname avatar')
+      .populate('viewers.user', 'username nickname avatar')
+      .populate('reactions.user', 'username nickname avatar')
+      .populate('poll.options.votes', 'username nickname avatar')
+      .lean();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('status:new', {
+        status: populated,
+        author: {
+          _id: `official-${cleanAuthorName.toLowerCase().replace(/\s+/g, '-')}`,
+          username: 'pulsechat',
+          nickname: cleanAuthorName,
+          avatar: officialAuthorAvatar || '',
+          isOfficial: true,
+          isVerified: true
+        }
+      });
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'create_admin_story',
+      target: story._id,
+      targetModel: 'Status',
+      details: `Published official story as "${cleanAuthorName}" (expires in ${hours}h)`
+    }).catch(() => {});
+
+    return res.status(201).json({
+      success: true,
+      message: `Official story published as "${cleanAuthorName}" successfully!`,
+      story: populated
+    });
+  } catch (error) {
+    console.error('[Create Admin Story Error]', error);
+    return res.status(500).json({ success: false, message: error.message || 'Failed to create official story.' });
+  }
+};
+
+// @desc Delete an official story
+// @route DELETE /api/admin/stories/:id
+const deleteAdminStory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const story = await Status.findById(id);
+    if (!story) {
+      return res.status(404).json({ success: false, message: 'Story not found.' });
+    }
+
+    await Status.findByIdAndDelete(id);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('status:deleted', { statusId: id });
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'delete_admin_story',
+      target: story._id,
+      targetModel: 'Status',
+      details: `Deleted official story "${story.officialAuthorName || 'PulseChat'}"`
+    }).catch(() => {});
+
+    return res.json({ success: true, message: 'Story deleted successfully.' });
+  } catch (error) {
+    console.error('[Delete Admin Story Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete story.' });
+  }
+};
+
+// @desc Toggle poll open/close on official story
+// @route POST /api/admin/stories/:id/poll/close
+const toggleAdminStoryPoll = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const story = await Status.findById(id);
+    if (!story || !story.poll) {
+      return res.status(404).json({ success: false, message: 'Story or poll not found.' });
+    }
+
+    story.poll.isClosed = !story.poll.isClosed;
+    story.markModified('poll');
+    await story.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('status:poll_voted', {
+        statusId: id,
+        authorId: (story.user?._id || story.user).toString(),
+        poll: story.poll
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: story.poll.isClosed ? 'Poll voting closed.' : 'Poll voting reopened.',
+      isClosed: story.poll.isClosed
+    });
+  } catch (error) {
+    console.error('[Toggle Admin Story Poll Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to toggle poll status.' });
+  }
+};
+
 module.exports = {
+  getAdminStories,
+  getAdminStoryReplies,
+  createAdminStory,
+  deleteAdminStory,
+  toggleAdminStoryPoll,
   getDashboardStats,
   getAnalytics,
   getUsers,

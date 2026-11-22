@@ -577,40 +577,40 @@ export const getBoxGlowClass = (boxGlowEnabled, intensity = 'medium', fallbackGl
   
   const colorMap = {
     violet: {
-      subtle: 'shadow-[0_0_15px_rgba(168,85,247,0.2)]',
-      medium: 'shadow-[0_0_25px_rgba(168,85,247,0.35)]',
-      intense: 'shadow-[0_0_45px_rgba(168,85,247,0.55)]',
-      neon: 'shadow-[0_0_60px_rgba(168,85,247,0.7),0_0_20px_rgba(217,70,239,0.5)]'
+      subtle: 'shadow-[0_0_18px_rgba(168,85,247,0.25)]',
+      medium: 'shadow-[0_0_30px_rgba(168,85,247,0.40)]',
+      intense: 'shadow-[0_0_50px_rgba(168,85,247,0.60)]',
+      neon: 'shadow-[0_0_65px_rgba(168,85,247,0.75),0_0_25px_rgba(217,70,239,0.55)]'
     },
     cyan: {
-      subtle: 'shadow-[0_0_15px_rgba(6,182,212,0.2)]',
-      medium: 'shadow-[0_0_25px_rgba(6,182,212,0.35)]',
-      intense: 'shadow-[0_0_45px_rgba(6,182,212,0.55)]',
-      neon: 'shadow-[0_0_60px_rgba(6,182,212,0.7),0_0_20px_rgba(34,211,238,0.5)]'
+      subtle: 'shadow-[0_0_18px_rgba(6,182,212,0.25)]',
+      medium: 'shadow-[0_0_30px_rgba(6,182,212,0.40)]',
+      intense: 'shadow-[0_0_50px_rgba(6,182,212,0.60)]',
+      neon: 'shadow-[0_0_65px_rgba(6,182,212,0.75),0_0_25px_rgba(34,211,238,0.55)]'
     },
     emerald: {
-      subtle: 'shadow-[0_0_15px_rgba(16,185,129,0.2)]',
-      medium: 'shadow-[0_0_25px_rgba(16,185,129,0.35)]',
-      intense: 'shadow-[0_0_45px_rgba(16,185,129,0.55)]',
-      neon: 'shadow-[0_0_60px_rgba(16,185,129,0.7),0_0_20px_rgba(52,211,153,0.5)]'
+      subtle: 'shadow-[0_0_18px_rgba(16,185,129,0.25)]',
+      medium: 'shadow-[0_0_30px_rgba(16,185,129,0.40)]',
+      intense: 'shadow-[0_0_50px_rgba(16,185,129,0.60)]',
+      neon: 'shadow-[0_0_65px_rgba(16,185,129,0.75),0_0_25px_rgba(52,211,153,0.55)]'
     },
     amber: {
-      subtle: 'shadow-[0_0_15px_rgba(245,158,11,0.2)]',
-      medium: 'shadow-[0_0_25px_rgba(245,158,11,0.35)]',
-      intense: 'shadow-[0_0_45px_rgba(245,158,11,0.55)]',
-      neon: 'shadow-[0_0_60px_rgba(245,158,11,0.7),0_0_20px_rgba(251,191,36,0.5)]'
+      subtle: 'shadow-[0_0_18px_rgba(245,158,11,0.25)]',
+      medium: 'shadow-[0_0_30px_rgba(245,158,11,0.40)]',
+      intense: 'shadow-[0_0_50px_rgba(245,158,11,0.60)]',
+      neon: 'shadow-[0_0_65px_rgba(245,158,11,0.75),0_0_25px_rgba(251,191,36,0.55)]'
     },
     rose: {
-      subtle: 'shadow-[0_0_15px_rgba(244,63,94,0.2)]',
-      medium: 'shadow-[0_0_25px_rgba(244,63,94,0.35)]',
-      intense: 'shadow-[0_0_45px_rgba(244,63,94,0.55)]',
-      neon: 'shadow-[0_0_60px_rgba(244,63,94,0.7),0_0_20px_rgba(251,113,133,0.5)]'
+      subtle: 'shadow-[0_0_18px_rgba(244,63,94,0.25)]',
+      medium: 'shadow-[0_0_30px_rgba(244,63,94,0.40)]',
+      intense: 'shadow-[0_0_50px_rgba(244,63,94,0.60)]',
+      neon: 'shadow-[0_0_65px_rgba(244,63,94,0.75),0_0_25px_rgba(251,113,133,0.55)]'
     },
     indigo: {
-      subtle: 'shadow-[0_0_15px_rgba(99,102,241,0.2)]',
-      medium: 'shadow-[0_0_25px_rgba(99,102,241,0.35)]',
-      intense: 'shadow-[0_0_45px_rgba(99,102,241,0.55)]',
-      neon: 'shadow-[0_0_60px_rgba(99,102,241,0.7),0_0_20px_rgba(129,140,248,0.5)]'
+      subtle: 'shadow-[0_0_18px_rgba(99,102,241,0.25)]',
+      medium: 'shadow-[0_0_30px_rgba(99,102,241,0.40)]',
+      intense: 'shadow-[0_0_50px_rgba(99,102,241,0.60)]',
+      neon: 'shadow-[0_0_65px_rgba(99,102,241,0.75),0_0_25px_rgba(129,140,248,0.55)]'
     }
   };
 
@@ -619,9 +619,10 @@ export const getBoxGlowClass = (boxGlowEnabled, intensity = 'medium', fallbackGl
   }
 
   if (fallbackGlow) {
-    if (intensity === 'subtle') return fallbackGlow.replace(/rgba\((\d+,\s*\d+,\s*\d+),\s*0\.\d+\)/g, 'rgba($1,0.15)');
-    if (intensity === 'intense') return fallbackGlow.replace(/rgba\((\d+,\s*\d+,\s*\d+),\s*0\.\d+\)/g, 'rgba($1,0.55)');
-    if (intensity === 'neon') return `${fallbackGlow} shadow-[0_0_50px_rgba(168,85,247,0.5)]`;
+    if (intensity === 'subtle') return fallbackGlow.replace(/rgba\((\d+,\s*\d+,\s*\d+),\s*0\.\d+\)/g, 'rgba($1,0.20)');
+    if (intensity === 'medium') return fallbackGlow.replace(/rgba\((\d+,\s*\d+,\s*\d+),\s*0\.\d+\)/g, 'rgba($1,0.38)');
+    if (intensity === 'intense') return fallbackGlow.replace(/rgba\((\d+,\s*\d+,\s*\d+),\s*0\.\d+\)/g, 'rgba($1,0.60)');
+    if (intensity === 'neon') return `${fallbackGlow.replace(/rgba\((\d+,\s*\d+,\s*\d+),\s*0\.\d+\)/g, 'rgba($1,0.70)')} shadow-[0_0_50px_rgba(168,85,247,0.5)]`;
     return fallbackGlow;
   }
 

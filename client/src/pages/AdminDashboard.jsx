@@ -24,6 +24,12 @@ import {
   Sparkles,
   AlertTriangle,
   CheckCircle2,
+  CircleDashed,
+  Heart,
+  Smile,
+  ImageIcon,
+  Loader2,
+  MessageCircle,
   RefreshCw,
   Plus,
   Radio,
@@ -252,6 +258,7 @@ export const AdminDashboard = () => {
   // Announcement Modal & Edit state
   const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState(null);
+  const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
   const [modalTab, setModalTab] = useState('content'); // 'content' | 'design' | 'poll'
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
@@ -269,6 +276,30 @@ export const AdminDashboard = () => {
   const [designFont, setDesignFont] = useState('sans');
   const [designBadge, setDesignBadge] = useState('📢');
   const [designAnimation, setDesignAnimation] = useState('none');
+
+  // Official Pulse Stories Admin State
+  const [adminStories, setAdminStories] = useState([]);
+  const [loadingAdminStories, setLoadingAdminStories] = useState(false);
+  const [adminStoryReplies, setAdminStoryReplies] = useState([]);
+  const [loadingStoryReplies, setLoadingStoryReplies] = useState(false);
+  const [storySubTab, setStorySubTab] = useState('stories'); // 'stories' | 'replies'
+  const [replySearchQuery, setReplySearchQuery] = useState('');
+  const [createStoryModalOpen, setCreateStoryModalOpen] = useState(false);
+  const [storyPublisherName, setStoryPublisherName] = useState('PulseChat');
+  const [storyPublisherAvatar, setStoryPublisherAvatar] = useState('');
+  const [storyType, setStoryType] = useState('text'); // 'text' | 'media'
+  const [storyText, setStoryText] = useState('');
+  const [storyMediaUrl, setStoryMediaUrl] = useState('');
+  const [storyBgTheme, setStoryBgTheme] = useState('royal');
+  const [storyFont, setStoryFont] = useState('sans');
+  const [storyIsBold, setStoryIsBold] = useState(false);
+  const [storyIsItalic, setStoryIsItalic] = useState(false);
+  const [storyHasPoll, setStoryHasPoll] = useState(false);
+  const [storyPollQuestion, setStoryPollQuestion] = useState('');
+  const [storyPollOptions, setStoryPollOptions] = useState(['', '']);
+  const [storyDurationHours, setStoryDurationHours] = useState(24);
+  const [isPublishingStory, setIsPublishingStory] = useState(false);
+  const [storyInspectModal, setStoryInspectModal] = useState(null);
 
   const showMsg = (msg) => {
     setFeedback(msg);
@@ -500,6 +531,36 @@ export const AdminDashboard = () => {
     }
   };
 
+  const loadAdminStories = async () => {
+    try {
+      setLoadingAdminStories(true);
+      const res = await fetch('/api/admin/stories', { headers: authHeaders(), credentials: 'include' });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.success && Array.isArray(d.stories)) setAdminStories(d.stories);
+      }
+    } catch (e) {
+      console.warn('Error loading admin stories', e);
+    } finally {
+      setLoadingAdminStories(false);
+    }
+  };
+
+  const loadAdminStoryReplies = async () => {
+    try {
+      setLoadingStoryReplies(true);
+      const res = await fetch('/api/admin/stories/replies', { headers: authHeaders(), credentials: 'include' });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.success && Array.isArray(d.replies)) setAdminStoryReplies(d.replies);
+      }
+    } catch (e) {
+      console.warn('Error loading story replies', e);
+    } finally {
+      setLoadingStoryReplies(false);
+    }
+  };
+
   // Full dashboard reload pass
   const loadDashboard = async () => {
     setRefreshing(true);
@@ -510,6 +571,8 @@ export const AdminDashboard = () => {
       loadSystemSettings(),
       loadUsers(),
       loadGroups(),
+      loadAdminStories(),
+      loadAdminStoryReplies(),
       loadAnnouncements(),
       loadAuditLogs(),
       loadRecoveries(),
@@ -579,6 +642,126 @@ export const AdminDashboard = () => {
       loadVerificationCodes(true);
     };
 
+    const handleAdminStoryViewed = (payload) => {
+      if (!payload?.statusId) return;
+      setAdminStories((prevStories) =>
+        prevStories.map((story) => {
+          if (story._id?.toString() !== payload.statusId?.toString()) {
+            return story;
+          }
+          const viewers = story.viewers || [];
+          const viewerId = (payload.viewer?._id || payload.viewer?.user?._id || payload.viewer?.user || payload.viewer)?.toString();
+          const exists = viewerId && viewers.some(
+            (v) => ((v.user?._id || v.user)?._id || (v.user?._id || v.user))?.toString() === viewerId
+          );
+          const updatedViewers = exists
+            ? viewers
+            : payload.viewer
+            ? [...viewers, { user: payload.viewer, viewedAt: payload.viewer.viewedAt || new Date() }]
+            : viewers;
+
+          return {
+            ...story,
+            viewers: updatedViewers,
+            viewersCount: payload.totalViewers || updatedViewers.length
+          };
+        })
+      );
+
+      setStoryInspectModal((prev) => {
+        if (!prev || prev._id?.toString() !== payload.statusId?.toString()) return prev;
+        const viewers = prev.viewers || [];
+        const viewerId = (payload.viewer?._id || payload.viewer?.user?._id || payload.viewer?.user || payload.viewer)?.toString();
+        const exists = viewerId && viewers.some(
+          (v) => ((v.user?._id || v.user)?._id || (v.user?._id || v.user))?.toString() === viewerId
+        );
+        const updatedViewers = exists
+          ? viewers
+          : payload.viewer
+          ? [...viewers, { user: payload.viewer, viewedAt: payload.viewer.viewedAt || new Date() }]
+          : viewers;
+        return {
+          ...prev,
+          viewers: updatedViewers,
+          viewersCount: payload.totalViewers || updatedViewers.length
+        };
+      });
+    };
+
+    const handleAdminStoryReaction = (payload) => {
+      if (!payload?.statusId) return;
+      setAdminStories((prevStories) =>
+        prevStories.map((story) => {
+          if (story._id?.toString() !== payload.statusId?.toString()) return story;
+          return {
+            ...story,
+            reactions: payload.reactions || story.reactions,
+            viewers: payload.viewers || story.viewers,
+            viewersCount: payload.totalViewers ?? story.viewers?.length ?? 0
+          };
+        })
+      );
+      setStoryInspectModal((prev) => {
+        if (!prev || prev._id?.toString() !== payload.statusId?.toString()) return prev;
+        return {
+          ...prev,
+          reactions: payload.reactions || prev.reactions,
+          viewers: payload.viewers || prev.viewers,
+          viewersCount: payload.totalViewers ?? prev.viewers?.length ?? 0
+        };
+      });
+    };
+
+    const handleAdminStoryPoll = (payload) => {
+      if (!payload?.statusId) return;
+      setAdminStories((prevStories) =>
+        prevStories.map((story) => {
+          if (story._id?.toString() !== payload.statusId?.toString()) return story;
+          return {
+            ...story,
+            poll: payload.poll || story.poll,
+            viewers: payload.viewers || story.viewers,
+            viewersCount: payload.totalViewers ?? story.viewers?.length ?? 0
+          };
+        })
+      );
+      setStoryInspectModal((prev) => {
+        if (!prev || prev._id?.toString() !== payload.statusId?.toString()) return prev;
+        return {
+          ...prev,
+          poll: payload.poll || prev.poll,
+          viewers: payload.viewers || prev.viewers,
+          viewersCount: payload.totalViewers ?? prev.viewers?.length ?? 0
+        };
+      });
+    };
+
+    const handleAdminStoryReply = (payload) => {
+      if (!payload?.statusId) return;
+      const newReply = {
+        _id: payload.replyId || `${Date.now()}_${Math.random()}`,
+        message: payload.message,
+        createdAt: payload.createdAt || new Date(),
+        conversationId: payload.conversationId,
+        user: payload.sender,
+        story: payload.story
+      };
+      setAdminStoryReplies((prev) => [newReply, ...prev]);
+
+      // Also update replies in adminStories
+      setAdminStories((prevStories) =>
+        prevStories.map((story) => {
+          if (story._id?.toString() !== payload.statusId?.toString()) return story;
+          const replies = story.replies || [];
+          return {
+            ...story,
+            replies: [...replies, newReply],
+            repliesCount: (story.repliesCount || replies.length) + 1
+          };
+        })
+      );
+    };
+
     socket.on('admin:new_verification_request', handleNewCodeReq);
     socket.on('maintenance:updated', handleMaintenanceState);
     socket.on('system:features_updated', handleFeaturesState);
@@ -587,6 +770,12 @@ export const AdminDashboard = () => {
     socket.on('admin:recoveries_updated', handleRecoveriesUpdate);
     socket.on('admin:announcements_updated', handleAnnouncementsUpdate);
     socket.on('admin:codes_updated', handleVerificationCodesUpdate);
+    socket.on('status:viewed', handleAdminStoryViewed);
+    socket.on('status:admin_story_viewed', handleAdminStoryViewed);
+    socket.on('status:admin_story_reaction', handleAdminStoryReaction);
+    socket.on('status:admin_story_poll', handleAdminStoryPoll);
+    socket.on('status:admin_story_reply', handleAdminStoryReply);
+    socket.on('status:reply', handleAdminStoryReply);
 
     return () => {
       socket.off('admin:new_verification_request', handleNewCodeReq);
@@ -597,6 +786,12 @@ export const AdminDashboard = () => {
       socket.off('admin:recoveries_updated', handleRecoveriesUpdate);
       socket.off('admin:announcements_updated', handleAnnouncementsUpdate);
       socket.off('admin:codes_updated', handleVerificationCodesUpdate);
+      socket.off('status:viewed', handleAdminStoryViewed);
+      socket.off('status:admin_story_viewed', handleAdminStoryViewed);
+      socket.off('status:admin_story_reaction', handleAdminStoryReaction);
+      socket.off('status:admin_story_poll', handleAdminStoryPoll);
+      socket.off('status:admin_story_reply', handleAdminStoryReply);
+      socket.off('status:reply', handleAdminStoryReply);
     };
   }, [socket, token]);
 
@@ -610,6 +805,10 @@ export const AdminDashboard = () => {
       return () => clearInterval(interval);
     }
     else if (activeTab === 'groups') loadGroups();
+    else if (activeTab === 'stories') {
+      loadAdminStories();
+      loadAdminStoryReplies();
+    }
     else if (activeTab === 'announcements') loadAnnouncements();
     else if (activeTab === 'databases') {
       loadDbStatus();
@@ -862,6 +1061,8 @@ export const AdminDashboard = () => {
 
   const handleSaveAnnouncement = async (e) => {
     e.preventDefault();
+    if (isSavingAnnouncement) return; // Prevent double-share / multiple submissions on quick clicks
+
     if (!newTitle.trim() || !newContent.trim()) {
       showMsg('Title and content are required.');
       return;
@@ -876,6 +1077,7 @@ export const AdminDashboard = () => {
       }
     }
 
+    setIsSavingAnnouncement(true);
     try {
       const payload = {
         title: newTitle.trim(),
@@ -919,6 +1121,8 @@ export const AdminDashboard = () => {
       }
     } catch (e) {
       showMsg('Failed to save announcement.');
+    } finally {
+      setIsSavingAnnouncement(false);
     }
   };
 
@@ -975,6 +1179,145 @@ export const AdminDashboard = () => {
       }
     } catch (e) {
       showMsg('Failed to toggle announcement broadcast.');
+    }
+  };
+
+  // Actions: Official Pulse Stories
+  const handleOpenCreateStory = () => {
+    setStoryPublisherName('PulseChat');
+    setStoryPublisherAvatar('');
+    setStoryType('text');
+    setStoryText('');
+    setStoryMediaUrl('');
+    setStoryBgTheme('royal');
+    setStoryFont('sans');
+    setStoryIsBold(false);
+    setStoryIsItalic(false);
+    setStoryHasPoll(false);
+    setStoryPollQuestion('');
+    setStoryPollOptions(['', '']);
+    setStoryDurationHours(24);
+    setCreateStoryModalOpen(true);
+  };
+
+  const handlePublishAdminStory = async (e) => {
+    e.preventDefault();
+    if (isPublishingStory) return; // Prevent double-submit
+
+    const cleanAuthor = (storyPublisherName || 'PulseChat').trim();
+    const cleanText = storyText.trim();
+
+    if (storyType === 'text' && !cleanText && !storyHasPoll) {
+      showMsg('Story text or poll is required.');
+      return;
+    }
+
+    if (storyType === 'media' && !storyMediaUrl.trim()) {
+      showMsg('Media URL is required for media stories.');
+      return;
+    }
+
+    if (storyHasPoll) {
+      const validOptions = storyPollOptions.map((o) => o.trim()).filter(Boolean);
+      if (validOptions.length < 2) {
+        showMsg('A poll requires at least 2 valid options.');
+        return;
+      }
+    }
+
+    setIsPublishingStory(true);
+    try {
+      const PRESET_GRADIENTS = {
+        royal: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+        cyber: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)',
+        sunset: 'linear-gradient(135deg, #f43f5e 0%, #fb923c 100%)',
+        emerald: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+        midnight: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+        berry: 'linear-gradient(135deg, #9333ea 0%, #ec4899 100%)',
+        crimson: 'linear-gradient(135deg, #dc2626 0%, #e11d48 100%)',
+        amber: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)'
+      };
+
+      const payload = {
+        officialAuthorName: cleanAuthor,
+        officialAuthorAvatar: storyPublisherAvatar.trim(),
+        type: storyType,
+        text: cleanText,
+        mediaUrl: storyMediaUrl.trim(),
+        style: {
+          background: PRESET_GRADIENTS[storyBgTheme] || PRESET_GRADIENTS.royal,
+          font: storyFont,
+          textColor: '#ffffff',
+          bold: storyIsBold,
+          italic: storyIsItalic
+        },
+        hasPoll: storyHasPoll,
+        poll: storyHasPoll
+          ? {
+              question: storyPollQuestion.trim() || cleanText || 'Official PulseChat Poll',
+              options: storyPollOptions.map((o) => o.trim()).filter(Boolean)
+            }
+          : undefined,
+        durationHours: Number(storyDurationHours) || 24
+      };
+
+      const res = await fetch('/api/admin/stories', {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg(d.message || `Story published as "${cleanAuthor}"!`);
+        setCreateStoryModalOpen(false);
+        loadAdminStories();
+      } else {
+        showMsg(d.message || 'Could not publish story.');
+      }
+    } catch (err) {
+      showMsg('Failed to publish official story.');
+    } finally {
+      setIsPublishingStory(false);
+    }
+  };
+
+  const handleDeleteAdminStory = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this official story? It will immediately disappear for all users.')) return;
+    try {
+      const res = await fetch(`/api/admin/stories/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg('Story deleted successfully.');
+        loadAdminStories();
+      } else {
+        showMsg(d.message || 'Failed to delete story.');
+      }
+    } catch (e) {
+      showMsg('Network error deleting story.');
+    }
+  };
+
+  const handleToggleAdminStoryPoll = async (id) => {
+    try {
+      const res = await fetch(`/api/admin/stories/${id}/poll/close`, {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg(d.message || 'Poll status updated.');
+        loadAdminStories();
+      } else {
+        showMsg(d.message || 'Failed to toggle poll.');
+      }
+    } catch (e) {
+      showMsg('Network error.');
     }
   };
 
@@ -1630,6 +1973,7 @@ export const AdminDashboard = () => {
         { id: 'overview', label: 'Overview', icon: TrendingUp },
         { id: 'users', label: 'Users', icon: Users },
         { id: 'groups', label: 'Chats & Messaging', icon: MessageSquare },
+        { id: 'stories', label: 'Create Story', icon: CircleDashed },
         { id: 'announcements', label: 'Announcements', icon: Bell },
       ]
     },
@@ -2711,7 +3055,484 @@ export const AdminDashboard = () => {
             />
           )}
 
-          {/* TAB 4: ANNOUNCEMENTS */}
+          {/* TAB: PULSE STORIES STUDIO */}
+          {activeTab === 'stories' && (
+            <div className="w-full space-y-6">
+              {/* Studio Header Card */}
+              <div className="p-5 sm:p-6 rounded-3xl bg-[#1C1530] border border-violet-900/40 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 via-purple-600 to-fuchsia-600 flex items-center justify-center text-white shadow-lg shadow-violet-950/60 shrink-0">
+                      <CircleDashed className="w-5 h-5 stroke-[2.5]" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-extrabold text-white tracking-tight flex items-center space-x-2">
+                        <span>Pulse Stories Studio</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-wider">
+                          Official Stories
+                        </span>
+                      </h2>
+                      <p className="text-xs text-violet-300/70">
+                        Broadcast 24-hour visual stories to all PulseChat members. Stories pin at the top of the Stories feed for all users.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2.5 shrink-0">
+                  <button
+                    onClick={loadAdminStories}
+                    disabled={loadingAdminStories}
+                    className="p-2.5 bg-[#231C38] hover:bg-[#2A2242] text-violet-300 hover:text-white rounded-2xl border border-violet-900/30 transition cursor-pointer"
+                    title="Refresh Stories"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${loadingAdminStories ? 'animate-spin' : ''}`} />
+                  </button>
+                  <button
+                    onClick={handleOpenCreateStory}
+                    className="px-4 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-bold rounded-2xl text-xs flex items-center space-x-2 transition cursor-pointer shadow-lg shadow-violet-950/60 active:scale-95"
+                  >
+                    <Plus className="w-4 h-4 stroke-[2.5]" />
+                    <span>Create Story</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Subtab Switcher: Stories Studio vs Story Replies */}
+              <div className="flex items-center space-x-2 border-b border-violet-900/30 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setStorySubTab('stories')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
+                    storySubTab === 'stories'
+                      ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-950/60'
+                      : 'text-violet-300/70 hover:text-white hover:bg-violet-900/20'
+                  }`}
+                >
+                  <CircleDashed className="w-3.5 h-3.5" />
+                  <span>Official Stories ({adminStories.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStorySubTab('replies');
+                    loadAdminStoryReplies();
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
+                    storySubTab === 'replies'
+                      ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-950/60'
+                      : 'text-violet-300/70 hover:text-white hover:bg-violet-900/20'
+                  }`}
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>Story Replies</span>
+                  {adminStoryReplies.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-sky-500/20 text-sky-300 border border-sky-400/30 font-mono font-bold">
+                      {adminStoryReplies.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {storySubTab === 'stories' && (
+                <>
+              {/* KPI Metrics Summary */}
+              {(() => {
+                const now = new Date();
+                const activeStories = adminStories.filter((s) => new Date(s.expiresAt) > now);
+                const totalViews = adminStories.reduce((acc, s) => acc + (s.viewers?.length || 0), 0);
+                const totalReactions = adminStories.reduce((acc, s) => acc + (s.reactions?.length || 0), 0);
+                const totalPollVotes = adminStories.reduce((acc, s) => {
+                  if (!s.poll?.options) return acc;
+                  return acc + s.poll.options.reduce((pAcc, opt) => pAcc + (opt.votes?.length || 0), 0);
+                }, 0);
+
+                return (
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                    <div className="p-4 rounded-2xl bg-[#1C1530] border border-violet-900/30 shadow-md">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-violet-400">Active Stories</div>
+                      <div className="text-2xl font-extrabold text-white font-mono mt-1">{activeStories.length}</div>
+                      <div className="text-[10px] text-violet-300/60 mt-0.5">{adminStories.length} total published</div>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-[#1C1530] border border-violet-900/30 shadow-md">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-violet-400">Total Views</div>
+                      <div className="text-2xl font-extrabold text-white font-mono mt-1">{totalViews}</div>
+                      <div className="text-[10px] text-emerald-400 mt-0.5">Across all official stories</div>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-[#1C1530] border border-violet-900/30 shadow-md">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-violet-400">Emoji Reactions</div>
+                      <div className="text-2xl font-extrabold text-white font-mono mt-1">{totalReactions}</div>
+                      <div className="text-[10px] text-fuchsia-400 mt-0.5">Live user reactions</div>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-[#1C1530] border border-violet-900/30 shadow-md">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-violet-400">Community Votes</div>
+                      <div className="text-2xl font-extrabold text-white font-mono mt-1">{totalPollVotes}</div>
+                      <div className="text-[10px] text-indigo-400 mt-0.5">Poll responses received</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Stories Cards Grid */}
+              {adminStories.length === 0 ? (
+                <div className="py-16 px-4 rounded-3xl bg-[#1C1530]/60 border border-violet-900/30 text-center flex flex-col items-center justify-center space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-violet-600/10 border border-violet-500/20 text-violet-400 flex items-center justify-center shadow-lg">
+                    <CircleDashed className="w-8 h-8 stroke-[1.5]" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-base font-bold text-white">No Official Stories Yet</h3>
+                    <p className="text-xs text-violet-300/60 max-w-md mx-auto">
+                      Publish your first official story as &quot;PulseChat&quot;. It will immediately broadcast to every user&apos;s story feed in real-time.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleOpenCreateStory}
+                    className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-bold rounded-2xl text-xs flex items-center space-x-2 transition cursor-pointer shadow-md shadow-violet-950/60"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create Official Story</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+                  {adminStories.map((story) => {
+                    const isExpired = new Date(story.expiresAt) <= new Date();
+                    const hoursRemaining = Math.max(0, Math.round((new Date(story.expiresAt) - new Date()) / (1000 * 60 * 60)));
+                    const viewersCount = story.viewers?.length || 0;
+                    const reactionsCount = story.reactions?.length || 0;
+                    const pollTotalVotes = story.poll?.options?.reduce((acc, opt) => acc + (opt.votes?.length || 0), 0) || 0;
+
+                    return (
+                      <div
+                        key={story._id}
+                        className="rounded-3xl bg-[#1C1530] border border-violet-900/40 shadow-xl overflow-hidden flex flex-col justify-between transition hover:border-violet-600/50"
+                      >
+                        {/* Story Card Top Header */}
+                        <div className="p-4 border-b border-violet-900/30 flex items-center justify-between">
+                          <div className="flex items-center space-x-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-fuchsia-600 p-[1.5px] shrink-0">
+                              <div className="w-full h-full rounded-full bg-[#1C1530] flex items-center justify-center font-bold text-white text-xs">
+                                {story.officialAuthorAvatar ? (
+                                  <img src={story.officialAuthorAvatar} alt="Logo" className="w-full h-full rounded-full object-cover" />
+                                ) : (
+                                  (story.officialAuthorName || 'PulseChat')[0]?.toUpperCase()
+                                )}
+                              </div>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-xs text-white flex items-center space-x-1.5 truncate">
+                                <span>{story.officialAuthorName || 'PulseChat'}</span>
+                                <span className="px-1.5 py-0.2 rounded-full text-[8px] bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold tracking-wider shrink-0">
+                                  OFFICIAL
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-violet-400/60 flex items-center space-x-1">
+                                <Clock className="w-2.5 h-2.5" />
+                                <span>{isExpired ? 'Expired' : `Expires in ${hoursRemaining}h`}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAdminStory(story._id)}
+                            className="p-1.5 text-rose-400 hover:text-rose-200 hover:bg-rose-950/40 rounded-xl transition cursor-pointer"
+                            title="Delete this official story"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Story Visual Canvas */}
+                        <div
+                          className="h-56 p-4 flex flex-col justify-center items-center text-center relative overflow-hidden select-none"
+                          style={{ background: story.style?.background || 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)' }}
+                        >
+                          {story.type === 'media' && story.mediaUrl && (
+                            <img
+                              src={story.mediaUrl}
+                              alt="Story media"
+                              className="absolute inset-0 w-full h-full object-cover"
+                            />
+                          )}
+
+                          <div className="relative z-10 space-y-2 max-w-xs">
+                            {story.text && (
+                              <p
+                                className={`text-white text-sm sm:text-base leading-snug drop-shadow-md line-clamp-4 ${
+                                  story.style?.font === 'serif' ? 'font-serif' : story.style?.font === 'mono' ? 'font-mono' : 'font-sans'
+                                } ${story.style?.bold ? 'font-bold' : 'font-normal'} ${story.style?.italic ? 'italic' : 'not-italic'}`}
+                              >
+                                {story.text}
+                              </p>
+                            )}
+
+                            {story.hasPoll && story.poll && (
+                              <div className="p-2.5 rounded-2xl bg-black/45 backdrop-blur-md border border-white/20 text-left space-y-1.5 shadow-lg">
+                                <div className="text-[11px] font-bold text-white flex items-center space-x-1">
+                                  <Vote className="w-3 h-3 text-purple-300" />
+                                  <span className="truncate">{story.poll.question || 'Community Poll'}</span>
+                                </div>
+                                <div className="space-y-1">
+                                  {(story.poll.options || []).slice(0, 3).map((opt, oIdx) => {
+                                    const optVotes = opt.votes?.length || 0;
+                                    const pct = pollTotalVotes > 0 ? Math.round((optVotes / pollTotalVotes) * 100) : 0;
+                                    return (
+                                      <div
+                                        key={oIdx}
+                                        className="h-6 rounded-lg bg-white/10 relative overflow-hidden flex items-center justify-between px-2 text-[10px] text-white"
+                                      >
+                                        <div
+                                          className="absolute inset-y-0 left-0 bg-white/20 transition-all duration-300"
+                                          style={{ width: `${pct}%` }}
+                                        />
+                                        <span className="relative z-10 truncate">{opt.text}</span>
+                                        <span className="relative z-10 font-mono font-bold opacity-80">{pct}%</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Story Card Engagement Footer */}
+                        <div className="p-3.5 bg-[#171129] border-t border-violet-900/30 flex items-center justify-between text-xs">
+                          <div className="flex items-center space-x-3 text-violet-300/80">
+                            <span className="flex items-center space-x-1" title="Views">
+                              <Eye className="w-3.5 h-3.5 text-violet-400" />
+                              <span className="font-mono font-bold">{viewersCount}</span>
+                            </span>
+                            <span className="flex items-center space-x-1" title="Reactions">
+                              <Heart className="w-3.5 h-3.5 text-rose-400" />
+                              <span className="font-mono font-bold">{reactionsCount}</span>
+                            </span>
+                            {story.hasPoll && (
+                              <span className="flex items-center space-x-1" title="Poll Votes">
+                                <Vote className="w-3.5 h-3.5 text-indigo-400" />
+                                <span className="font-mono font-bold">{pollTotalVotes}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center space-x-1.5">
+                            {story.hasPoll && (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleAdminStoryPoll(story._id)}
+                                className="px-2 py-1 text-[11px] font-semibold bg-[#231C38] hover:bg-[#2A2242] text-violet-200 rounded-lg border border-violet-900/30 transition cursor-pointer"
+                              >
+                                {story.poll?.isClosed ? 'Reopen Poll' : 'Close Poll'}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setStoryInspectModal(story)}
+                              className="px-2.5 py-1 text-[11px] font-bold bg-violet-600/30 hover:bg-violet-600/50 text-violet-200 rounded-lg border border-violet-500/30 transition cursor-pointer"
+                            >
+                              Details
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+                </>
+              )}
+
+              {storySubTab === 'replies' && (
+                <div className="space-y-4">
+                  {/* Search and Action Bar */}
+                  <div className="p-4 rounded-2xl bg-[#1C1530] border border-violet-900/40 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="relative flex-1 max-w-md">
+                      <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-violet-400/60" />
+                      <input
+                        type="text"
+                        value={replySearchQuery}
+                        onChange={(e) => setReplySearchQuery(e.target.value)}
+                        placeholder="Search replies by user, message, or story..."
+                        className="w-full pl-10 pr-4 py-2 bg-[#120B24] border border-violet-900/50 rounded-xl text-xs text-white placeholder:text-violet-400/40 focus:outline-none focus:border-violet-500 transition"
+                      />
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={loadAdminStoryReplies}
+                        disabled={loadingStoryReplies}
+                        className="px-3.5 py-2 bg-[#231C38] hover:bg-[#2A2242] text-violet-300 hover:text-white rounded-xl border border-violet-900/30 text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer"
+                        title="Refresh replies"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${loadingStoryReplies ? 'animate-spin' : ''}`} />
+                        <span>Refresh Replies</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Summary Metric Badges */}
+                  {(() => {
+                    const uniqueSenders = new Set(adminStoryReplies.map((r) => (r.user?._id || r.user)?.toString())).size;
+                    return (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <div className="p-3.5 rounded-2xl bg-[#1C1530] border border-violet-900/30">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Total Replies</div>
+                          <div className="text-xl font-extrabold text-white font-mono mt-1">{adminStoryReplies.length}</div>
+                        </div>
+                        <div className="p-3.5 rounded-2xl bg-[#1C1530] border border-violet-900/30">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Unique Senders</div>
+                          <div className="text-xl font-extrabold text-white font-mono mt-1">{uniqueSenders}</div>
+                        </div>
+                        <div className="col-span-2 sm:col-span-1 p-3.5 rounded-2xl bg-[#1C1530] border border-violet-900/30">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Latest Activity</div>
+                          <div className="text-xs font-semibold text-white mt-1 truncate">
+                            {adminStoryReplies[0] ? new Date(adminStoryReplies[0].createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'None'}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Replies Grid / List */}
+                  {(() => {
+                    const query = replySearchQuery.toLowerCase().trim();
+                    const filteredReplies = adminStoryReplies.filter((r) => {
+                      if (!query) return true;
+                      const senderName = (r.user?.nickname || r.user?.username || '').toLowerCase();
+                      const email = (r.user?.email || '').toLowerCase();
+                      const msg = (r.message || '').toLowerCase();
+                      const storyText = (r.story?.text || '').toLowerCase();
+                      return senderName.includes(query) || email.includes(query) || msg.includes(query) || storyText.includes(query);
+                    });
+
+                    if (filteredReplies.length === 0) {
+                      return (
+                        <div className="p-12 text-center rounded-3xl bg-[#1C1530]/60 border border-violet-900/30">
+                          <MessageCircle className="w-10 h-10 text-violet-400/40 mx-auto mb-3" />
+                          <h3 className="text-base font-bold text-white">No Story Replies Found</h3>
+                          <p className="text-xs text-violet-400/70 mt-1 max-w-sm mx-auto">
+                            {replySearchQuery ? 'No replies match your search filter.' : 'When users reply directly to your stories, incoming messages appear here in real time.'}
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {filteredReplies.map((reply) => {
+                          const senderDisplayName = reply.user?.nickname || reply.user?.username || 'User';
+                          const senderAvatar = reply.user?.avatar;
+
+                          return (
+                            <div
+                              key={reply._id}
+                              className="rounded-3xl bg-[#1C1530] border border-violet-900/40 p-4 shadow-xl flex flex-col justify-between hover:border-violet-600/50 transition group space-y-3.5"
+                            >
+                              {/* Sender Details & Timestamp */}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-2.5 min-w-0">
+                                  <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-violet-600 to-fuchsia-600 p-[1.5px] shrink-0">
+                                    <div className="w-full h-full rounded-full bg-[#1C1530] flex items-center justify-center font-bold text-white text-xs overflow-hidden">
+                                      {senderAvatar ? (
+                                        <img src={senderAvatar} alt={senderDisplayName} className="w-full h-full object-cover" />
+                                      ) : (
+                                        senderDisplayName[0]?.toUpperCase()
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-xs text-white truncate flex items-center space-x-1.5">
+                                      <span>{senderDisplayName}</span>
+                                      {reply.user?.username && (
+                                        <span className="text-[10px] text-violet-400/60 font-mono">
+                                          @{reply.user.username}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-violet-400/60 truncate">
+                                      {reply.user?.email || 'PulseChat Member'}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="text-[10px] text-violet-400/60 shrink-0 font-mono">
+                                  {new Date(reply.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {new Date(reply.createdAt).toLocaleDateString()}
+                                </div>
+                              </div>
+
+                              {/* Original Story Reference Card */}
+                              <div className="p-2.5 rounded-2xl bg-[#120B24] border border-violet-900/50 flex items-center space-x-2.5 overflow-hidden">
+                                {reply.story?.mediaUrl ? (
+                                  <img
+                                    src={reply.story.mediaUrl}
+                                    alt="Story media"
+                                    className="w-12 h-12 rounded-xl object-cover shrink-0 border border-violet-800/40"
+                                  />
+                                ) : (
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-[9px] font-black uppercase shrink-0 shadow-sm"
+                                    style={{ background: reply.story?.style?.background || 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)' }}
+                                  >
+                                    Story
+                                  </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-[10px] font-bold text-violet-300 flex items-center space-x-1">
+                                    <span>Story: {reply.story?.officialAuthorName || 'Official'}</span>
+                                    {reply.story?.isAdminStory && (
+                                      <span className="px-1 py-0.2 rounded text-[8px] bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-extrabold uppercase">
+                                        Official
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-violet-200/80 line-clamp-1 mt-0.5">
+                                    {reply.story?.text || (reply.story?.mediaUrl ? 'Photo / Media' : 'Story Content')}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* User's Reply Message Bubble */}
+                              <div className="p-3 rounded-2xl bg-gradient-to-r from-violet-950/60 to-purple-950/40 border border-violet-800/40">
+                                <div className="text-[10px] font-bold text-violet-400 uppercase tracking-wider mb-1 flex items-center space-x-1">
+                                  <MessageSquare className="w-2.5 h-2.5" />
+                                  <span>User Reply</span>
+                                </div>
+                                <p className="text-xs sm:text-sm text-white font-medium break-words leading-relaxed">
+                                  {reply.message}
+                                </p>
+                              </div>
+
+                              {/* Action Button: Open Conversation */}
+                              <div className="pt-1 flex items-center justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (reply.conversationId) {
+                                      localStorage.setItem('pulsechat_pending_chat', reply.conversationId);
+                                      navigate('/chat');
+                                    } else if (reply.user?._id) {
+                                      handleOpenUserChat(reply.user._id);
+                                    }
+                                  }}
+                                  className="px-3.5 py-1.5 bg-violet-600/30 hover:bg-violet-600/50 text-violet-200 hover:text-white rounded-xl border border-violet-500/30 text-xs font-bold flex items-center space-x-1.5 transition cursor-pointer shadow-md active:scale-95"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                  <span>Open Conversation</span>
+                                  <ExternalLink className="w-3 h-3 ml-0.5 opacity-70" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
           {activeTab === 'announcements' && (
             <div className="w-full">
               <GridListView
@@ -5359,7 +6180,7 @@ export const AdminDashboard = () => {
 
                       <div className="space-y-2">
                         <label className="block font-semibold text-slate-300">
-                          Poll Options (min 2, max 6)
+                          Poll Options (min 2, max 10)
                         </label>
                         {pollOptions.map((opt, idx) => (
                           <div key={idx} className="flex items-center space-x-2">
@@ -5374,7 +6195,7 @@ export const AdminDashboard = () => {
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   e.preventDefault();
-                                  if (pollOptions.length < 6) {
+                                  if (pollOptions.length < 10) {
                                     setPollOptions([...pollOptions, '']);
                                   }
                                 }
@@ -5394,7 +6215,7 @@ export const AdminDashboard = () => {
                           </div>
                         ))}
 
-                        {pollOptions.length < 6 && (
+                        {pollOptions.length < 10 && (
                           <button
                             type="button"
                             onClick={() => setPollOptions([...pollOptions, ''])}
@@ -5483,10 +6304,24 @@ export const AdminDashboard = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition cursor-pointer shadow-sm flex items-center space-x-1.5"
+                    disabled={isSavingAnnouncement}
+                    className={`px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition shadow-sm flex items-center space-x-1.5 ${
+                      isSavingAnnouncement
+                        ? 'opacity-50 cursor-not-allowed pointer-events-none'
+                        : 'cursor-pointer'
+                    }`}
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>{editingAnnouncement ? 'Save Changes' : 'Publish Announcement'}</span>
+                    {isSavingAnnouncement ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Publishing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>{editingAnnouncement ? 'Save Changes' : 'Share / Publish Announcement'}</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -5495,7 +6330,504 @@ export const AdminDashboard = () => {
         </div>
       )}
 
-      {/* EDIT USER PROFILE MODAL */}
+      {/* CREATE OFFICIAL STORY MODAL */}
+      {createStoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-4xl bg-[#130E24] rounded-3xl border border-violet-900/50 shadow-2xl p-4 sm:p-6 space-y-4 max-h-[92vh] flex flex-col text-slate-100">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-violet-900/40">
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-violet-600 via-purple-600 to-fuchsia-600 flex items-center justify-center text-white shadow-md shadow-violet-950/60">
+                  <CircleDashed className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                    <span>Create Official Pulse Story</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-violet-500/20 text-violet-300 border border-violet-500/30 uppercase tracking-wider">
+                      Broadcast to All
+                    </span>
+                  </h3>
+                  <p className="text-xs text-violet-300/60">
+                    Stories broadcast to all users and appear in the existing PulseChat Stories section.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCreateStoryModalOpen(false)}
+                className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-violet-900/30 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Two-Column Form & Mockup Preview */}
+            <form onSubmit={handlePublishAdminStory} className="flex-1 overflow-y-auto pr-1 grid grid-cols-1 lg:grid-cols-12 gap-6 text-xs">
+              {/* Left Column: Form Controls (7 cols) */}
+              <div className="lg:col-span-7 space-y-4">
+                {/* 1. Publisher Display Name */}
+                <div className="space-y-1">
+                  <label className="block font-bold text-slate-300 text-xs">
+                    Publisher Name (Author Display Name)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={storyPublisherName}
+                    onChange={(e) => setStoryPublisherName(e.target.value)}
+                    placeholder="PulseChat"
+                    className="w-full px-3.5 py-2.5 bg-[#1C1530] border border-violet-900/40 rounded-xl text-white placeholder-slate-500 font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  />
+                  <p className="text-[10px] text-violet-400/60">
+                    Default is <strong className="text-violet-300">&quot;PulseChat&quot;</strong>. You can change this to any name you wish (e.g. Pulse Team, Security, System Updates).
+                  </p>
+                </div>
+
+                {/* 2. Story Type Toggle */}
+                <div className="space-y-1">
+                  <label className="block font-bold text-slate-300 text-xs">
+                    Story Type
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setStoryType('text')}
+                      className={`py-2 px-3 rounded-xl font-bold transition flex items-center justify-center space-x-2 cursor-pointer border ${
+                        storyType === 'text'
+                          ? 'bg-violet-600 text-white border-violet-500 shadow-md shadow-violet-950/50'
+                          : 'bg-[#1C1530] text-slate-400 border-violet-900/30 hover:text-white'
+                      }`}
+                    >
+                      <Type className="w-4 h-4" />
+                      <span>Text Canvas</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStoryType('media')}
+                      className={`py-2 px-3 rounded-xl font-bold transition flex items-center justify-center space-x-2 cursor-pointer border ${
+                        storyType === 'media'
+                          ? 'bg-violet-600 text-white border-violet-500 shadow-md shadow-violet-950/50'
+                          : 'bg-[#1C1530] text-slate-400 border-violet-900/30 hover:text-white'
+                      }`}
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                      <span>Media Image URL</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Media URL if media type */}
+                {storyType === 'media' && (
+                  <div className="space-y-1 animate-fadeIn">
+                    <label className="block font-bold text-slate-300 text-xs">
+                      Media Image / Banner URL
+                    </label>
+                    <input
+                      type="url"
+                      required
+                      value={storyMediaUrl}
+                      onChange={(e) => setStoryMediaUrl(e.target.value)}
+                      placeholder="https://example.com/story-banner.jpg"
+                      className="w-full px-3.5 py-2.5 bg-[#1C1530] border border-violet-900/40 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                    />
+                  </div>
+                )}
+
+                {/* 3. Visual Background Theme */}
+                {storyType === 'text' && (
+                  <div className="space-y-1.5">
+                    <label className="block font-bold text-slate-300 text-xs">
+                      Background Gradient Theme
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { id: 'royal', label: 'Royal', class: 'from-indigo-600 to-purple-600' },
+                        { id: 'cyber', label: 'Cyber', class: 'from-cyan-600 to-blue-600' },
+                        { id: 'sunset', label: 'Sunset', class: 'from-rose-600 to-amber-600' },
+                        { id: 'emerald', label: 'Emerald', class: 'from-emerald-600 to-teal-600' },
+                        { id: 'midnight', label: 'Midnight', class: 'from-slate-900 to-slate-800' },
+                        { id: 'berry', label: 'Berry', class: 'from-purple-600 to-pink-600' },
+                        { id: 'crimson', label: 'Crimson', class: 'from-red-600 to-rose-600' },
+                        { id: 'amber', label: 'Amber', class: 'from-amber-600 to-yellow-600' }
+                      ].map((bg) => (
+                        <button
+                          key={bg.id}
+                          type="button"
+                          onClick={() => setStoryBgTheme(bg.id)}
+                          className={`p-2 rounded-xl text-center font-bold text-[10px] bg-gradient-to-r ${bg.class} text-white transition cursor-pointer relative shadow-xs ${
+                            storyBgTheme === bg.id ? 'ring-2 ring-white scale-102 shadow-lg' : 'opacity-70 hover:opacity-100'
+                          }`}
+                        >
+                          {bg.label}
+                          {storyBgTheme === bg.id && <Check className="w-3 h-3 absolute top-1 right-1" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Typography Font & Styling */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="block font-bold text-slate-300 text-xs">Typography</label>
+                    <select
+                      value={storyFont}
+                      onChange={(e) => setStoryFont(e.target.value)}
+                      className="w-full px-3 py-2 bg-[#1C1530] border border-violet-900/40 rounded-xl text-white font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                    >
+                      <option value="sans">Modern Sans</option>
+                      <option value="serif">Editorial Serif</option>
+                      <option value="mono">Tech Mono</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block font-bold text-slate-300 text-xs">Duration</label>
+                    <select
+                      value={storyDurationHours}
+                      onChange={(e) => setStoryDurationHours(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-[#1C1530] border border-violet-900/40 rounded-xl text-white font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                    >
+                      <option value={24}>24 Hours (Standard)</option>
+                      <option value={48}>48 Hours (2 Days)</option>
+                      <option value={72}>72 Hours (3 Days)</option>
+                      <option value={168}>7 Days (1 Week)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 5. Story Text / Message */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="block font-bold text-slate-300 text-xs">
+                      Story Message Text
+                    </label>
+                    <span className="text-[10px] text-violet-400 font-mono">{storyText.length}/700</span>
+                  </div>
+                  <textarea
+                    rows={3}
+                    maxLength={700}
+                    value={storyText}
+                    onChange={(e) => setStoryText(e.target.value)}
+                    placeholder="Enter the official story announcement text..."
+                    className="w-full px-3.5 py-2.5 bg-[#1C1530] border border-violet-900/40 rounded-xl text-white placeholder-slate-500 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  />
+                </div>
+
+                {/* 6. Community Poll Embed */}
+                <div className="p-3.5 rounded-2xl bg-[#1C1530] border border-violet-900/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-white flex items-center space-x-1.5">
+                        <Vote className="w-4 h-4 text-purple-400" />
+                        <span>Embed Interactive Poll</span>
+                      </div>
+                      <div className="text-[10px] text-violet-300/60">
+                        Allow users to vote in a live poll attached to this story
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={storyHasPoll}
+                        onChange={(e) => setStoryHasPoll(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-10 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-600"></div>
+                    </label>
+                  </div>
+
+                  {storyHasPoll && (
+                    <div className="space-y-2.5 pt-2 border-t border-violet-900/30 animate-fadeIn">
+                      <div>
+                        <label className="block font-semibold text-slate-300 text-[11px] mb-1">
+                          Poll Question
+                        </label>
+                        <input
+                          type="text"
+                          value={storyPollQuestion}
+                          onChange={(e) => setStoryPollQuestion(e.target.value)}
+                          placeholder="e.g. Which platform feature should we prioritize?"
+                          className="w-full px-3 py-1.5 bg-[#130E24] border border-violet-900/40 rounded-xl text-white text-xs focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block font-semibold text-slate-300 text-[11px]">
+                          Options (min 2, max 6)
+                        </label>
+                        {storyPollOptions.map((opt, i) => (
+                          <div key={i} className="flex items-center space-x-1.5">
+                            <input
+                              type="text"
+                              value={opt}
+                              onChange={(e) => {
+                                const next = [...storyPollOptions];
+                                next[i] = e.target.value;
+                                setStoryPollOptions(next);
+                              }}
+                              placeholder={`Option ${i + 1}`}
+                              className="flex-1 px-3 py-1.5 bg-[#130E24] border border-violet-900/40 rounded-xl text-white text-xs"
+                            />
+                            {storyPollOptions.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => setStoryPollOptions(storyPollOptions.filter((_, idx) => idx !== i))}
+                                className="p-1.5 text-rose-400 hover:text-rose-200 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+
+                        {storyPollOptions.length < 6 && (
+                          <button
+                            type="button"
+                            onClick={() => setStoryPollOptions([...storyPollOptions, ''])}
+                            className="text-[11px] text-violet-400 hover:text-violet-300 font-bold flex items-center space-x-1 cursor-pointer pt-1"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Poll Option</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Live Mobile Mockup Preview (5 cols) */}
+              <div className="lg:col-span-5 flex flex-col items-center justify-start space-y-2">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-violet-300 flex items-center space-x-1.5 self-start">
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Live User App Preview</span>
+                </div>
+
+                {/* Mockup Frame */}
+                <div
+                  className="w-full max-w-[280px] h-[480px] rounded-[36px] border-4 border-slate-700/80 shadow-2xl relative overflow-hidden flex flex-col justify-between p-4 transition-all duration-300 select-none"
+                  style={{
+                    background:
+                      storyType === 'media' && storyMediaUrl
+                        ? `url("${storyMediaUrl}") center/cover no-repeat`
+                        : {
+                            royal: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+                            cyber: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)',
+                            sunset: 'linear-gradient(135deg, #f43f5e 0%, #fb923c 100%)',
+                            emerald: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                            midnight: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+                            berry: 'linear-gradient(135deg, #9333ea 0%, #ec4899 100%)',
+                            crimson: 'linear-gradient(135deg, #dc2626 0%, #e11d48 100%)',
+                            amber: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)'
+                          }[storyBgTheme] || 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)'
+                  }}
+                >
+                  {/* Top Bar inside mockup */}
+                  <div className="space-y-2 relative z-10">
+                    {/* Story progress bar */}
+                    <div className="w-full h-1 bg-white/30 rounded-full overflow-hidden">
+                      <div className="w-1/2 h-full bg-white rounded-full animate-pulse" />
+                    </div>
+
+                    {/* Author & official badge */}
+                    <div className="flex items-center space-x-2">
+                      <div className="w-7 h-7 rounded-full bg-black/40 border border-white/30 flex items-center justify-center font-bold text-white text-[10px]">
+                        {(storyPublisherName || 'PulseChat')[0]?.toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-[11px] text-white flex items-center space-x-1 truncate">
+                          <span>{storyPublisherName || 'PulseChat'}</span>
+                          <span className="px-1 py-0.2 rounded-full text-[7px] bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold">
+                            OFFICIAL
+                          </span>
+                        </div>
+                        <div className="text-[9px] text-white/70">Just now · 24h</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Story Text / Poll content inside mockup */}
+                  <div className="flex-1 flex flex-col justify-center items-center text-center my-3 relative z-10 px-2 space-y-2">
+                    <p
+                      className={`text-white text-sm leading-snug drop-shadow-md ${
+                        storyFont === 'serif' ? 'font-serif' : storyFont === 'mono' ? 'font-mono' : 'font-sans'
+                      }`}
+                    >
+                      {storyText || 'Story text preview will render here...'}
+                    </p>
+
+                    {storyHasPoll && (
+                      <div className="w-full p-2.5 rounded-2xl bg-black/50 backdrop-blur-md border border-white/20 text-left space-y-1.5 shadow-lg">
+                        <div className="text-[10px] font-bold text-white flex items-center space-x-1">
+                          <Vote className="w-3 h-3 text-purple-300" />
+                          <span className="truncate">{storyPollQuestion || storyText || 'Official Poll'}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {storyPollOptions.map((opt, oIdx) => (
+                            <div
+                              key={oIdx}
+                              className="h-6 rounded-lg bg-white/10 px-2 flex items-center justify-between text-[9px] text-white"
+                            >
+                              <span className="truncate">{opt || `Option ${oIdx + 1}`}</span>
+                              <span className="font-mono opacity-70">0%</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Bottom reaction bar inside mockup */}
+                  <div className="flex items-center justify-between text-white/80 pt-2 border-t border-white/20 relative z-10">
+                    <div className="flex items-center space-x-1 text-sm">
+                      <span>❤️</span>
+                      <span>😂</span>
+                      <span>🔥</span>
+                      <span>👏</span>
+                    </div>
+                    <span className="text-[9px] font-bold text-white/90">Reply</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Form Action Controls */}
+              <div className="lg:col-span-12 flex items-center justify-between pt-3 border-t border-violet-900/40">
+                <div className="text-[11px] text-violet-400/80">
+                  Visible to: <strong className="text-white">All PulseChat Members</strong> · Disappearing Story
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setCreateStoryModalOpen(false)}
+                    className="px-4 py-2 text-violet-300 hover:text-white hover:bg-violet-900/30 font-semibold rounded-xl transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isPublishingStory}
+                    className={`px-5 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-violet-950/60 flex items-center space-x-2 ${
+                      isPublishingStory ? 'opacity-50 cursor-not-allowed pointer-events-none' : 'cursor-pointer active:scale-95'
+                    }`}
+                  >
+                    {isPublishingStory ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Publishing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>Publish Official Story</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* INSPECT STORY ENGAGEMENT MODAL */}
+      {storyInspectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-md bg-[#16102B] rounded-3xl border border-violet-900/50 shadow-2xl p-5 space-y-4 max-h-[85vh] flex flex-col text-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-violet-900/30">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                  <span>Story Engagement</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-violet-600 text-white font-bold">
+                    {storyInspectModal.officialAuthorName || 'PulseChat'}
+                  </span>
+                </h3>
+                <p className="text-[11px] text-violet-300/60">
+                  {storyInspectModal.viewers?.length || 0} total views · {storyInspectModal.reactions?.length || 0} reactions
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStoryInspectModal(null)}
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-violet-900/30 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-xs">
+              {/* Poll breakdown if present */}
+              {storyInspectModal.hasPoll && storyInspectModal.poll && (
+                <div className="p-3 rounded-2xl bg-[#1F1738] border border-violet-900/30 space-y-2">
+                  <div className="font-bold text-violet-300 flex items-center space-x-1.5">
+                    <Vote className="w-3.5 h-3.5" />
+                    <span>{storyInspectModal.poll.question || 'Poll Results'}</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {(storyInspectModal.poll.options || []).map((opt, idx) => {
+                      const count = opt.votes?.length || 0;
+                      return (
+                        <div key={idx} className="p-2 rounded-xl bg-[#140E26] flex items-center justify-between text-xs">
+                          <span className="font-medium text-white">{opt.text}</span>
+                          <span className="font-mono text-violet-400 font-bold">{count} vote{count === 1 ? '' : 's'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Viewers List */}
+              <div className="space-y-2">
+                <div className="font-bold text-slate-300 text-xs flex items-center space-x-1.5">
+                  <Eye className="w-3.5 h-3.5 text-violet-400" />
+                  <span>Viewers ({storyInspectModal.viewers?.length || 0})</span>
+                </div>
+                {(!storyInspectModal.viewers || storyInspectModal.viewers.length === 0) ? (
+                  <div className="py-6 text-center text-slate-500 text-xs">No user views recorded yet.</div>
+                ) : (
+                  <div className="space-y-1">
+                    {storyInspectModal.viewers.map((v, i) => (
+                      <div key={i} className="p-2 rounded-xl bg-[#1F1738] flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Avatar src={v.user?.avatar} name={v.user?.nickname || v.user?.username || 'User'} size="sm" />
+                          <div>
+                            <div className="font-bold text-white text-xs">{v.user?.nickname || v.user?.username || 'Member'}</div>
+                            <div className="text-[10px] text-violet-400/60 font-mono">@{v.user?.username}</div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {new Date(v.viewedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Reactions List */}
+              {storyInspectModal.reactions && storyInspectModal.reactions.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-violet-900/30">
+                  <div className="font-bold text-slate-300 text-xs flex items-center space-x-1.5">
+                    <Heart className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Reactions ({storyInspectModal.reactions.length})</span>
+                  </div>
+                  <div className="space-y-1">
+                    {storyInspectModal.reactions.map((r, i) => (
+                      <div key={i} className="p-2 rounded-xl bg-[#1F1738] flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Avatar src={r.user?.avatar} name={r.user?.nickname || r.user?.username || 'User'} size="sm" />
+                          <span className="font-bold text-white text-xs">{r.user?.nickname || r.user?.username}</span>
+                        </div>
+                        <span className="text-base">{r.emoji}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {userModalOpen && editingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-lg bg-[#1E1833] rounded-3xl border border-violet-900/40 shadow-2xl p-4 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto text-slate-100">

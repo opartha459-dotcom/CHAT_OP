@@ -299,10 +299,10 @@ const createAnnouncement = async (req, res) => {
 
       const uniqueOptions = [...new Set(validOptions)];
 
-      if (uniqueOptions.length < 2 || uniqueOptions.length > 4) {
+      if (uniqueOptions.length < 2 || uniqueOptions.length > 10) {
         return res.status(400).json({
           success: false,
-          message: 'A poll must have between 2 and 4 unique options.'
+          message: 'A poll must have between 2 and 10 unique options.'
         });
       }
 

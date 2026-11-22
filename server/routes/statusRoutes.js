@@ -6,6 +6,7 @@ const {
   getMyStatuses,
   viewStatus,
   reactToStatus,
+  replyToStatus,
   voteStatusPoll,
   closeStatusPoll,
   deleteStatus
@@ -20,6 +21,7 @@ router.get('/feed', getStatusFeed);
 router.get('/mine', getMyStatuses);
 router.post('/:id/view', viewStatus);
 router.post('/:id/react', checkFeature('status'), reactToStatus);
+router.post('/:id/reply', checkFeature('status'), replyToStatus);
 router.post('/:id/poll/vote', checkFeature('status'), voteStatusPoll);
 router.post('/:id/poll/close', checkFeature('status'), closeStatusPoll);
 router.delete('/:id', deleteStatus);

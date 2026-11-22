@@ -462,6 +462,38 @@ export const MessageBubble = ({ message, isGroup = false }) => {
             </div>
           )}
 
+          {/* Story Reply preview header */}
+          {message.storyReply && (
+            <div className={`text-xs px-3 py-2 mb-1.5 rounded-xl border-l-4 bg-slate-100/90 dark:bg-slate-800/90 max-w-full flex items-center space-x-2.5 overflow-hidden shadow-sm ${
+              isMe ? 'border-indigo-500' : 'border-purple-500'
+            }`}>
+              {message.storyReply.storyMediaUrl ? (
+                <img
+                  src={message.storyReply.storyMediaUrl}
+                  alt="Story thumbnail"
+                  className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-indigo-500 via-purple-600 to-pink-500 flex items-center justify-center text-white text-[9px] font-black uppercase flex-shrink-0 shadow-sm">
+                  STORY
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="font-bold text-[11px] text-indigo-600 dark:text-indigo-400 flex items-center space-x-1 truncate">
+                  <span>Replied to {message.storyReply.authorName || 'Story'}</span>
+                  {message.storyReply.isAdminStory && (
+                    <span className="px-1 py-0.2 rounded text-[8px] bg-violet-600 text-white font-extrabold uppercase">
+                      Official
+                    </span>
+                  )}
+                </div>
+                <div className="text-slate-600 dark:text-slate-300 text-xs truncate">
+                  {message.storyReply.storyText || (message.storyReply.storyMediaUrl ? 'Photo / Video' : 'Story update')}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Bubble content */}
           <div
             onClick={() => setMobileActionsOpen((prev) => !prev)}

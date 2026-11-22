@@ -150,14 +150,16 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
     setFontIndex(0);
     setIsBold(false);
     setIsItalic(false);
-    setAllowedUsers([]);
-    setExcludedUsers([]);
+    const initialAllowed = currentUser?.privacySettings?.statusAllowedUsers || [];
+    const initialExcluded = currentUser?.privacySettings?.statusExcludedUsers || [];
+    setAllowedUsers(Array.isArray(initialAllowed) ? initialAllowed : []);
+    setExcludedUsers(Array.isArray(initialExcluded) ? initialExcluded : []);
     setPrivacySheetOpen(false);
     setContactPickerMode(null);
     setContactSearchQuery('');
     setSearchedUsers([]);
     publishInFlightRef.current = false;
-  }, [isOpen, currentUser?.privacySettings?.statusAudience]);
+  }, [isOpen, currentUser?.privacySettings]);
 
   const displayedContacts = useMemo(() => {
     const list = [...knownContacts];
@@ -182,19 +184,19 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
   }, [knownContacts, searchedUsers, contactSearchQuery]);
 
   const privacyLabel = useMemo(() => {
-    if (audience === 'everyone') return 'Status (24h) · Everyone';
+    if (audience === 'everyone') return 'Pulse Story · Everyone';
 
     if (audience === 'contacts') {
       return excludedUsers.length > 0
-        ? `Contacts (${excludedUsers.length} excluded)`
-        : 'Status (24h) · My Contacts';
+        ? `Pulse Story · Contacts (${excludedUsers.length} excluded)`
+        : 'Pulse Story · My Contacts';
     }
 
-    if (audience === 'custom') {
-      return `Only with (${allowedUsers.length} selected)`;
+    if (audience === 'custom' || audience === 'only_share_with') {
+      return `Pulse Story · Only (${allowedUsers.length} selected)`;
     }
 
-    return 'Status (24h)';
+    return 'Pulse Story (24h)';
   }, [audience, allowedUsers.length, excludedUsers.length]);
 
   if (!isOpen) return null;
@@ -264,7 +266,7 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
       .filter(Boolean);
 
     if (!hasPoll && !cleanText) {
-      setError('Please type your status message.');
+      setError('Please type your Pulse Story message.');
       return;
     }
 
@@ -286,7 +288,7 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
       return;
     }
 
-    if (audience === 'custom' && allowedUsers.length === 0) {
+    if ((audience === 'custom' || audience === 'only_share_with') && allowedUsers.length === 0) {
       setError('Select at least one contact for Only Share With.');
       return;
     }
@@ -296,6 +298,14 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
     setError('');
 
     try {
+      const targetAudience = audience === 'only_share_with' ? 'custom' : audience;
+      const targetAllowedUsers = (audience === 'custom' || audience === 'only_share_with')
+        ? allowedUsers.map((user) => (user._id || user).toString())
+        : [];
+      const targetExcludedUsers = (audience === 'contacts' || audience === 'custom')
+        ? excludedUsers.map((user) => (user._id || user).toString())
+        : [];
+
       const payload = {
         type: 'text',
         text: cleanText,
@@ -307,15 +317,9 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           italic: isItalic
         },
         privacy: {
-          audience,
-          allowedUsers:
-            audience === 'custom'
-              ? allowedUsers.map((user) => (user._id || user).toString())
-              : [],
-          excludedUsers:
-            audience === 'contacts'
-              ? excludedUsers.map((user) => (user._id || user).toString())
-              : []
+          audience: targetAudience,
+          allowedUsers: targetAllowedUsers,
+          excludedUsers: targetExcludedUsers
         },
         hasPoll,
         ...(hasPoll
@@ -341,9 +345,24 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.success) {
-        setError(data.message || `Failed to publish status (${res.status}).`);
+        setError(data.message || `Failed to publish Pulse Story (${res.status}).`);
         return;
       }
+
+      // Persist chosen privacy settings to user profile defaults (like WhatsApp)
+      fetch('/api/auth/privacy', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          statusAudience: targetAudience,
+          statusAllowedUsers: targetAllowedUsers,
+          statusExcludedUsers: targetExcludedUsers
+        })
+      }).catch(() => {});
 
       if (onStatusCreated) {
         await onStatusCreated(data.status);
@@ -362,8 +381,8 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
 
       onClose();
     } catch (err) {
-      console.error('Publish status error:', err);
-      setError('Network error publishing status. Please try again.');
+      console.error('Publish Pulse Story error:', err);
+      setError('Network error publishing Pulse Story. Please try again.');
     } finally {
       publishInFlightRef.current = false;
       setLoading(false);
@@ -449,7 +468,7 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
             autoFocus={!hasPoll}
             maxLength={700}
             rows={hasPoll ? 2 : 4}
-            placeholder={hasPoll ? 'Add a caption for your poll...' : 'Type a status update...'}
+            placeholder={hasPoll ? 'Add a caption for your poll...' : 'Type a Pulse Story...'}
             value={text}
             onChange={(e) => setText(e.target.value)}
             className={`w-full bg-transparent text-white placeholder-white/60 text-center ${hasPoll ? 'text-lg' : 'text-xl sm:text-2xl'
@@ -533,11 +552,15 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           <button
             type="button"
             onClick={handlePublish}
-            disabled={loading || (!text.trim() && !hasPoll)}
-            className="flex items-center space-x-1.5 px-4 py-2 bg-white text-indigo-950 hover:bg-white/95 disabled:opacity-40 font-bold text-xs rounded-2xl shadow-xl transition active:scale-95 cursor-pointer"
+            disabled={loading || publishInFlightRef.current || (!text.trim() && !hasPoll)}
+            className={`flex items-center space-x-1.5 px-4 py-2 bg-white text-indigo-950 font-bold text-xs rounded-2xl shadow-xl transition ${
+              loading || publishInFlightRef.current
+                ? 'opacity-40 cursor-not-allowed pointer-events-none'
+                : 'hover:bg-white/95 active:scale-95 cursor-pointer'
+            }`}
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            <span>{loading ? 'Posting...' : 'Share Status'}</span>
+            <span>{loading ? 'Sharing...' : 'Share Pulse Story'}</span>
           </button>
         </div>
 
@@ -549,8 +572,8 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
             <div>
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <div>
-                  <h3 className="font-bold text-sm text-white">Status Privacy</h3>
-                  <p className="text-[11px] text-slate-400">Who can see my status updates</p>
+                  <h3 className="font-bold text-sm text-white">Story Privacy</h3>
+                  <p className="text-[11px] text-slate-400">Who can see my Pulse Stories (like WhatsApp)</p>
                 </div>
                 <button
                   type="button"

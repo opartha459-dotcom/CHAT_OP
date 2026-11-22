@@ -302,9 +302,16 @@ export const LandingPage = () => {
             ) : (
               <PulseLogo size={34} iconOnly={true} animated={true} />
             )}
-            <span className="text-base font-bold text-white tracking-tight">
-              {brandName}
-            </span>
+            {brandName === 'PulseChat' ? (
+              <span className="text-base font-extrabold tracking-tight">
+                <span className="text-indigo-400">Pulse</span>
+                <span className="text-white">Chat</span>
+              </span>
+            ) : (
+              <span className="text-base font-bold text-white tracking-tight">
+                {brandName}
+              </span>
+            )}
           </Link>
 
           {/* Clean Centered Nav Links */}
@@ -1403,71 +1410,92 @@ export const LandingPage = () => {
 
           if (!activeFaqs || activeFaqs.length === 0) return null;
 
+          const faqContainerGlow = isBoxGlow
+            ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_60px_rgba(168,85,247,0.35)]', boxGlowColor)
+            : 'shadow-2xl';
+
           return (
-            <section id="faq" className="w-full max-w-5xl mx-auto px-6 py-16 md:py-24 flex flex-col items-center">
-              <div className="text-center max-w-2xl mx-auto mb-12 flex flex-col items-center">
-                <span className="px-3.5 py-1 rounded-full bg-violet-600/20 border border-violet-500/30 text-[10px] font-mono font-bold uppercase tracking-widest text-violet-300 mx-auto">
-                  {faqBadge}
-                </span>
-                <h2
-                  style={textGlowStyle}
-                  className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mt-4 text-center"
-                >
-                  {faqTitle}
-                </h2>
-                <p className="text-xs sm:text-sm text-violet-300/70 mt-2.5 text-center">
-                  {faqSubtitle}
-                </p>
-              </div>
+            <section id="faq" className="w-full max-w-6xl mx-auto px-6 py-16 md:py-24 flex justify-center relative">
+              {/* Ambient Glow Halo */}
+              {isBoxGlow && (
+                <div className="absolute inset-0 max-w-5xl mx-auto bg-gradient-to-r from-violet-600/25 via-fuchsia-600/15 to-cyan-600/25 rounded-[3rem] blur-3xl pointer-events-none -z-10" />
+              )}
 
-              <div className="w-full space-y-3.5">
-                {activeFaqs.map((faq, idx) => {
-                  const isOpen = openFaqIndex === idx;
-                  const faqBoxGlow = isBoxGlow
-                    ? (isOpen
-                        ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_25px_rgba(168,85,247,0.35)]', boxGlowColor)
-                        : getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_15px_rgba(168,85,247,0.15)]', boxGlowColor))
-                    : 'shadow-sm';
-                  const faqBorder = isOpen
-                    ? 'border-violet-400/80 bg-[#1C1236]/90 ring-1 ring-violet-400/40'
-                    : 'border-violet-800/40 bg-[#160E2C]/80 hover:border-violet-500/60 hover:bg-[#1A1135]';
+              <div className={`w-full rounded-[2.5rem] bg-gradient-to-b from-[#1C1236] to-[#120B24] border border-violet-800/40 p-8 sm:p-12 lg:p-14 relative overflow-hidden ${faqContainerGlow} transition-all duration-500`}>
+                {isBoxGlow && (
+                  <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-violet-500 via-fuchsia-400 to-cyan-400" />
+                )}
 
-                  return (
-                    <div
-                      key={idx}
-                      className={`relative rounded-2xl ${faqBorder} ${faqBoxGlow} overflow-hidden transition-all duration-300 group`}
-                    >
-                      {/* Top glowing laser line on active or hover */}
-                      {isBoxGlow && (
-                        <div className={`absolute top-0 inset-x-4 h-[1.5px] bg-gradient-to-r from-transparent via-violet-400 to-transparent transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-30 group-hover:opacity-80'}`} />
-                      )}
+                <div className="text-center max-w-2xl mx-auto mb-10 flex flex-col items-center">
+                  <span className="px-3.5 py-1 rounded-full bg-violet-600/20 border border-violet-500/30 text-[10px] font-mono font-bold uppercase tracking-widest text-violet-300 mx-auto">
+                    {faqBadge}
+                  </span>
+                  <h2
+                    style={textGlowStyle}
+                    className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mt-4 text-center"
+                  >
+                    {faqTitle}
+                  </h2>
+                  <p className="text-xs sm:text-sm text-violet-300/70 mt-2.5 text-center">
+                    {faqSubtitle}
+                  </p>
+                </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
-                        className="w-full px-6 py-4.5 flex items-center justify-between text-left cursor-pointer hover:bg-violet-900/20 transition relative z-10"
+                <div className="w-full space-y-3.5 max-w-4xl mx-auto">
+                  {activeFaqs.map((faq, idx) => {
+                    const isOpen = openFaqIndex === idx;
+                    const faqBoxGlow = isBoxGlow
+                      ? (isOpen
+                          ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_30px_rgba(168,85,247,0.4)]', boxGlowColor)
+                          : getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_20px_rgba(168,85,247,0.22)]', boxGlowColor))
+                      : 'shadow-sm';
+                    const faqBorder = isOpen
+                      ? 'border-violet-400/90 bg-[#221642]/95 ring-1 ring-violet-400/50'
+                      : 'border-violet-700/50 bg-[#160E2C]/90 hover:border-violet-400/70 hover:bg-[#1E1338]';
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`relative rounded-2xl ${faqBorder} ${faqBoxGlow} overflow-hidden transition-all duration-300 group`}
                       >
-                        <span
-                          style={isOpen ? textGlowStyle : {}}
-                          className={`font-bold text-sm text-white pr-4 transition-colors ${isOpen ? 'text-violet-200' : 'group-hover:text-violet-200'}`}
-                        >
-                          {faq.question}
-                        </span>
-                        <ChevronDown
-                          className={`w-4 h-4 text-violet-400 transition-transform duration-200 shrink-0 ${
-                            isOpen ? 'rotate-180 text-fuchsia-400 drop-shadow-[0_0_6px_#E879F9]' : 'group-hover:text-violet-300'
-                          }`}
-                        />
-                      </button>
+                        {/* Top glowing laser line on active or hover */}
+                        {isBoxGlow && (
+                          <div
+                            className={`absolute top-0 inset-x-4 h-[2px] bg-gradient-to-r from-transparent via-violet-400 to-transparent transition-opacity duration-300 ${
+                              isOpen ? 'opacity-100 shadow-[0_0_8px_#A855F7]' : 'opacity-40 group-hover:opacity-90'
+                            }`}
+                          />
+                        )}
 
-                      {isOpen && (
-                        <div className="px-6 pb-5 pt-1 text-xs text-violet-200/80 leading-relaxed border-t border-violet-900/40 animate-fadeIn">
-                          {faq.answer}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                        <button
+                          type="button"
+                          onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
+                          className="w-full px-6 py-4.5 flex items-center justify-between text-left cursor-pointer hover:bg-violet-900/20 transition relative z-10"
+                        >
+                          <span
+                            style={isTextGlow ? textGlowStyle : {}}
+                            className={`font-bold text-sm sm:text-base text-white pr-4 transition-all duration-200 ${
+                              isOpen ? 'text-violet-100' : 'group-hover:text-violet-200'
+                            }`}
+                          >
+                            {faq.question}
+                          </span>
+                          <ChevronDown
+                            className={`w-4 h-4 text-violet-400 transition-transform duration-200 shrink-0 ${
+                              isOpen ? 'rotate-180 text-fuchsia-400 drop-shadow-[0_0_6px_#E879F9]' : 'group-hover:text-violet-300'
+                            }`}
+                          />
+                        </button>
+
+                        {isOpen && (
+                          <div className="px-6 pb-5 pt-1 text-xs sm:text-sm text-violet-200/90 leading-relaxed border-t border-violet-900/40 animate-fadeIn">
+                            {faq.answer}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </section>
           );
@@ -1542,7 +1570,14 @@ export const LandingPage = () => {
                 ) : (
                   <PulseLogo size={28} iconOnly={true} />
                 )}
-                <span className="font-extrabold text-lg text-white tracking-tight">{brandName}</span>
+                {brandName === 'PulseChat' ? (
+                  <span className="font-extrabold text-lg tracking-tight">
+                    <span className="text-indigo-400">Pulse</span>
+                    <span className="text-white">Chat</span>
+                  </span>
+                ) : (
+                  <span className="font-extrabold text-lg text-white tracking-tight">{brandName}</span>
+                )}
               </div>
               <p className="text-xs text-violet-300/60 leading-relaxed">
                 Next-generation encrypted messenger with zero-knowledge AES-256-GCM cryptography, DTLS-SRTP WebRTC peer calling, and verified data sovereignty.
@@ -1607,29 +1642,29 @@ export const LandingPage = () => {
         {/* ================= MASSIVE KINETIC "YOUR_BRAIN" FULL-WIDTH SCROLL BANNER ================= */}
         <div
           ref={footerSignatureRef}
-          className="w-full pt-8 pb-4 px-2 overflow-hidden flex flex-col items-center justify-center relative select-none border-t border-violet-900/30"
+          className="w-full pt-8 pb-4 px-0 overflow-hidden flex flex-col items-center justify-center relative select-none border-t border-violet-900/30"
         >
           {/* Ambient dynamic glow halo */}
           <div
-            className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-6xl h-52 bg-gradient-to-t from-violet-600/35 via-fuchsia-600/20 to-transparent rounded-full blur-3xl pointer-events-none transition-opacity duration-700"
+            className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-56 bg-gradient-to-t from-violet-600/40 via-fuchsia-600/25 to-transparent rounded-full blur-3xl pointer-events-none transition-opacity duration-700"
             style={{
-              opacity: 0.2 + footerScrollFactor * 0.8,
+              opacity: 0.25 + footerScrollFactor * 0.75,
               transform: `scale(${0.9 + footerScrollFactor * 0.2})`
             }}
           />
 
           {/* Kinetic Letter-spacing "Open and Close" on Scroll Typography */}
           <div
-            className="w-full text-center flex items-center justify-center transition-all duration-300 ease-out py-2"
+            className="w-full text-center flex items-center justify-center transition-all duration-300 ease-out py-2 overflow-visible"
             style={{
               letterSpacing: `${(0.02 + footerScrollFactor * 0.20).toFixed(3)}em`,
               transform: `scale(${0.90 + footerScrollFactor * 0.10}) translateZ(0)`,
-              opacity: 0.35 + footerScrollFactor * 0.65
+              opacity: 0.40 + footerScrollFactor * 0.60
             }}
           >
             <span
               style={textGlowStyle}
-              className="w-full block font-black text-[14vw] sm:text-[15vw] md:text-[16vw] lg:text-[17vw] leading-none tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white via-violet-200/90 to-violet-950 font-mono uppercase drop-shadow-[0_0_40px_rgba(168,85,247,0.4)] hover:tracking-[0.26em] transition-all duration-500 cursor-default"
+              className="w-full block font-black text-[15vw] sm:text-[16vw] md:text-[17vw] lg:text-[18vw] leading-none tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white via-violet-200/90 to-violet-950 font-mono uppercase drop-shadow-[0_0_40px_rgba(168,85,247,0.45)] hover:tracking-[0.26em] transition-all duration-500 cursor-default whitespace-nowrap"
             >
               {footer?.bigText || 'YOUR_BRAIN'}
             </span>

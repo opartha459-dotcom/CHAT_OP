@@ -8,6 +8,20 @@ const statusSchema = new mongoose.Schema(
       required: true,
       index: true
     },
+    isAdminStory: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    officialAuthorName: {
+      type: String,
+      default: 'PulseChat',
+      trim: true
+    },
+    officialAuthorAvatar: {
+      type: String,
+      default: ''
+    },
     type: {
       type: String,
       enum: ['text', 'media'],
@@ -39,7 +53,7 @@ const statusSchema = new mongoose.Schema(
     privacy: {
       audience: {
         type: String,
-        enum: ['everyone', 'contacts', 'custom'],
+        enum: ['everyone', 'contacts', 'custom', 'only_share_with'],
         default: 'everyone'
       },
       allowedUsers: [
@@ -64,7 +78,17 @@ const statusSchema = new mongoose.Schema(
         viewedAt: {
           type: Date,
           default: Date.now
+        },
+        completed: {
+          type: Boolean,
+          default: false
         }
+      }
+    ],
+    completedViewers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
       }
     ],
     reactions: [
@@ -77,6 +101,29 @@ const statusSchema = new mongoose.Schema(
         emoji: {
           type: String,
           required: true
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now
+        }
+      }
+    ],
+    replies: [
+      {
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: true
+        },
+        message: {
+          type: String,
+          required: true,
+          trim: true,
+          maxlength: [1000, 'Reply cannot exceed 1000 characters']
+        },
+        conversationId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Conversation'
         },
         createdAt: {
           type: Date,

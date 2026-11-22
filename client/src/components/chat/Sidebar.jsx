@@ -423,7 +423,7 @@ export const Sidebar = () => {
               {mainTab === 'chats'
                 ? 'Chats'
                 : mainTab === 'updates'
-                ? 'Updates'
+                ? 'Pulse Stories'
                 : mainTab === 'calls'
                 ? 'Calls'
                 : mainTab === 'communities'
@@ -460,7 +460,7 @@ export const Sidebar = () => {
               <button
                 type="button"
                 onClick={() => setCreateModalOpen(true)}
-                title="Create Status Update"
+                title="Post Pulse Story"
                 className="p-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-full transition active:scale-95 cursor-pointer"
               >
                 <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xs">
@@ -577,7 +577,7 @@ export const Sidebar = () => {
                     className="w-full px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-2.5 transition text-left cursor-pointer"
                   >
                     <Radio className="w-4 h-4 text-purple-500 flex-shrink-0" />
-                    <span className="font-medium">Post Status Update</span>
+                    <span className="font-medium">Post Pulse Story</span>
                   </button>
 
                   <button
@@ -588,7 +588,7 @@ export const Sidebar = () => {
                     className="w-full px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center space-x-2.5 transition text-left cursor-pointer"
                   >
                     <Shield className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                    <span className="font-medium">Status Privacy</span>
+                    <span className="font-medium">Pulse Story Privacy</span>
                   </button>
 
                   {user?.role === 'admin' && (
@@ -840,8 +840,8 @@ export const Sidebar = () => {
                           className={`rounded-full p-0.5 transition-transform ${
                             hasStatus
                               ? hasUnviewed
-                                ? 'bg-gradient-to-tr from-emerald-400 via-teal-500 to-indigo-500 shadow-sm cursor-pointer hover:scale-105 active:scale-95'
-                                : 'border-2 border-slate-300 dark:border-slate-700 p-0.5 cursor-pointer'
+                                ? 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-sm cursor-pointer hover:scale-105 active:scale-95'
+                                : 'border-2 border-slate-300/80 dark:border-slate-700/80 p-0.5 opacity-60 hover:opacity-100 cursor-pointer'
                               : ''
                           }`}
                           title={hasStatus ? 'View Status Update' : ''}
@@ -916,15 +916,16 @@ export const Sidebar = () => {
             <div className="flex flex-col h-full overflow-y-auto">
               <div className="p-4 space-y-4">
 
-                {/* ── My Status ── */}
+                {/* ── My Pulse Story (WhatsApp Style) ── */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">My Status</span>
+                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">My Pulse Story</span>
                     <button
                       onClick={() => openSettingsTo('privacy')}
-                      className="text-emerald-500 dark:text-emerald-400 text-[11px] font-semibold hover:underline cursor-pointer"
+                      className="text-emerald-500 dark:text-emerald-400 text-[11px] font-semibold hover:underline cursor-pointer flex items-center space-x-1"
                     >
-                      Privacy
+                      <Shield className="w-3 h-3" />
+                      <span>Story Privacy</span>
                     </button>
                   </div>
 
@@ -939,7 +940,13 @@ export const Sidebar = () => {
                     className="flex items-center space-x-3 p-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-900/70 cursor-pointer transition-colors active:scale-[0.98]"
                   >
                     <div className="relative flex-shrink-0">
-                      <div className={`p-0.5 rounded-full ${myStatusGroup ? 'bg-gradient-to-tr from-emerald-400 to-indigo-500' : 'bg-slate-200 dark:bg-slate-800'}`}>
+                      <div className={`p-0.5 rounded-full ${
+                        myStatusGroup
+                          ? !myStatusGroup.allViewed
+                            ? 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-sm'
+                            : 'border-2 border-slate-300/80 dark:border-slate-700/80 opacity-70'
+                          : 'bg-slate-200 dark:bg-slate-800'
+                      }`}>
                         <div className="bg-white dark:bg-slate-950 p-0.5 rounded-full">
                           <Avatar src={user?.avatar} name={user?.nickname || user?.username} size="md" />
                         </div>
@@ -951,28 +958,28 @@ export const Sidebar = () => {
                           e.stopPropagation();
                           setCreateModalOpen(true);
                         }}
-                        className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center border-2 border-white dark:border-slate-950 shadow cursor-pointer transition-transform active:scale-90"
+                        className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center border-2 border-white dark:border-slate-950 shadow cursor-pointer transition-transform active:scale-90"
                       >
                         <Plus className="w-3 h-3 stroke-[3]" />
                       </button>
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm text-slate-900 dark:text-white">My Status</div>
+                      <div className="font-semibold text-sm text-slate-900 dark:text-white">My Story</div>
                       <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                         {myStatusGroup
                           ? `${myStatusGroup.statuses?.length} active ${myStatusGroup.statuses?.length === 1 ? 'story' : 'stories'} · Tap to view`
-                          : 'Tap to add a status update'}
+                          : 'Tap to add a Pulse Story · 24h'}
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* ── Recent Updates (Unviewed) ── */}
+                {/* ── Recent Stories (Unviewed) ── */}
                 {otherStatusGroups.filter((g) => !g.allViewed).length > 0 && (
                   <div>
                     <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
-                      Recent Updates
+                      Recent Stories
                     </div>
                     <div className="space-y-0.5">
                       {otherStatusGroups
@@ -988,13 +995,15 @@ export const Sidebar = () => {
                               className="flex items-center space-x-3 p-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-900/70 cursor-pointer transition-colors active:scale-[0.98]"
                             >
                               <div className="relative flex-shrink-0">
-                                <div className="p-0.5 rounded-full bg-gradient-to-tr from-emerald-400 via-teal-500 to-indigo-500">
+                                <div className={`p-0.5 rounded-full shadow-sm ${
+                                  group.isOfficial
+                                    ? 'bg-gradient-to-tr from-violet-500 via-fuchsia-500 to-indigo-500'
+                                    : 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500'
+                                }`}>
                                   <div className="bg-white dark:bg-slate-950 p-0.5 rounded-full">
                                     <Avatar src={group.user?.avatar} name={displayName} size="md" />
                                   </div>
                                 </div>
-                                {/* Unread dot */}
-                                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-950" />
                               </div>
 
                               <div className="flex-1 min-w-0">
@@ -1033,7 +1042,7 @@ export const Sidebar = () => {
                                 onClick={() => setActiveUserId(group.user?._id?.toString())}
                                 className="flex items-center space-x-3 p-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-900/70 cursor-pointer transition-colors opacity-70 hover:opacity-100 active:scale-[0.98]"
                               >
-                                <div className="p-0.5 rounded-full border-2 border-dashed border-slate-300 dark:border-slate-700 flex-shrink-0">
+                                <div className="p-0.5 rounded-full border-2 border-slate-300/80 dark:border-slate-700/80 opacity-60 flex-shrink-0">
                                   <Avatar src={group.user?.avatar} name={displayName} size="md" />
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -1458,7 +1467,7 @@ export const Sidebar = () => {
                 <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-950" />
               )}
             </div>
-            <span className="text-[10px] mt-0.5 tracking-tight font-medium">Updates</span>
+            <span className="text-[10px] mt-0.5 tracking-tight font-medium">Pulse Story</span>
           </button>
 
           {/* 2. Calls */}

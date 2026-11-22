@@ -84,6 +84,17 @@ const messageSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Message'
     },
+    storyReply: {
+      statusId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Status'
+      },
+      storyText: { type: String, default: '' },
+      storyMediaUrl: { type: String, default: '' },
+      storyType: { type: String, default: 'text' },
+      authorName: { type: String, default: '' },
+      isAdminStory: { type: Boolean, default: false }
+    },
     forwardFrom: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Message'

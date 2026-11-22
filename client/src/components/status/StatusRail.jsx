@@ -50,11 +50,14 @@ export const StatusRail = () => {
     const person = group?.user;
 
     const displayName = isOwn
-      ? 'My Status'
+      ? 'My Story'
+      : person?.isOfficial
+      ? (person?.nickname || 'PulseChat')
       : person?.nickname || person?.username || 'User';
 
-    const hasUnviewed =
-      !isOwn && group?.allViewed !== true;
+    const hasUnviewed = isOwn
+      ? Boolean(myStatusGroup && !myStatusGroup.allViewed)
+      : group?.allViewed !== true;
 
     return (
       <button
@@ -69,20 +72,26 @@ export const StatusRail = () => {
         aria-label={
           isOwn
             ? myStatusGroup
-              ? 'View my status'
-              : 'Add a status'
-            : `View ${displayName}'s status`
+              ? 'View my story'
+              : 'Add a Pulse Story'
+            : `View ${displayName}'s story`
         }
       >
         <span
           className={`relative block w-14 h-14 rounded-full p-[2px] transition-transform group-hover:scale-105 group-active:scale-95 ${
             isOwn
               ? myStatusGroup
-                ? 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-md'
+                ? hasUnviewed
+                  ? 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-md'
+                  : 'border-2 border-slate-300/80 dark:border-slate-700/80 opacity-70 hover:opacity-100'
                 : 'border-2 border-dashed border-slate-300 dark:border-slate-700'
-              : hasUnviewed
-                ? 'bg-gradient-to-tr from-emerald-400 via-teal-500 to-indigo-500 shadow-md'
-                : 'border-2 border-slate-300 dark:border-slate-700'
+              : person?.isOfficial
+                ? hasUnviewed
+                  ? 'bg-gradient-to-tr from-violet-500 via-fuchsia-500 to-indigo-500 shadow-lg shadow-violet-500/20'
+                  : 'border-2 border-slate-300/80 dark:border-slate-700/80 opacity-60 hover:opacity-100'
+                : hasUnviewed
+                ? 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-md'
+                : 'border-2 border-slate-300/80 dark:border-slate-700/80 opacity-60 hover:opacity-100'
           }`}
         >
           <span className="flex w-full h-full rounded-full overflow-hidden bg-white dark:bg-slate-900 border-2 border-white dark:border-slate-900 items-center justify-center font-bold text-slate-700 dark:text-slate-200 text-xs">
@@ -94,11 +103,6 @@ export const StatusRail = () => {
             <span className="absolute -right-0.5 -bottom-0.5 w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center border-2 border-white dark:border-slate-950 shadow">
               <Plus className="w-3 h-3 stroke-[3]" />
             </span>
-          )}
-
-          {/* Unviewed status indicator */}
-          {hasUnviewed && (
-            <span className="absolute -right-0.5 -bottom-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-white dark:border-slate-950" />
           )}
         </span>
 
@@ -113,7 +117,7 @@ export const StatusRail = () => {
     <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/30">
       <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-1 select-none">
         {renderStatusItem(
-          {
+          myStatusGroup || {
             user: user,
             allViewed: true
           },

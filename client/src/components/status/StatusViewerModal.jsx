@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X,
   ChevronLeft,
@@ -18,7 +18,9 @@ import {
   Lock,
   Sparkles,
   BarChart3,
-  AlertCircle
+  AlertCircle,
+  Send,
+  MessageCircle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
@@ -46,6 +48,9 @@ export const StatusViewerModal = ({
   const [pollError, setPollError] = useState('');
   const [floatingParticles, setFloatingParticles] = useState([]);
   const [progress, setProgress] = useState(0);
+  const [replyText, setReplyText] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
+  const [replySuccess, setReplySuccess] = useState(false);
 
   const activeStatusRef = useRef(activeStatus);
   // Ref mirror of `voting` so socket closures always see the live value.
@@ -70,6 +75,7 @@ export const StatusViewerModal = ({
   )?.toString();
   const currentUserId = currentUser?._id?.toString();
   const isMine = Boolean(authorUserId && currentUserId && authorUserId === currentUserId);
+  const isOwnerOrAdmin = isMine || Boolean(currentUser?.role === 'admin' && (activeStatus?.isAdminStory || statusGroup?.isOfficial));
 
   // Floating reaction particle spawner.
   const spawnFloatingReaction = (emoji) => {
@@ -91,13 +97,25 @@ export const StatusViewerModal = ({
     }, 2800);
   };
 
-  // Reset index when user changes.
+  // Resume directly from the first uncompleted story in this sequence
   useEffect(() => {
-    setCurrentIndex(0);
+    if (!statuses || statuses.length === 0) {
+      setCurrentIndex(0);
+      return;
+    }
+
+    // Find the first uncompleted story in this group
+    const firstUncompletedIndex = statuses.findIndex(
+      (s) => !s.hasViewed
+    );
+
+    // If there is an uncompleted story, resume at that index; if all were already finished, start at 0
+    const targetIndex = firstUncompletedIndex >= 0 ? firstUncompletedIndex : 0;
+    setCurrentIndex(targetIndex);
     elapsedRef.current = 0;
     setProgress(0);
     setSheetTab(null);
-  }, [statusGroup?.user?._id]);
+  }, [statusGroup?.user?._id, statusGroup?.user]);
 
   // Sync activeStatus whenever slide index or statusGroup updates.
   useEffect(() => {
@@ -153,6 +171,10 @@ export const StatusViewerModal = ({
         setProgress(0);
         setSheetTab(null);
 
+        if (activeStatusRef.current?._id) {
+          handleCompleteCurrentStatus(activeStatusRef.current._id);
+        }
+
         setCurrentIndex((previous) =>
           previous < statuses.length - 1 ? previous + 1 : previous
         );
@@ -188,43 +210,76 @@ export const StatusViewerModal = ({
     onPrevUser
   ]);
 
-  // Mark status as viewed.
-  useEffect(() => {
-    if (!activeStatus || !isOpen) return;
+  // Mark status item as fully completed (only called when user finishes watching it or advances)
+  const handleCompleteCurrentStatus = useCallback(
+    (statusId) => {
+      if (!statusId || isOwnerOrAdmin) return;
+      const sIdStr = statusId.toString();
 
-    if (!isMine) {
-      // Optimistically mark as viewed locally right away
-      if (!activeStatus.hasViewed) {
-        setActiveStatus((prev) => (prev ? { ...prev, hasViewed: true } : prev));
-      }
-      onStatusViewed?.(activeStatus._id, authorUserId);
+      // Mark locally as viewed/completed
+      setActiveStatus((prev) =>
+        prev && prev._id?.toString() === sIdStr
+          ? { ...prev, hasViewed: true }
+          : prev
+      );
 
+      // Inform StatusContext to update group completion state
+      onStatusViewed?.(sIdStr, authorUserId, true);
+
+      // Inform server of completion
       if (token) {
-        fetch(`/api/status/${activeStatus._id}/view`, {
+        fetch(`/api/status/${sIdStr}/view`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`
           },
+          body: JSON.stringify({ completed: true }),
           credentials: 'include'
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data?.success) {
-              onStatusViewed?.(activeStatus._id, authorUserId);
-            }
-          })
-          .catch(console.error);
+        }).catch(console.error);
       }
-    }
-  }, [activeStatus?._id, isMine, isOpen, token, onStatusViewed, authorUserId]);
+    },
+    [isOwnerOrAdmin, authorUserId, onStatusViewed, token]
+  );
 
-  // Fetch fresh status details (only creator needs full live viewers/reactions list)
+  // Immediately record the view on the server for real-time viewer count without marking completed prematurely
+  useEffect(() => {
+    if (!activeStatus?._id || !isOpen) return;
+
+    if (!isOwnerOrAdmin && token) {
+      fetch(`/api/status/${activeStatus._id}/view`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ completed: false }),
+        credentials: 'include'
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.viewersCount !== undefined) {
+            setActiveStatus((prev) =>
+              prev && prev._id?.toString() === activeStatus._id?.toString()
+                ? { ...prev, viewersCount: data.viewersCount }
+                : prev
+            );
+          }
+        })
+        .catch(console.error);
+    }
+  }, [activeStatus?._id, isOwnerOrAdmin, isOpen, token]);
+
+  // Fetch fresh status details (creator or admin viewing official story gets live viewers/reactions list)
   const fetchLiveStatusData = async () => {
-    if (!activeStatus?._id || !token || !isMine) return;
+    if (!activeStatus?._id || !token || !isOwnerOrAdmin) return;
 
     try {
-      const res = await fetch('/api/status/mine', {
+      const endpoint = (activeStatus.isAdminStory || statusGroup?.isOfficial)
+        ? '/api/admin/stories'
+        : '/api/status/mine';
+
+      const res = await fetch(endpoint, {
         headers: {
           Authorization: `Bearer ${token}`
         },
@@ -232,9 +287,10 @@ export const StatusViewerModal = ({
       });
 
       const data = await res.json();
+      const list = data.stories || data.statuses || [];
 
-      if (data.success && Array.isArray(data.statuses)) {
-        const found = data.statuses.find(
+      if (data.success && Array.isArray(list)) {
+        const found = list.find(
           (s) => s._id?.toString() === activeStatus._id?.toString()
         );
 
@@ -242,6 +298,7 @@ export const StatusViewerModal = ({
           setActiveStatus((prev) => ({
             ...prev,
             viewers: found.viewers || prev?.viewers || [],
+            viewersCount: (found.viewers || []).length,
             reactions: found.reactions || prev?.reactions || [],
             poll: found.poll || prev?.poll
           }));
@@ -257,8 +314,8 @@ export const StatusViewerModal = ({
     if (!socket || !isOpen) return undefined;
 
     const handleStatusViewed = (payload) => {
-      // Privacy: Only the status creator is allowed to view live viewer additions
-      if (!isMine) return;
+      // Live viewer list updates for creator or admin
+      if (!isOwnerOrAdmin) return;
 
       const curId = activeStatusRef.current?._id?.toString();
 
@@ -273,20 +330,23 @@ export const StatusViewerModal = ({
           const exists = viewers.some(
             (v) =>
               (v.user?._id || v.user)?.toString() ===
-              payload.viewer?._id?.toString()
+              (payload.viewer?._id || payload.viewer)?.toString()
           );
 
           if (exists) return prev;
 
+          const updatedViewers = [
+            ...viewers,
+            {
+              user: payload.viewer,
+              viewedAt: payload.viewer.viewedAt || new Date()
+            }
+          ];
+
           return {
             ...prev,
-            viewers: [
-              ...viewers,
-              {
-                user: payload.viewer,
-                viewedAt: payload.viewer.viewedAt
-              }
-            ]
+            viewers: updatedViewers,
+            viewersCount: payload.totalViewers || updatedViewers.length
           };
         });
       }
@@ -365,18 +425,46 @@ export const StatusViewerModal = ({
       }
     };
 
+    const handleStatusReply = (payload) => {
+      const curId = activeStatusRef.current?._id?.toString();
+      if (payload.statusId?.toString() === curId && isOwnerOrAdmin) {
+        setActiveStatus((prev) => {
+          if (!prev || prev._id?.toString() !== payload.statusId?.toString()) return prev;
+          const replies = prev.replies || [];
+          return {
+            ...prev,
+            replies: [
+              ...replies,
+              {
+                _id: payload.replyId || `${Date.now()}`,
+                message: payload.message,
+                user: payload.sender,
+                conversationId: payload.conversationId,
+                createdAt: payload.createdAt || new Date()
+              }
+            ],
+            repliesCount: (prev.repliesCount || replies.length) + 1
+          };
+        });
+      }
+    };
+
     socket.on('status:viewed', handleStatusViewed);
     socket.on('status:reaction', handleStatusReaction);
     socket.on('status:reaction_anim', handleReactionAnim);
     socket.on('status:poll_voted', handleStatusPollVoted);
+    socket.on('status:reply', handleStatusReply);
+    socket.on('status:admin_story_reply', handleStatusReply);
 
     return () => {
       socket.off('status:viewed', handleStatusViewed);
       socket.off('status:reaction', handleStatusReaction);
       socket.off('status:reaction_anim', handleReactionAnim);
       socket.off('status:poll_voted', handleStatusPollVoted);
+      socket.off('status:reply', handleStatusReply);
+      socket.off('status:admin_story_reply', handleStatusReply);
     };
-  }, [socket, isOpen]);
+  }, [socket, isOpen, isOwnerOrAdmin]);
 
   // Story timer and animated progress bar.
   useEffect(() => {
@@ -397,6 +485,10 @@ export const StatusViewerModal = ({
       if (elapsedRef.current >= DURATION_MS) {
         elapsedRef.current = 0;
         setProgress(0);
+
+        if (activeStatusRef.current?._id) {
+          handleCompleteCurrentStatus(activeStatusRef.current._id);
+        }
 
         if (currentIndex < statuses.length - 1) {
           setCurrentIndex((previous) => previous + 1);
@@ -433,10 +525,17 @@ export const StatusViewerModal = ({
 
   if (!isOpen || !activeStatus) return null;
 
+  const formatTime = (d) =>
+    d ? new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
   const handleNext = () => {
     elapsedRef.current = 0;
     setProgress(0);
     setSheetTab(null);
+
+    if (activeStatusRef.current?._id) {
+      handleCompleteCurrentStatus(activeStatusRef.current._id);
+    }
 
     if (currentIndex < statuses.length - 1) {
       setCurrentIndex((prev) => prev + 1);
@@ -497,6 +596,7 @@ export const StatusViewerModal = ({
     if (!token || !activeStatus?._id) return;
 
     spawnFloatingReaction(emoji);
+    handleCompleteCurrentStatus(activeStatus._id);
 
     try {
       const res = await fetch(`/api/status/${activeStatus._id}/react`, {
@@ -527,9 +627,45 @@ export const StatusViewerModal = ({
     }
   };
 
+  const handleSendReply = async (e) => {
+    if (e) e.preventDefault();
+    if (!replyText.trim() || sendingReply || !activeStatus?._id) return;
+
+    const sId = activeStatus._id.toString();
+    const messageToSend = replyText.trim();
+    setSendingReply(true);
+    setIsPaused(true);
+
+    try {
+      const res = await fetch(`/api/status/${sId}/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        credentials: 'include',
+        body: JSON.stringify({ message: messageToSend })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReplyText('');
+        setReplySuccess(true);
+        setTimeout(() => setReplySuccess(false), 2500);
+        // Mark status completed and advance view
+        handleCompleteCurrentStatus(sId);
+      }
+    } catch (err) {
+      console.error('Error replying to story:', err);
+    } finally {
+      setSendingReply(false);
+      setIsPaused(false);
+    }
+  };
+
   const handleVotePoll = async (optionIndex) => {
     if (!token || voting || activeStatus?.poll?.isClosed) return;
 
+    handleCompleteCurrentStatus(activeStatus._id);
     setVoting(true);
     votingRef.current = true;
     // Bump version so stale network responses can be detected and discarded.
@@ -691,6 +827,7 @@ export const StatusViewerModal = ({
 
   // Check current user reaction.
   const reactionsList = activeStatus.reactions || [];
+  const repliesList = activeStatus.replies || [];
 
   const myReaction = reactionsList.find(
     (r) => (r.user?._id || r.user)?.toString() === currentUserId
@@ -778,9 +915,17 @@ export const StatusViewerModal = ({
             />
 
             <div>
-              <div className="font-bold text-xs">
-                {statusGroup.user?.nickname ||
-                  statusGroup.user?.username}
+              <div className="font-bold text-xs flex items-center space-x-1.5">
+                <span>
+                  {activeStatus?.isAdminStory
+                    ? (activeStatus.officialAuthorName || statusGroup.user?.nickname || 'PulseChat')
+                    : (statusGroup.user?.nickname || statusGroup.user?.username)}
+                </span>
+                {(statusGroup.user?.isOfficial || activeStatus?.isAdminStory) && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[8px] bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-bold tracking-wider">
+                    OFFICIAL
+                  </span>
+                )}
               </div>
 
               <div className="text-[10px] text-white/70 flex items-center space-x-1">
@@ -1119,7 +1264,7 @@ export const StatusViewerModal = ({
         </div>
 
         {/* Bottom Bar */}
-        {isMine ? (
+        {isOwnerOrAdmin ? (
           <div className="relative z-30 flex items-center justify-center space-x-2">
             <button
               type="button"
@@ -1129,7 +1274,7 @@ export const StatusViewerModal = ({
               }}
               className="flex items-center space-x-2 px-4 py-2 bg-black/50 hover:bg-black/70 backdrop-blur-md rounded-full text-white text-xs font-semibold border border-white/20 transition cursor-pointer active:scale-95 shadow-md"
             >
-              <Eye className="w-4 h-4 text-emerald-300" />
+              <Eye className="w-4 h-4 text-slate-300" />
               <span>{activeStatus.viewers?.length || 0} Viewers</span>
             </button>
 
@@ -1144,6 +1289,20 @@ export const StatusViewerModal = ({
               >
                 <span>❤️</span>
                 <span>{reactionsList.length}</span>
+              </button>
+            )}
+
+            {repliesList.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSheetTab(sheetTab === 'replies' ? null : 'replies');
+                  fetchLiveStatusData();
+                }}
+                className="flex items-center space-x-1.5 px-3.5 py-2 bg-black/50 hover:bg-black/70 backdrop-blur-md rounded-full text-white text-xs font-semibold border border-white/20 transition cursor-pointer active:scale-95 shadow-md"
+              >
+                <MessageCircle className="w-4 h-4 text-sky-400" />
+                <span>{repliesList.length}</span>
               </button>
             )}
 
@@ -1162,34 +1321,76 @@ export const StatusViewerModal = ({
             )}
           </div>
         ) : (
-          <div className="relative z-30 flex items-center justify-center space-x-2 bg-black/50 backdrop-blur-xl border border-white/25 py-2 px-3 rounded-full mx-auto max-w-xs shadow-xl">
-            {QUICK_EMOJIS.map((emoji) => {
-              const isActive = myReaction?.emoji === emoji;
+          <div className="relative z-30 w-full max-w-sm mx-auto flex flex-col items-center space-y-2.5 px-3">
+            {/* Quick emoji reaction bar */}
+            <div className="flex items-center justify-center space-x-2 bg-black/50 backdrop-blur-xl border border-white/20 py-1.5 px-3 rounded-full shadow-xl">
+              {QUICK_EMOJIS.map((emoji) => {
+                const isActive = myReaction?.emoji === emoji;
 
-              return (
+                return (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => handleSendReaction(emoji)}
+                    className={`text-xl p-1 rounded-full transition-all hover:scale-125 active:scale-90 cursor-pointer ${isActive
+                      ? 'bg-white/30 scale-120 ring-2 ring-indigo-400 shadow-md'
+                      : 'hover:bg-white/15'
+                      }`}
+                    title={
+                      isActive
+                        ? `Remove reaction ${emoji}`
+                        : `React ${emoji}`
+                    }
+                  >
+                    {emoji}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Story Reply Input Field */}
+            <form
+              onSubmit={handleSendReply}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="w-full flex items-center space-x-2 bg-black/60 backdrop-blur-2xl border border-white/25 rounded-full px-4 py-2 shadow-2xl transition-all focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-400/40"
+            >
+              <input
+                type="text"
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                onFocus={() => setIsPaused(true)}
+                onBlur={() => {
+                  if (!replyText.trim()) setIsPaused(false);
+                }}
+                placeholder={
+                  activeStatus.isAdminStory
+                    ? `Reply to ${activeStatus.officialAuthorName || 'PulseChat'}...`
+                    : `Reply to ${statusGroup.user?.nickname || statusGroup.user?.username || 'story'}...`
+                }
+                className="flex-1 bg-transparent text-white text-xs placeholder:text-slate-400 focus:outline-none"
+              />
+              {replySuccess ? (
+                <span className="flex items-center space-x-1 text-emerald-400 text-xs font-bold animate-in fade-in">
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>Sent</span>
+                </span>
+              ) : (
                 <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => handleSendReaction(emoji)}
-                  className={`text-xl p-1.5 rounded-full transition-all hover:scale-125 active:scale-90 cursor-pointer ${isActive
-                    ? 'bg-white/30 scale-120 ring-2 ring-indigo-400 shadow-md'
-                    : 'hover:bg-white/15'
-                    }`}
-                  title={
-                    isActive
-                      ? `Remove reaction ${emoji}`
-                      : `React ${emoji}`
-                  }
+                  type="submit"
+                  disabled={!replyText.trim() || sendingReply}
+                  className="p-1.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition transform active:scale-90 cursor-pointer shrink-0 shadow-md"
+                  title="Send reply"
                 >
-                  {emoji}
+                  <Send className="w-3.5 h-3.5" />
                 </button>
-              );
-            })}
+              )}
+            </form>
           </div>
         )}
 
-        {/* Slide-up Sheet - STRICTLY FOR STATUS CREATOR ONLY */}
-        {isMine && sheetTab !== null && (
+        {/* Slide-up Sheet - FOR STATUS CREATOR & ADMIN */}
+        {isOwnerOrAdmin && sheetTab !== null && (
           <div
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
@@ -1203,7 +1404,7 @@ export const StatusViewerModal = ({
                   type="button"
                   onClick={() => setSheetTab('viewers')}
                   className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition ${sheetTab === 'viewers'
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
                     : 'text-slate-400 hover:text-white'
                     }`}
                 >
@@ -1236,6 +1437,20 @@ export const StatusViewerModal = ({
                   >
                     <BarChart3 className="w-3.5 h-3.5" />
                     <span>Poll Votes ({totalPollVotes})</span>
+                  </button>
+                )}
+
+                {repliesList.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSheetTab('replies')}
+                    className={`flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition ${sheetTab === 'replies'
+                      ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                      : 'text-slate-400 hover:text-white'
+                      }`}
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>Replies ({repliesList.length})</span>
                   </button>
                 )}
               </div>
@@ -1391,6 +1606,43 @@ export const StatusViewerModal = ({
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {/* TAB 4: Story Replies */}
+              {sheetTab === 'replies' && (
+                <div className="space-y-2.5 pt-1">
+                  {repliesList.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-slate-400">
+                      No replies received yet.
+                    </div>
+                  ) : (
+                    repliesList.map((r, i) => (
+                      <div
+                        key={r._id || i}
+                        className="p-3 rounded-2xl bg-slate-800/60 border border-slate-700/60 flex items-start space-x-3"
+                      >
+                        <Avatar
+                          src={r.user?.avatar}
+                          name={r.user?.nickname || r.user?.username || 'User'}
+                          size="sm"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-xs text-white truncate">
+                              {r.user?.nickname || r.user?.username || 'User'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 shrink-0">
+                              {formatTime(r.createdAt)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-200 mt-1 break-words leading-relaxed">
+                            {r.message}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>

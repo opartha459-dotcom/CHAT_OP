@@ -1,6 +1,9 @@
 
 const Status = require('../models/Status');
 const Block = require('../models/Block');
+const Conversation = require('../models/Conversation');
+const Message = require('../models/Message');
+const User = require('../models/User');
 
 const USER_FIELDS = 'username nickname avatar status';
 const PUBLIC_USER_FIELDS = 'username nickname avatar';
@@ -24,6 +27,7 @@ const populateStatus = async (id) => {
     .populate('viewers.user', PUBLIC_USER_FIELDS)
     .populate('reactions.user', PUBLIC_USER_FIELDS)
     .populate('poll.options.votes', PUBLIC_USER_FIELDS)
+    .populate('replies.user', PUBLIC_USER_FIELDS)
     .lean();
 };
 
@@ -44,13 +48,29 @@ const emitViewerUpdate = (req, status, viewer, totalViewers) => {
   if (!io) return;
   const authorId = getId(status.user);
 
-  // Send viewer details ONLY to the author's room so only the status creator can view viewers!
+  // Send viewer details to author's user room
   io.to(`user:${authorId}`).emit('status:viewed', {
     statusId: getId(status._id),
     authorId,
     viewer,
     totalViewers
   });
+
+  // If this is an official or admin story, broadcast to all admin listeners as well
+  if (status.isAdminStory) {
+    io.emit('status:viewed', {
+      statusId: getId(status._id),
+      authorId: 'official-pulsechat',
+      viewer,
+      totalViewers,
+      isAdminStory: true
+    });
+    io.emit('status:admin_story_viewed', {
+      statusId: getId(status._id),
+      viewer,
+      totalViewers
+    });
+  }
 };
 
 const emitReactionUpdate = (req, status) => {
@@ -73,6 +93,16 @@ const emitReactionUpdate = (req, status) => {
     authorId,
     emoji: status.reactions?.[status.reactions.length - 1]?.emoji
   });
+
+  // Broadcast to admin listeners if official admin story
+  if (status.isAdminStory) {
+    io.emit('status:admin_story_reaction', {
+      statusId: getId(status._id),
+      reactions: status.reactions || [],
+      viewers: status.viewers || [],
+      totalViewers: status.viewers?.length || 0
+    });
+  }
 };
 
 const emitPollUpdate = (req, status) => {
@@ -100,6 +130,16 @@ const emitPollUpdate = (req, status) => {
     totalViewers: status.viewers?.length || 0
   });
 
+  // Broadcast to admin listeners if official admin story
+  if (status.isAdminStory) {
+    io.emit('status:admin_story_poll', {
+      statusId: getId(status._id),
+      poll: pollObj,
+      viewers: status.viewers || [],
+      totalViewers: status.viewers?.length || 0
+    });
+  }
+
   // Broadcast sanitized counts to everyone EXCEPT the author
   io.except(`user:${authorId}`).emit('status:poll_voted', {
     statusId: getId(status._id),
@@ -126,6 +166,7 @@ const canViewStatus = async (status, userId) => {
   const authorId = getId(status.user);
 
   if (authorId === currentId) return true;
+  if (status.isAdminStory) return true; // Official PulseChat stories are visible to all users
 
   if (isExpired(status)) return false;
 
@@ -172,27 +213,41 @@ const canViewStatus = async (status, userId) => {
   return true;
 };
 
-const recordViewer = async (status, userId) => {
+const recordViewer = async (status, userId, isCompleted = false) => {
   if (!Array.isArray(status.viewers)) {
     status.viewers = [];
   }
+  if (!Array.isArray(status.completedViewers)) {
+    status.completedViewers = [];
+  }
 
-  const alreadyViewed = status.viewers.some(
+  const existingViewer = status.viewers.find(
     (viewer) => getId(viewer.user) === userId.toString()
   );
 
-  if (alreadyViewed) {
-    return null;
+  let newViewer = null;
+
+  if (!existingViewer) {
+    newViewer = {
+      user: userId,
+      viewedAt: new Date(),
+      completed: Boolean(isCompleted)
+    };
+    status.viewers.push(newViewer);
+  } else if (isCompleted && !existingViewer.completed) {
+    existingViewer.completed = true;
   }
 
-  const viewer = {
-    user: userId,
-    viewedAt: new Date()
-  };
+  if (isCompleted) {
+    const alreadyCompleted = status.completedViewers.some(
+      (uid) => getId(uid) === userId.toString()
+    );
+    if (!alreadyCompleted) {
+      status.completedViewers.push(userId);
+    }
+  }
 
-  status.viewers.push(viewer);
-
-  return viewer;
+  return newViewer;
 };
 
 const getViewerPayload = (req, viewer) => ({
@@ -365,16 +420,21 @@ const getStatusFeed = async (req, res) => {
 
     const activeStatuses = await Status.find({
       expiresAt: { $gt: now },
-      user: { $nin: blockedUserIds }
+      $or: [
+        { isAdminStory: true },
+        { user: { $nin: blockedUserIds } }
+      ]
     })
       .sort({ createdAt: 1 })
       .populate('user', USER_FIELDS)
       .populate('viewers.user', PUBLIC_USER_FIELDS)
       .populate('reactions.user', PUBLIC_USER_FIELDS)
       .populate('poll.options.votes', PUBLIC_USER_FIELDS)
+      .populate('replies.user', PUBLIC_USER_FIELDS)
       .lean();
 
     const visibleStatuses = activeStatuses.filter((status) => {
+      if (status.isAdminStory) return true; // Official stories are always visible
       if (!status.user) return false;
 
       const authorId = getId(status.user);
@@ -406,30 +466,53 @@ const getStatusFeed = async (req, res) => {
     const userMap = new Map();
 
     visibleStatuses.forEach((status) => {
-      const userId = getId(status.user);
+      const isOfficial = Boolean(status.isAdminStory);
+      const authorUserId = getId(status.user);
+      const groupKey = isOfficial
+        ? `official-${(status.officialAuthorName || 'pulsechat').toLowerCase().replace(/\s+/g, '-')}`
+        : authorUserId;
 
-      const hasViewed = (status.viewers || []).some(
-        (viewer) => getId(viewer.user) === currentUserId.toString()
-      );
+      // A status is considered viewed by the current user only if they completed watching it
+      const hasViewed =
+        (status.completedViewers || []).some(
+          (uid) => getId(uid) === currentUserId.toString()
+        ) ||
+        (status.viewers || []).some(
+          (viewer) => getId(viewer.user) === currentUserId.toString() && viewer.completed === true
+        );
 
-      if (!userMap.has(userId)) {
-        userMap.set(userId, {
-          user: status.user,
+      if (!userMap.has(groupKey)) {
+        const displayUser = isOfficial
+          ? {
+              _id: groupKey,
+              username: 'pulsechat',
+              nickname: status.officialAuthorName || 'PulseChat',
+              avatar: status.officialAuthorAvatar || '',
+              isOfficial: true,
+              isVerified: true
+            }
+          : status.user;
+
+        userMap.set(groupKey, {
+          user: displayUser,
           statuses: [],
           allViewed: true,
+          isOfficial,
           latestCreatedAt: status.createdAt
         });
       }
 
-      const group = userMap.get(userId);
-      const isOwner = userId === currentUserId.toString();
+      const group = userMap.get(groupKey);
+      const isOwner = authorUserId === currentUserId.toString() || (isOfficial && req.user?.role === 'admin');
 
       group.statuses.push({
         ...status,
         hasViewed,
-        // Privacy rule: Only the creator of the status can view the viewers list and other users' reactions
+        // Privacy rule: Only the creator (or admin for official stories) can view the full viewers list
         viewers: isOwner ? (status.viewers || []) : [],
         viewersCount: (status.viewers || []).length,
+        replies: isOwner ? (status.replies || []) : [],
+        repliesCount: (status.replies || []).length,
         reactions: isOwner
           ? (status.reactions || [])
           : (status.reactions || []).filter(
@@ -463,6 +546,10 @@ const getStatusFeed = async (req, res) => {
     });
 
     const feed = Array.from(userMap.values()).sort((a, b) => {
+      // 1. Official PulseChat stories take top priority in the stories feed
+      if (a.isOfficial && !b.isOfficial) return -1;
+      if (!a.isOfficial && b.isOfficial) return 1;
+
       if (
         getId(a.user) === currentUserId.toString()
       ) return -1;
@@ -535,6 +622,7 @@ const getMyStatuses = async (req, res) => {
 const viewStatus = async (req, res) => {
   try {
     const { id } = req.params;
+    const { completed = false } = req.body || {};
     const currentUserId = req.user._id;
 
     const status = await Status.findById(id);
@@ -556,21 +644,23 @@ const viewStatus = async (req, res) => {
     }
 
     const authorId = getId(status.user);
+    const isSelfRegularStory = !status.isAdminStory && authorId === currentUserId.toString();
 
     let newViewer = null;
 
-    if (authorId !== currentUserId.toString()) {
+    if (!isSelfRegularStory) {
       // Check viewer's status view receipt privacy setting
       const viewerHasReceipts =
         req.user?.privacySettings?.statusViewReceipts !== false;
 
       if (viewerHasReceipts) {
-        newViewer = await recordViewer(status, currentUserId);
+        newViewer = await recordViewer(status, currentUserId, completed);
+
+        status.markModified('viewers');
+        status.markModified('completedViewers');
+        await status.save();
 
         if (newViewer) {
-          status.markModified('viewers');
-          await status.save();
-
           const viewerPayload = getViewerPayload(req, newViewer);
 
           emitViewerUpdate(
@@ -581,20 +671,40 @@ const viewStatus = async (req, res) => {
           );
         }
       }
+    } else {
+      // Author viewing their own story: track completion so ring state stays viewed on refresh
+      if (completed) {
+        const uIdStr = currentUserId.toString();
+        const hasCompleted = (status.completedViewers || []).some(
+          (uid) => getId(uid) === uIdStr
+        );
+        if (!hasCompleted) {
+          status.completedViewers = status.completedViewers || [];
+          status.completedViewers.push(currentUserId);
+          status.markModified('completedViewers');
+          await status.save();
+        }
+      }
     }
 
     const io = getSocket(req);
     if (io) {
+      const feedAuthorKey = status.isAdminStory
+        ? `official-${(status.officialAuthorName || 'pulsechat').toLowerCase().replace(/\s+/g, '-')}`
+        : authorId;
+
       io.to(`user:${currentUserId}`).emit('status:viewed_by_me', {
         statusId: getId(status._id),
-        authorId
+        authorId: feedAuthorKey,
+        rawAuthorId: authorId,
+        completed: Boolean(completed)
       });
     }
 
     return res.json({
       success: true,
       statusId: getId(status._id),
-      hasViewed: true,
+      hasViewed: Boolean(completed),
       viewersCount: status.viewers?.length || 0
     });
   } catch (error) {
@@ -655,9 +765,9 @@ const reactToStatus = async (req, res) => {
 
     let newViewer = null;
 
-    // Reacting also counts as viewing.
+    // Reacting also counts as completing viewing.
     if (authorId !== currentUserId.toString()) {
-      newViewer = await recordViewer(status, currentUserId);
+      newViewer = await recordViewer(status, currentUserId, true);
     }
 
     const existingIndex = status.reactions.findIndex(
@@ -826,9 +936,9 @@ const voteStatusPoll = async (req, res) => {
 
     let newViewer = null;
 
-    // Voting also counts as viewing.
+    // Voting also counts as completing viewing.
     if (authorId !== currentUserId.toString()) {
-      newViewer = await recordViewer(status, currentUserId);
+      newViewer = await recordViewer(status, currentUserId, true);
     }
 
     // Enforce one vote per user.
@@ -1088,6 +1198,212 @@ const deleteStatus = async (req, res) => {
 };
 
 /* =========================================================
+   REPLY TO STATUS
+   POST /api/status/:id/reply
+========================================================= */
+const replyToStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    const currentUserId = req.user._id;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reply message cannot be empty.'
+      });
+    }
+
+    const status = await Status.findById(id).populate('user', USER_FIELDS);
+
+    if (!status || isExpired(status)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Status not found or expired.'
+      });
+    }
+
+    const allowed = await canViewStatus(status, currentUserId);
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'You cannot reply to this status.'
+      });
+    }
+
+    // Determine recipient user ID
+    let recipientId = null;
+    let authorDisplayName = 'PulseChat';
+
+    if (status.isAdminStory) {
+      recipientId = status.user?._id || status.user;
+      authorDisplayName = status.officialAuthorName || 'PulseChat';
+
+      if (!recipientId) {
+        const adminUser = await User.findOne({ role: 'admin', isBanned: false });
+        if (adminUser) recipientId = adminUser._id;
+      }
+    } else {
+      recipientId = status.user?._id || status.user;
+      authorDisplayName = status.user?.nickname || status.user?.username || 'User';
+
+      if (recipientId.toString() === currentUserId.toString()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot reply to your own story.'
+        });
+      }
+    }
+
+    if (!recipientId) {
+      return res.status(404).json({
+        success: false,
+        message: 'Story recipient not found.'
+      });
+    }
+
+    // Block check between users
+    const isBlocked = await Block.findOne({
+      $or: [
+        { blocker: currentUserId, blocked: recipientId },
+        { blocker: recipientId, blocked: currentUserId }
+      ]
+    });
+
+    if (isBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot send reply. Communication is blocked.'
+      });
+    }
+
+    // Find or create private 1-on-1 conversation
+    let conversation = await Conversation.findOne({
+      type: 'private',
+      participants: { $all: [currentUserId, recipientId], $size: 2 }
+    });
+
+    if (!conversation) {
+      conversation = await Conversation.create({
+        type: 'private',
+        participants: [currentUserId, recipientId],
+        isEncrypted: false,
+        unreadCounts: {
+          [currentUserId.toString()]: 0,
+          [recipientId.toString()]: 1
+        }
+      });
+    }
+
+    const cleanMessage = message.trim();
+    const storyReplyData = {
+      statusId: status._id,
+      storyText: status.text || '',
+      storyMediaUrl: status.mediaUrl || '',
+      storyType: status.type || 'text',
+      authorName: authorDisplayName,
+      isAdminStory: Boolean(status.isAdminStory)
+    };
+
+    const newMsg = await Message.create({
+      conversation: conversation._id,
+      sender: currentUserId,
+      content: cleanMessage,
+      messageType: 'text',
+      storyReply: storyReplyData
+    });
+
+    const populatedMsg = await Message.findById(newMsg._id)
+      .populate('sender', PUBLIC_USER_FIELDS)
+      .lean();
+
+    // Update conversation lastMessage & unread count
+    conversation.lastMessage = newMsg._id;
+    conversation.unreadCounts = conversation.unreadCounts || {};
+    conversation.unreadCounts[recipientId.toString()] =
+      (conversation.unreadCounts[recipientId.toString()] || 0) + 1;
+    conversation.markModified('unreadCounts');
+    await conversation.save();
+
+    // Record reply in Status document
+    status.replies = status.replies || [];
+    status.replies.push({
+      user: currentUserId,
+      message: cleanMessage,
+      conversationId: conversation._id,
+      createdAt: new Date()
+    });
+
+    // Replying also records viewer & completion
+    await recordViewer(status, currentUserId, true);
+    status.markModified('replies');
+    status.markModified('viewers');
+    status.markModified('completedViewers');
+    await status.save();
+
+    const io = getSocket(req);
+    if (io) {
+      // 1. Deliver message to conversation & recipient room
+      io.to(`conversation:${conversation._id}`).emit('message:new', {
+        message: populatedMsg,
+        conversationId: conversation._id
+      });
+      io.to(`user:${recipientId}`).emit('message:new', {
+        message: populatedMsg,
+        conversationId: conversation._id
+      });
+
+      const replyPayload = {
+        statusId: getId(status._id),
+        sender: {
+          _id: req.user._id,
+          username: req.user.username,
+          nickname: req.user.nickname,
+          avatar: req.user.avatar,
+          email: req.user.email
+        },
+        message: cleanMessage,
+        conversationId: conversation._id,
+        story: {
+          _id: getId(status._id),
+          text: status.text,
+          mediaUrl: status.mediaUrl,
+          type: status.type,
+          isAdminStory: Boolean(status.isAdminStory),
+          officialAuthorName: status.officialAuthorName
+        },
+        createdAt: new Date()
+      };
+
+      // 2. Emit status:reply to story owner
+      io.to(`user:${recipientId}`).emit('status:reply', replyPayload);
+
+      // 3. If official admin story, broadcast to all admin sockets for live dashboard
+      if (status.isAdminStory) {
+        io.emit('status:admin_story_reply', replyPayload);
+      }
+
+      // 4. Emit viewer update
+      const viewerPayload = getViewerPayload(req, { user: currentUserId, viewedAt: new Date(), completed: true });
+      emitViewerUpdate(req, status, viewerPayload, status.viewers.length);
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: 'Reply sent successfully.',
+      reply: populatedMsg,
+      conversationId: conversation._id
+    });
+  } catch (error) {
+    console.error('[Reply To Status Error]', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error sending story reply.'
+    });
+  }
+};
+
+/* =========================================================
    EXPORTS
 ========================================================= */
 
@@ -1097,6 +1413,7 @@ module.exports = {
   getMyStatuses,
   viewStatus,
   reactToStatus,
+  replyToStatus,
   voteStatusPoll,
   closeStatusPoll,
   deleteStatus

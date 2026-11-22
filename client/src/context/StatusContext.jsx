@@ -39,30 +39,29 @@ export const StatusProvider = ({ children }) => {
     fetchFeed();
   }, [fetchFeed]);
 
-  // Mark status as viewed locally to instantly update ring indicators and notification badges
-  const markStatusViewed = useCallback((statusId, authorUserId) => {
+  // Mark status as viewed/completed locally to accurately reflect completion status
+  const markStatusViewed = useCallback((statusId, authorUserId, isCompleted = true) => {
     if (!statusId) return;
     const sIdStr = statusId.toString();
-    const aIdStr = authorUserId?.toString();
 
     setFeed((prevFeed) =>
       prevFeed.map((group) => {
-        const groupId = group.user?._id?.toString();
-        if (aIdStr && groupId && groupId !== aIdStr) {
-          return group;
-        }
-
         const statuses = group.statuses || [];
         const hasMatchingStatus = statuses.some(
           (s) => s._id?.toString() === sIdStr
         );
         if (!hasMatchingStatus) return group;
 
-        const updatedStatuses = statuses.map((s) =>
-          s._id?.toString() === sIdStr ? { ...s, hasViewed: true } : s
-        );
+        const updatedStatuses = statuses.map((s) => {
+          if (s._id?.toString() !== sIdStr) return s;
+          return {
+            ...s,
+            hasViewed: Boolean(isCompleted)
+          };
+        });
 
-        const allViewed = updatedStatuses.every((s) => Boolean(s.hasViewed));
+        // Story is only allViewed when every single status in the sequence has been completed!
+        const allViewed = updatedStatuses.length > 0 && updatedStatuses.every((s) => Boolean(s.hasViewed));
 
         return {
           ...group,
@@ -83,7 +82,7 @@ export const StatusProvider = ({ children }) => {
 
     const handleSelfViewed = (payload) => {
       if (payload?.statusId) {
-        markStatusViewed(payload.statusId, payload.authorId);
+        markStatusViewed(payload.statusId, payload.authorId, Boolean(payload.completed));
       }
     };
 
@@ -93,6 +92,10 @@ export const StatusProvider = ({ children }) => {
     socket.on('status:viewed_by_me', handleSelfViewed);
     socket.on('status:reaction', handleFeedUpdate);
     socket.on('status:poll_voted', handleFeedUpdate);
+    socket.on('status:reply', handleFeedUpdate);
+    socket.on('status:admin_story_created', handleFeedUpdate);
+    socket.on('status:admin_story_viewed', handleFeedUpdate);
+    socket.on('status:admin_story_reply', handleFeedUpdate);
 
     return () => {
       socket.off('status:new', handleFeedUpdate);
@@ -101,6 +104,10 @@ export const StatusProvider = ({ children }) => {
       socket.off('status:viewed_by_me', handleSelfViewed);
       socket.off('status:reaction', handleFeedUpdate);
       socket.off('status:poll_voted', handleFeedUpdate);
+      socket.off('status:reply', handleFeedUpdate);
+      socket.off('status:admin_story_created', handleFeedUpdate);
+      socket.off('status:admin_story_viewed', handleFeedUpdate);
+      socket.off('status:admin_story_reply', handleFeedUpdate);
     };
   }, [socket, fetchFeed, markStatusViewed]);
 

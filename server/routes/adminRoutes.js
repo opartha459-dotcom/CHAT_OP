@@ -48,7 +48,12 @@ const {
   endMaintenanceSchedule,
   cancelMaintenanceSchedule,
   deleteMaintenanceHistory,
-  deleteSingleMaintenance
+  deleteSingleMaintenance,
+  getAdminStories,
+  getAdminStoryReplies,
+  createAdminStory,
+  deleteAdminStory,
+  toggleAdminStoryPoll
 } = require('../controllers/adminController');
 const { protect } = require('../middlewares/auth');
 const { requireAdmin } = require('../middlewares/adminAuth');
@@ -115,5 +120,12 @@ router.get('/chats', getAllChats);
 router.get('/chats/:id/messages', getChatMessages);
 router.delete('/chats/:id', deleteChat);
 router.delete('/messages/:id', deleteAdminMessage);
+
+// Official PulseChat Stories
+router.get('/stories', getAdminStories);
+router.get('/stories/replies', getAdminStoryReplies);
+router.post('/stories', createAdminStory);
+router.delete('/stories/:id', deleteAdminStory);
+router.post('/stories/:id/poll/close', toggleAdminStoryPoll);
 
 module.exports = router;

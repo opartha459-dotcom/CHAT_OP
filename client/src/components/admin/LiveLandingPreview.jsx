@@ -259,7 +259,13 @@ export const LiveLandingPreview = ({
     <nav className="w-full border-b border-white/10 bg-[#0c081e]/85 backdrop-blur-md px-4 py-3 flex items-center justify-between text-xs transition-all">
       <div className="flex items-center space-x-2.5">
         <PulseLogo size={24} iconOnly={true} className="shrink-0" />
-        <span className="font-bold tracking-tight text-white font-sans text-xs sm:text-sm">{brandName}</span>
+        {brandName === 'PulseChat' ? (
+          <span className="font-bold tracking-tight text-white font-sans text-xs sm:text-sm">
+            <span className="text-indigo-400">Pulse</span>Chat
+          </span>
+        ) : (
+          <span className="font-bold tracking-tight text-white font-sans text-xs sm:text-sm">{brandName}</span>
+        )}
         {brandTagline && (
           <span className="hidden sm:inline-block px-1.5 py-0.5 rounded text-[9px] font-mono bg-white/5 text-slate-300 border border-white/10">
             {brandTagline}
@@ -911,58 +917,73 @@ export const LiveLandingPreview = ({
 
   const renderFaqs = () => {
     if (!faqs || faqs.length === 0) return null;
-    return (
-      <section className="px-5 py-8 w-full max-w-2xl mx-auto">
-        <div className="text-center mb-6">
-          <span className="px-2.5 py-0.5 rounded-full bg-violet-600/20 text-violet-300 text-[9px] font-mono font-bold uppercase">
-            {faqBadge}
-          </span>
-          <h3 style={textGlowStyle} className="text-base font-bold text-white mt-1.5">{faqTitle}</h3>
-        </div>
-        <div className="space-y-2.5">
-          {faqs.map((faq, i) => {
-            const isOpen = openFaqIndex === i;
-            const qText = faq.question || faq.q;
-            const aText = faq.answer || faq.a;
-            const faqBoxGlow = isBoxGlow
-              ? (isOpen
-                  ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_25px_rgba(168,85,247,0.35)]', boxGlowColor)
-                  : getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_15px_rgba(168,85,247,0.15)]', boxGlowColor))
-              : 'shadow-sm';
-            const faqBorder = isOpen
-              ? 'border-violet-400/80 bg-[#1C1236]/90'
-              : 'border-violet-800/40 bg-[#150E28] hover:border-violet-500/60 hover:bg-[#1A1135]';
+    const faqContainerGlow = isBoxGlow
+      ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_40px_rgba(168,85,247,0.35)]', boxGlowColor)
+      : 'shadow-xl';
 
-            return (
-              <div key={i} className={`relative rounded-xl ${faqBorder} ${faqBoxGlow} overflow-hidden transition-all duration-300 group`}>
-                {isBoxGlow && (
-                  <div className={`absolute top-0 inset-x-3 h-[1.5px] bg-gradient-to-r from-transparent via-violet-400 to-transparent transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-30 group-hover:opacity-80'}`} />
-                )}
-                <button
-                  type="button"
-                  onClick={() => setOpenFaqIndex(isOpen ? null : i)}
-                  className="w-full p-3 text-left flex items-center justify-between text-xs font-semibold text-white cursor-pointer relative z-10"
-                >
-                  <span
-                    style={isOpen ? textGlowStyle : {}}
-                    className={`transition-colors ${isOpen ? 'text-violet-200' : 'group-hover:text-violet-200'}`}
-                  >
-                    {qText}
-                  </span>
-                  {isOpen ? (
-                    <ChevronUp className="w-3.5 h-3.5 text-fuchsia-400 drop-shadow-[0_0_6px_#E879F9] shrink-0" />
-                  ) : (
-                    <ChevronDown className="w-3.5 h-3.5 text-violet-400 group-hover:text-violet-300 shrink-0" />
+    return (
+      <section className="px-5 py-8 w-full max-w-2xl mx-auto relative">
+        {/* Ambient Glow Halo */}
+        {isBoxGlow && (
+          <div className="absolute inset-0 bg-gradient-to-r from-violet-600/20 via-fuchsia-600/10 to-cyan-600/20 rounded-3xl blur-2xl pointer-events-none -z-10" />
+        )}
+
+        <div className={`w-full rounded-2xl bg-gradient-to-b from-[#1C1236] to-[#120B24] border border-violet-800/40 p-6 sm:p-8 relative overflow-hidden ${faqContainerGlow} transition-all duration-300`}>
+          {isBoxGlow && (
+            <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-violet-500 via-fuchsia-400 to-cyan-400" />
+          )}
+
+          <div className="text-center mb-6">
+            <span className="px-2.5 py-0.5 rounded-full bg-violet-600/20 text-violet-300 text-[9px] font-mono font-bold uppercase">
+              {faqBadge}
+            </span>
+            <h3 style={textGlowStyle} className="text-base font-bold text-white mt-1.5">{faqTitle}</h3>
+          </div>
+          <div className="space-y-2.5">
+            {faqs.map((faq, i) => {
+              const isOpen = openFaqIndex === i;
+              const qText = faq.question || faq.q;
+              const aText = faq.answer || faq.a;
+              const faqBoxGlow = isBoxGlow
+                ? (isOpen
+                    ? getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_25px_rgba(168,85,247,0.4)]', boxGlowColor)
+                    : getBoxGlowClass(isBoxGlow, boxGlowIntensity, 'shadow-[0_0_18px_rgba(168,85,247,0.22)]', boxGlowColor))
+                : 'shadow-sm';
+              const faqBorder = isOpen
+                ? 'border-violet-400/90 bg-[#221642]/95'
+                : 'border-violet-700/50 bg-[#150E28] hover:border-violet-400/70 hover:bg-[#1A1135]';
+
+              return (
+                <div key={i} className={`relative rounded-xl ${faqBorder} ${faqBoxGlow} overflow-hidden transition-all duration-300 group`}>
+                  {isBoxGlow && (
+                    <div className={`absolute top-0 inset-x-3 h-[1.5px] bg-gradient-to-r from-transparent via-violet-400 to-transparent transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-40 group-hover:opacity-90'}`} />
                   )}
-                </button>
-                {isOpen && (
-                  <div className="p-3 pt-0 text-[11px] text-violet-300/80 leading-relaxed border-t border-violet-900/30 animate-fadeIn">
-                    {aText}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  <button
+                    type="button"
+                    onClick={() => setOpenFaqIndex(isOpen ? null : i)}
+                    className="w-full p-3 text-left flex items-center justify-between text-xs font-semibold text-white cursor-pointer relative z-10"
+                  >
+                    <span
+                      style={isTextGlow ? textGlowStyle : {}}
+                      className={`transition-colors ${isOpen ? 'text-violet-200' : 'group-hover:text-violet-200'}`}
+                    >
+                      {qText}
+                    </span>
+                    {isOpen ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-fuchsia-400 drop-shadow-[0_0_6px_#E879F9] shrink-0" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-violet-400 group-hover:text-violet-300 shrink-0" />
+                    )}
+                  </button>
+                  {isOpen && (
+                    <div className="p-3 pt-0 text-[11px] text-violet-300/80 leading-relaxed border-t border-violet-900/30 animate-fadeIn">
+                      {aText}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </section>
     );
