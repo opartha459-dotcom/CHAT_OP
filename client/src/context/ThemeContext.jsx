@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
 
-// Color conversion and shade generation utilities
+// Color conversion and shade generation utilities   
 export function hexToRgba(hex, alpha = 1) {
   if (!hex || typeof hex !== 'string') return `rgba(99, 102, 241, ${alpha})`;
   let clean = hex.replace('#', '');
@@ -183,25 +183,25 @@ export const DEFAULT_THEME_CONFIG = {
 
 const DEFAULT_THEME_CONTEXT = {
   theme: 'dark',
-  setTheme: () => {},
+  setTheme: () => { },
   selectedThemeId: 'default',
   accentColor: 'indigo',
   rawAccentColor: 'indigo',
   primaryColor: '#6366f1',
   secondaryColor: '#10b981',
-  setAccentColor: () => {},
+  setAccentColor: () => { },
   palette: ACCENT_PALETTES?.indigo || {},
   fontSize: 'medium',
-  setFontSize: () => {},
+  setFontSize: () => { },
   fontFamily: 'Inter',
-  setFontFamily: () => {},
+  setFontFamily: () => { },
   activeTheme: DEFAULT_THEME_CONFIG,
   adminTheme: DEFAULT_THEME_CONFIG,
   isCustomTheme: false,
-  setCustomTheme: () => {},
-  resetToAdminDefault: () => {},
-  updateAdminDefaultTheme: () => {},
-  refreshAdminTheme: () => {}
+  setCustomTheme: () => { },
+  resetToAdminDefault: () => { },
+  updateAdminDefaultTheme: () => { },
+  refreshAdminTheme: () => { }
 };
 
 const ThemeContext = createContext(DEFAULT_THEME_CONTEXT);
@@ -236,7 +236,7 @@ export const ThemeProvider = ({ children }) => {
       const cached = localStorage.getItem('pulsechat_user_custom_theme');
       if (cached) return JSON.parse(cached);
       if (user?.chatSettings?.customTheme) return user.chatSettings.customTheme;
-    } catch {}
+    } catch { }
     return null;
   });
 
@@ -439,7 +439,7 @@ export const ThemeProvider = ({ children }) => {
           isCustomTheme: true,
           customTheme: nextCustom
         })
-      }).catch(() => {});
+      }).catch(() => { });
     }
   };
 
@@ -470,7 +470,7 @@ export const ThemeProvider = ({ children }) => {
           isCustomTheme: true,
           customTheme: nextCustom
         })
-      }).catch(() => {});
+      }).catch(() => { });
     }
   };
 
@@ -501,7 +501,7 @@ export const ThemeProvider = ({ children }) => {
           isCustomTheme: true,
           customTheme: nextCustom
         })
-      }).catch(() => {});
+      }).catch(() => { });
     }
   };
 
@@ -527,7 +527,7 @@ export const ThemeProvider = ({ children }) => {
             isCustomTheme: true,
             customTheme: nextCustom
           })
-        }).catch(() => {});
+        }).catch(() => { });
       }
       return;
     }
@@ -553,7 +553,7 @@ export const ThemeProvider = ({ children }) => {
           isCustomTheme: true,
           customTheme: nextCustom
         })
-      }).catch(() => {});
+      }).catch(() => { });
     }
   };
 
@@ -580,7 +580,7 @@ export const ThemeProvider = ({ children }) => {
           isCustomTheme: true,
           customTheme: nextCustom
         })
-      }).catch(() => {});
+      }).catch(() => { });
     }
   };
 
@@ -624,7 +624,7 @@ export const ThemeProvider = ({ children }) => {
             isCustomTheme: false
           })
         });
-      } catch {}
+      } catch { }
     }
   };
 
