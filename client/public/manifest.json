@@ -1,36 +1,47 @@
 {
-  "id": "/?source=pwa",
-  "name": "PulseChat — Real-Time Encrypted Messenger",
+  "id": "/",
+  "name": "PulseChat",
   "short_name": "PulseChat",
-  "description": "High-performance, real-time encrypted messaging application with multi-device sync, groups, and end-to-end security.",
+  "description": "High-performance, real-time messaging application with multi-device sync and groups.",
+  "lang": "en",
   "start_url": "/chat",
   "scope": "/",
   "display": "standalone",
   "display_override": [
-    "window-controls-overlay",
     "standalone",
     "minimal-ui"
   ],
   "background_color": "#090D16",
   "theme_color": "#4f46e5",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "categories": [
     "social",
-    "communication",
-    "utilities"
+    "communication"
   ],
   "icons": [
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/icons/icon.svg",
@@ -48,7 +59,8 @@
       "icons": [
         {
           "src": "/icons/icon-192.png",
-          "sizes": "192x192"
+          "sizes": "192x192",
+          "type": "image/png"
         }
       ]
     }
