@@ -288,3 +288,15 @@ html.dark body {
 .quantix-glow-pulse {
   animation: cyberGlowPulse 7s ease-in-out infinite;
 }
+
+/* ─── Universal Scrollbar Hiding Utility ─── */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none !important; /* IE and Edge */
+  scrollbar-width: none !important; /* Firefox */
+}

@@ -29,7 +29,7 @@ const statusSchema = new mongoose.Schema(
     },
     text: {
       type: String,
-      maxlength: [700, 'Status text cannot exceed 700 characters'],
+      maxlength: [10000, 'Status text cannot exceed 10000 characters'],
       default: ''
     },
     mediaUrl: {

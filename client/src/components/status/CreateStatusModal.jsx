@@ -21,7 +21,9 @@ import {
   ChevronRight,
   Sparkles,
   Sliders,
-  Pipette
+  Pipette,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -32,6 +34,8 @@ import {
   PRESET_TEXT_GRADIENTS,
   getStoryTextStyle
 } from '../../utils/storyStyles';
+import { StoryRichTextEditor } from './StoryRichTextEditor';
+import { isHtmlEmpty, getPlainTextFromHtml } from '../../utils/storyRichText';
 
 const FONTS = [
   { id: 'sans', label: 'Modern Sans', class: 'font-sans' },
@@ -83,6 +87,7 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
   const [contactSearchQuery, setContactSearchQuery] = useState('');
   const [searchedUsers, setSearchedUsers] = useState([]);
   const [searchingContacts, setSearchingContacts] = useState(false);
+  const [showFormattingToolbars, setShowFormattingToolbars] = useState(true);
 
   const publishInFlightRef = useRef(false);
 
@@ -289,7 +294,7 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
       .map((option) => option.trim())
       .filter(Boolean);
 
-    if (!hasPoll && !cleanText) {
+    if (!hasPoll && isHtmlEmpty(cleanText)) {
       setError('Please type your Pulse Story message.');
       return;
     }
@@ -430,66 +435,89 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
             <X className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center space-x-1.5 bg-black/35 backdrop-blur-md px-2 py-1 rounded-2xl border border-white/20 shadow-md">
+          <div className="flex items-center space-x-2">
+            {showFormattingToolbars && (
+              <div className="flex items-center space-x-1.5 bg-black/35 backdrop-blur-md px-2 py-1 rounded-2xl border border-white/20 shadow-md animate-in fade-in zoom-in-95">
+                <button
+                  type="button"
+                  onClick={() => setActiveToolbar((prev) => (prev === 'bg' ? 'none' : 'bg'))}
+                  className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer ${
+                    activeToolbar === 'bg' ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
+                  }`}
+                  title="Story Background (Presets, Custom Gradient, Solid)"
+                >
+                  <Palette className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveToolbar((prev) => (prev === 'text' ? 'none' : 'text'))}
+                  className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer flex items-center space-x-1 ${
+                    activeToolbar === 'text' ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
+                  }`}
+                  title="Text Color & Gradient Options"
+                >
+                  <Sparkles className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={cycleFont}
+                  className="p-1.5 hover:bg-white/20 rounded-xl transition active:scale-95 text-white cursor-pointer"
+                  title="Change Font Family"
+                >
+                  <Type className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsBold((prev) => !prev)}
+                  className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer ${isBold ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
+                    }`}
+                  title="Toggle Bold"
+                >
+                  <Bold className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsItalic((prev) => !prev)}
+                  className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer ${isItalic ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
+                    }`}
+                  title="Toggle Italic"
+                >
+                  <Italic className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setHasPoll((prev) => !prev)}
+                  className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer flex items-center space-x-1 ${hasPoll ? 'bg-purple-500 text-white font-bold' : 'hover:bg-white/20 text-white'
+                    }`}
+                  title={hasPoll ? 'Remove Poll' : 'Add Poll to Status'}
+                >
+                  <Vote className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Circular Toggle Button for BOTH formatting toolbars */}
             <button
               type="button"
-              onClick={() => setActiveToolbar((prev) => (prev === 'bg' ? 'none' : 'bg'))}
-              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer ${
-                activeToolbar === 'bg' ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
+              onClick={() => {
+                setShowFormattingToolbars((prev) => {
+                  if (prev) setActiveToolbar('none');
+                  return !prev;
+                });
+              }}
+              className={`w-9 h-9 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer backdrop-blur-md border shadow-md ${
+                showFormattingToolbars
+                  ? 'bg-black/35 hover:bg-black/55 border-white/20 text-white'
+                  : 'bg-indigo-600 hover:bg-indigo-500 border-indigo-400 text-white shadow-indigo-500/40 ring-2 ring-indigo-400/40 animate-pulse'
               }`}
-              title="Story Background (Presets, Custom Gradient, Solid)"
+              title={showFormattingToolbars ? 'Hide formatting tools' : 'Show formatting tools'}
             >
-              <Palette className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveToolbar((prev) => (prev === 'text' ? 'none' : 'text'))}
-              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer flex items-center space-x-1 ${
-                activeToolbar === 'text' ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
-              }`}
-              title="Text Color & Gradient Options"
-            >
-              <Sparkles className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={cycleFont}
-              className="p-1.5 hover:bg-white/20 rounded-xl transition active:scale-95 text-white cursor-pointer"
-              title="Change Font Family"
-            >
-              <Type className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsBold((prev) => !prev)}
-              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer ${isBold ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
-                }`}
-              title="Toggle Bold"
-            >
-              <Bold className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsItalic((prev) => !prev)}
-              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer ${isItalic ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
-                }`}
-              title="Toggle Italic"
-            >
-              <Italic className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setHasPoll((prev) => !prev)}
-              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer flex items-center space-x-1 ${hasPoll ? 'bg-purple-500 text-white font-bold' : 'hover:bg-white/20 text-white'
-                }`}
-              title={hasPoll ? 'Remove Poll' : 'Add Poll to Status'}
-            >
-              <Vote className="w-4 h-4" />
+              {showFormattingToolbars ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
         </div>
@@ -838,32 +866,47 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           </div>
         )}
 
-        <div className="flex-1 flex flex-col items-center justify-center my-3 relative z-10 overflow-y-auto no-scrollbar">
+        <div className="flex-1 flex flex-col justify-between my-2 relative z-10 w-full min-h-0 overflow-hidden">
           {error && (
-            <div className="mb-2 px-3 py-1.5 bg-rose-900/80 text-rose-200 text-xs rounded-xl flex items-center space-x-1.5 border border-rose-700 shadow-sm animate-in shake">
+            <div className="mb-2 px-3 py-1.5 bg-rose-900/80 text-rose-200 text-xs rounded-xl flex items-center space-x-1.5 border border-rose-700 shadow-sm animate-in shake shrink-0">
               <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
-          <textarea
-            autoFocus={!hasPoll}
-            maxLength={700}
-            rows={hasPoll ? 2 : 4}
-            placeholder={hasPoll ? 'Add a caption for your poll...' : 'Type a Pulse Story...'}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            style={getStoryTextStyle({ textColor, textGradient, bold: isBold, italic: isItalic })}
-            className={`w-full bg-transparent placeholder-white/60 text-center ${hasPoll ? 'text-lg' : 'text-xl sm:text-2xl'
-              } outline-none resize-none leading-relaxed transition-all duration-200 ${currentFont.class
-              } ${isBold ? 'font-bold' : 'font-normal'} ${isItalic ? 'italic' : 'not-italic'}`}
-          />
+          <div className="w-full flex-1 flex flex-col min-h-0">
+            <StoryRichTextEditor
+              value={text}
+              onChange={setText}
+              maxLength={700}
+              showToolbar={showFormattingToolbars}
+              placeholder={hasPoll ? 'Add a caption for your poll...' : 'Type a Pulse Story...'}
+              fontClass={currentFont.class}
+              isCompact={hasPoll}
+              minHeight={hasPoll ? '80px' : '160px'}
+              containerStyle={{
+                color: textColor || '#ffffff',
+                ...getStoryTextStyle({ textColor, textGradient, bold: isBold, italic: isItalic })
+              }}
+              className="h-full flex-1 flex flex-col justify-between"
+            />
+          </div>
 
           {hasPoll && (
-            <div className="w-full mt-3 p-3.5 bg-black/45 backdrop-blur-md rounded-2xl border border-white/20 space-y-2.5 animate-in fade-in zoom-in-95 shadow-xl">
-              <div className="flex items-center space-x-1.5 text-xs font-bold text-white/90">
-                <Vote className="w-4 h-4 text-purple-300" />
-                <span>Status Poll</span>
+            <div className="w-full mt-2.5 p-3.5 bg-black/55 backdrop-blur-md rounded-2xl border border-white/20 space-y-2.5 animate-in fade-in zoom-in-95 shadow-xl max-h-[260px] overflow-y-auto no-scrollbar shrink-0">
+              <div className="flex items-center justify-between text-xs font-bold text-white/90">
+                <div className="flex items-center space-x-1.5">
+                  <Vote className="w-4 h-4 text-purple-300" />
+                  <span>Status Poll</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setHasPoll(false)}
+                  className="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
+                  title="Remove Poll"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
 
               <input
@@ -911,9 +954,37 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
             </div>
           )}
 
-          <span className="text-[10px] text-white/50 font-mono mt-1.5 select-none">
-            {text.length}/700
-          </span>
+          {(() => {
+            const plain = getPlainTextFromHtml(text);
+            const charCount = plain.length;
+            const words = plain.trim() ? plain.trim().split(/\s+/).filter(Boolean).length : 0;
+            const isLimit = charCount >= 700;
+
+            return (
+              <div className="flex items-center justify-center space-x-2 text-[11px] font-mono mt-1 select-none shrink-0">
+                <span
+                  className={
+                    isLimit
+                      ? 'text-rose-400 font-bold animate-pulse'
+                      : charCount >= 650
+                      ? 'text-amber-300 font-semibold'
+                      : 'text-white/60'
+                  }
+                >
+                  {charCount}/700 chars
+                </span>
+                <span className="text-white/30">•</span>
+                <span className="text-white/60">
+                  {words} {words === 1 ? 'word' : 'words'}
+                </span>
+                {isLimit && (
+                  <span className="px-1.5 py-0.5 rounded text-[9px] bg-rose-600 text-white font-bold uppercase tracking-wider">
+                    Limit Reached
+                  </span>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         <div className="flex items-center justify-between pt-3 border-t border-white/15 relative z-20 select-none">

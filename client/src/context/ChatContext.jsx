@@ -35,6 +35,7 @@ export const ChatProvider = ({ children }) => {
   // Incremented on each vote; stale network responses are discarded.
   const voteGenerationsRef = useRef({}); // messageId → current generation number
   const pendingPollVoteIds = useRef(new Set()); // messageIds with an in-flight vote
+  const processedSocketMsgIdsRef = useRef(new Set());
 
   const getCachedEntry = useCallback((conversationId) => {
     if (!conversationId) return null;
@@ -282,6 +283,18 @@ export const ChatProvider = ({ children }) => {
 
     const handleMessageReceived = async (incomingMessage) => {
       if (!incomingMessage || !incomingMessage._id) return;
+
+      const incomingMsgId = (incomingMessage._id?.toString() || incomingMessage._id);
+      if (incomingMsgId && processedSocketMsgIdsRef.current.has(incomingMsgId)) {
+        return;
+      }
+      if (incomingMsgId) {
+        processedSocketMsgIdsRef.current.add(incomingMsgId);
+        if (processedSocketMsgIdsRef.current.size > 200) {
+          const oldest = processedSocketMsgIdsRef.current.values().next().value;
+          processedSocketMsgIdsRef.current.delete(oldest);
+        }
+      }
 
       const incomingConvId = (incomingMessage.conversation?._id || incomingMessage.conversation)?.toString();
 

@@ -20,12 +20,16 @@ import {
   BarChart3,
   AlertCircle,
   Send,
-  MessageCircle
+  MessageCircle,
+  ChevronDown,
+  ChevronUp,
+  FastForward
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import { Avatar } from '../common/Avatar';
 import { getStoryTextStyle } from '../../utils/storyStyles';
+import { autolinkStoryHtml, getPlainTextFromHtml } from '../../utils/storyRichText';
 
 const QUICK_EMOJIS = ['❤️', '😂', '🔥', '👏', '😮', '😢'];
 
@@ -53,6 +57,12 @@ export const StatusViewerModal = ({
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
   const [replySuccess, setReplySuccess] = useState(false);
+  const [isTextExpanded, setIsTextExpanded] = useState(false);
+  const [autoAdvance, setAutoAdvance] = useState(true);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [isHolding2x, setIsHolding2x] = useState(false);
+  const holdTimerRef = useRef(null);
+  const pressStartRef = useRef(null);
 
   const activeStatusRef = useRef(activeStatus);
   // Ref mirror of `voting` so socket closures always see the live value.
@@ -470,8 +480,10 @@ export const StatusViewerModal = ({
 
   // Determine if story timer must stay paused
   const shouldPause = Boolean(
+    !autoAdvance ||
     isPaused ||
     isReplying ||
+    isTextExpanded ||
     replyText.trim().length > 0 ||
     sendingReply ||
     sheetTab !== null
@@ -484,11 +496,12 @@ export const StatusViewerModal = ({
     }
 
     const interval = 50;
+    const speedMultiplier = playbackSpeed === 2 ? 2 : 1;
 
     timerRef.current = setInterval(() => {
       elapsedRef.current = Math.min(
         DURATION_MS,
-        elapsedRef.current + interval
+        elapsedRef.current + interval * speedMultiplier
       );
 
       setProgress((elapsedRef.current / DURATION_MS) * 100);
@@ -520,6 +533,8 @@ export const StatusViewerModal = ({
   }, [
     isOpen,
     shouldPause,
+    playbackSpeed,
+    autoAdvance,
     currentIndex,
     statuses.length,
     onNextUser,
@@ -534,7 +549,14 @@ export const StatusViewerModal = ({
     setReplyText('');
     setIsReplying(false);
     setIsPaused(false);
+    setIsTextExpanded(false);
   }, [activeStatus?._id]);
+
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    };
+  }, []);
 
   if (!isOpen || !activeStatus) return null;
 
@@ -548,6 +570,7 @@ export const StatusViewerModal = ({
     setReplyText('');
     setIsReplying(false);
     setIsPaused(false);
+    setIsTextExpanded(false);
 
     if (activeStatusRef.current?._id) {
       handleCompleteCurrentStatus(activeStatusRef.current._id);
@@ -569,12 +592,87 @@ export const StatusViewerModal = ({
     setReplyText('');
     setIsReplying(false);
     setIsPaused(false);
+    setIsTextExpanded(false);
 
     if (currentIndex > 0) {
       setCurrentIndex((prev) => prev - 1);
     } else if (onPrevUser) {
       onPrevUser();
     }
+  };
+
+  // Hold-to-pause (left / center zone) handlers
+  const handleLeftPointerDown = (e) => {
+    e.stopPropagation();
+    pressStartRef.current = { side: 'left', time: Date.now() };
+    setIsPaused(true);
+  };
+
+  const handleLeftPointerUp = (e) => {
+    e.stopPropagation();
+    const elapsed = Date.now() - (pressStartRef.current?.time || 0);
+    setIsPaused(false);
+    if (pressStartRef.current?.side === 'left' && elapsed < 250) {
+      if (isReplying || replyText.trim()) {
+        if (!replyText.trim()) {
+          setIsReplying(false);
+        }
+        return;
+      }
+      if (isTextExpanded) {
+        setIsTextExpanded(false);
+        return;
+      }
+      handlePrev();
+    }
+    pressStartRef.current = null;
+  };
+
+  const handleLeftPointerLeave = () => {
+    if (pressStartRef.current?.side === 'left') {
+      setIsPaused(false);
+      pressStartRef.current = null;
+    }
+  };
+
+  // Hold-to-2x Speed (designated right-side zone) handlers
+  const handleRightPointerDown = (e) => {
+    e.stopPropagation();
+    pressStartRef.current = { side: 'right', time: Date.now() };
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = setTimeout(() => {
+      setPlaybackSpeed(2);
+      setIsHolding2x(true);
+    }, 150);
+  };
+
+  const handleRightPointerUp = (e) => {
+    e.stopPropagation();
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    const elapsed = Date.now() - (pressStartRef.current?.time || 0);
+    setPlaybackSpeed(1);
+    setIsHolding2x(false);
+    if (pressStartRef.current?.side === 'right' && elapsed < 250) {
+      if (isReplying || replyText.trim()) {
+        if (!replyText.trim()) {
+          setIsReplying(false);
+        }
+        return;
+      }
+      if (isTextExpanded) {
+        setIsTextExpanded(false);
+        return;
+      }
+      handleNext();
+    }
+    pressStartRef.current = null;
+  };
+
+  const handleRightPointerLeave = () => {
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    setPlaybackSpeed(1);
+    setIsHolding2x(false);
+    pressStartRef.current = null;
   };
 
   const handleDelete = async () => {
@@ -892,15 +990,21 @@ export const StatusViewerModal = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/95 backdrop-blur-xl animate-in fade-in duration-200 select-none">
       <div
-        className="relative w-full sm:max-w-md h-full sm:h-[690px] sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col justify-between p-5"
+        className="relative w-full sm:max-w-md h-full sm:h-[690px] sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col justify-between p-5 no-scrollbar"
         style={{ background: bgStyle }}
-        onMouseDown={() => setIsPaused(true)}
+        onMouseDown={(e) => {
+          if (e.target.closest('button, input, textarea, a, .no-pause')) return;
+          setIsPaused(true);
+        }}
         onMouseUp={() => {
           if (!isReplying && !replyText.trim() && !sendingReply) {
             setIsPaused(false);
           }
         }}
-        onTouchStart={() => setIsPaused(true)}
+        onTouchStart={(e) => {
+          if (e.target.closest('button, input, textarea, a, .no-pause')) return;
+          setIsPaused(true);
+        }}
         onTouchEnd={() => {
           if (!isReplying && !replyText.trim() && !sendingReply) {
             setIsPaused(false);
@@ -986,15 +1090,40 @@ export const StatusViewerModal = ({
             </div>
           </div>
 
-          <div className="flex items-center space-x-1">
+          {/* Top-Right Controls: Auto On/Off, Delete, and Close */}
+          <div className="flex items-center space-x-1.5 shrink-0 z-40">
+            {/* Story Auto-Progression ON/OFF */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setAutoAdvance((prev) => !prev);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold flex items-center space-x-1.5 backdrop-blur-md border transition cursor-pointer active:scale-95 shadow-md ${
+                autoAdvance
+                  ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/30'
+                  : 'bg-rose-500/20 border-rose-400/40 text-rose-300 hover:bg-rose-500/30'
+              }`}
+              title={
+                autoAdvance
+                  ? 'Auto-progression: ON. Stories advance automatically. Click to turn OFF.'
+                  : 'Auto-progression: OFF. Current story remains open until manual navigation. Click to turn ON.'
+              }
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${autoAdvance ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+              <span>Auto {autoAdvance ? 'ON' : 'OFF'}</span>
+            </button>
+
             {isMine && (
               <button
                 type="button"
                 onClick={handleDelete}
-                className="p-1.5 hover:bg-black/20 rounded-full transition cursor-pointer"
+                className="p-1.5 hover:bg-black/20 rounded-full transition cursor-pointer text-rose-300"
                 title="Delete this status"
               >
-                <Trash2 className="w-4 h-4 text-rose-300" />
+                <Trash2 className="w-4 h-4" />
               </button>
             )}
 
@@ -1009,53 +1138,130 @@ export const StatusViewerModal = ({
           </div>
         </div>
 
-        {/* Interactive Tap Zones */}
+        {/* Temporary 2x Speed Visual Indicator on Hold */}
+        {isHolding2x && (
+          <div className="absolute top-16 right-4 z-40 px-3 py-1 bg-amber-500/85 backdrop-blur-md rounded-full text-white text-[11px] font-black tracking-wider flex items-center space-x-1.5 animate-pulse shadow-xl pointer-events-none border border-amber-300/40">
+            <FastForward className="w-3.5 h-3.5 fill-current" />
+            <span>2× SPEED</span>
+          </div>
+        )}
+
+        {/* Interactive Tap & Hold Zones */}
+        {/* Left: Tap for Previous, Hold for Pause */}
         <div
-          onClick={() => {
-            if (isReplying || replyText.trim()) {
-              if (!replyText.trim()) {
-                setIsReplying(false);
-                setIsPaused(false);
-              }
-              return;
-            }
-            handlePrev();
-          }}
+          onMouseDown={handleLeftPointerDown}
+          onMouseUp={handleLeftPointerUp}
+          onMouseLeave={handleLeftPointerLeave}
+          onTouchStart={handleLeftPointerDown}
+          onTouchEnd={handleLeftPointerUp}
+          onTouchCancel={handleLeftPointerLeave}
           className="absolute left-0 top-16 bottom-24 w-1/3 z-10 cursor-pointer"
+          title="Tap: Previous • Hold: Pause"
         />
 
+        {/* Right: Tap for Next, Hold for 2× Speed */}
         <div
-          onClick={() => {
-            if (isReplying || replyText.trim()) {
-              if (!replyText.trim()) {
-                setIsReplying(false);
-                setIsPaused(false);
-              }
-              return;
-            }
-            handleNext();
-          }}
+          onMouseDown={handleRightPointerDown}
+          onMouseUp={handleRightPointerUp}
+          onMouseLeave={handleRightPointerLeave}
+          onTouchStart={handleRightPointerDown}
+          onTouchEnd={handleRightPointerUp}
+          onTouchCancel={handleRightPointerLeave}
           className="absolute right-0 top-16 bottom-24 w-2/3 z-10 cursor-pointer"
+          title="Tap: Next • Hold: 2× Speed"
         />
 
         {/* Center Display */}
-        <div className="flex-1 flex flex-col items-center justify-center p-3 text-center text-white relative z-20 overflow-y-auto no-scrollbar space-y-4">
-          {activeStatus.text && (
-            <p
-              style={getStoryTextStyle(activeStatus.style)}
-              className={`text-xl sm:text-2xl leading-relaxed max-w-sm break-words ${fontClass} ${
-                activeStatus.style?.bold === true || activeStatus.style?.bold === 'true'
-                  ? 'font-bold'
-                  : 'font-normal'
-              } ${
-                activeStatus.style?.italic === true || activeStatus.style?.italic === 'true'
-                  ? 'italic'
-                  : 'not-italic'
-              }`}
-            >
-              {activeStatus.text}
-            </p>
-          )}
+        <div
+          onWheel={(e) => {
+            if (playbackSpeed === 2 && e.currentTarget) {
+              e.currentTarget.scrollTop += e.deltaY;
+            }
+          }}
+          className="flex-1 flex flex-col items-center justify-center p-3 text-center text-white relative z-20 overflow-y-auto no-scrollbar space-y-3 max-h-[75vh]"
+        >
+          {activeStatus.text && (() => {
+            const plainStoryText = getPlainTextFromHtml(activeStatus.text);
+            const isLongText = Boolean(
+              plainStoryText.length > (activeStatus.hasPoll ? 60 : 130) ||
+              plainStoryText.split('\n').filter(Boolean).length > (activeStatus.hasPoll ? 2 : 3)
+            );
+
+            return (
+              <div className="w-full max-w-sm flex flex-col items-center select-text">
+                <div
+                  style={getStoryTextStyle(activeStatus.style)}
+                  onClick={(e) => {
+                    const anchor = e.target.closest('a');
+                    if (anchor) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const href = anchor.getAttribute('href');
+                      if (href) {
+                        window.open(href, '_blank', 'noopener,noreferrer');
+                      }
+                      return;
+                    }
+                    if (isTextExpanded) {
+                      e.stopPropagation();
+                      setIsTextExpanded(false);
+                    }
+                  }}
+                  onMouseDown={(e) => {
+                    if (e.target.closest('a')) {
+                      e.stopPropagation();
+                    }
+                  }}
+                  onTouchStart={(e) => {
+                    if (e.target.closest('a')) {
+                      e.stopPropagation();
+                    }
+                  }}
+                  className={`leading-relaxed max-w-sm break-words pointer-events-auto transition-all ${
+                    activeStatus.hasPoll ? 'text-base sm:text-lg' : 'text-xl sm:text-2xl'
+                  } ${fontClass} ${
+                    activeStatus.style?.bold === true || activeStatus.style?.bold === 'true'
+                      ? 'font-bold'
+                      : 'font-normal'
+                  } ${
+                    activeStatus.style?.italic === true || activeStatus.style?.italic === 'true'
+                      ? 'italic'
+                      : 'not-italic'
+                  } ${
+                    !isTextExpanded && isLongText
+                      ? activeStatus.hasPoll
+                        ? 'max-h-16 overflow-hidden line-clamp-2 select-none'
+                        : 'max-h-28 sm:max-h-36 overflow-hidden line-clamp-3 sm:line-clamp-4 select-none'
+                      : 'select-text'
+                  }`}
+                  dangerouslySetInnerHTML={{
+                    __html: autolinkStoryHtml(activeStatus.text)
+                  }}
+                />
+
+                {/* Read More / Read Less Toggle */}
+                {isLongText && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsTextExpanded((prev) => !prev);
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    className={`mt-2.5 px-4 py-1.5 rounded-full text-xs font-bold flex items-center space-x-1.5 shadow-xl transition transform active:scale-95 z-30 cursor-pointer ${
+                      isTextExpanded
+                        ? 'bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur-md'
+                        : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border border-white/30'
+                    }`}
+                  >
+                    <span>{isTextExpanded ? 'Read Less' : 'Read More'}</span>
+                    {isTextExpanded ? <ChevronUp className="w-3.5 h-3.5 stroke-[2.5]" /> : <ChevronDown className="w-3.5 h-3.5 stroke-[2.5]" />}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Status Poll Widget */}
           {activeStatus.hasPoll && poll && (
@@ -1071,7 +1277,7 @@ export const StatusViewerModal = ({
                 e.stopPropagation();
                 setIsPaused(true);
               }}
-              className="w-full max-w-sm p-4 bg-black/60 backdrop-blur-xl border border-white/25 rounded-2xl text-left space-y-3 z-30 shadow-2xl relative select-none"
+              className="w-full max-w-sm max-h-[290px] overflow-y-auto no-scrollbar p-3.5 bg-black/60 backdrop-blur-xl border border-white/25 rounded-2xl text-left space-y-2.5 z-30 shadow-2xl relative select-none flex-shrink-0"
             >
               {/* Poll Header */}
               <div className="flex items-center justify-between text-[11px] font-semibold text-white/80 border-b border-white/15 pb-2">
@@ -1093,9 +1299,9 @@ export const StatusViewerModal = ({
                 )}
               </div>
 
-              {/* Poll Question */}
+              {/* Poll Question (HTML tags safely stripped) */}
               <h4 className="text-sm font-bold text-white leading-snug break-words">
-                {poll.question || 'Status Poll'}
+                {getPlainTextFromHtml(poll.question) || 'Status Poll'}
               </h4>
 
               {pollError && (

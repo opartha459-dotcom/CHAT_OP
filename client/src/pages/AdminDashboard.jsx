@@ -92,6 +92,8 @@ import {
   PRESET_TEXT_GRADIENTS,
   getStoryTextStyle
 } from '../utils/storyStyles';
+import { StoryRichTextEditor } from '../components/status/StoryRichTextEditor';
+import { autolinkStoryHtml, isHtmlEmpty, getPlainTextFromHtml } from '../utils/storyRichText';
 import { decryptMessage, getConversationCryptoKey } from '../utils/crypto';
 
 // Subcomponent to automatically decrypt and render official conversation message content
@@ -100,13 +102,21 @@ const OfficialMessageContent = ({ message, conversationId }) => {
 
   useEffect(() => {
     let isMounted = true;
-    const convId = conversationId || (message.conversation?._id || message.conversation)?.toString();
-    const iv = message.encryptionMetadata?.iv;
+    const content = message.content || '';
 
-    if (convId && iv && message.content) {
+    // If explicitly marked not encrypted, or content is empty, use directly
+    if (message.isEncrypted === false || !content) {
+      setText(content);
+      return;
+    }
+
+    const convId = (message.conversation?._id || message.conversation)?.toString() || conversationId?.toString();
+    const iv = message.encryptionMetadata?.iv || message.iv;
+
+    if (convId && iv && content) {
       getConversationCryptoKey(convId).then((key) => {
         if (key && isMounted) {
-          decryptMessage(message.content, iv, key).then((decrypted) => {
+          decryptMessage(content, iv, key).then((decrypted) => {
             if (isMounted && decrypted) {
               setText(decrypted);
             }
@@ -114,13 +124,13 @@ const OfficialMessageContent = ({ message, conversationId }) => {
         }
       });
     } else {
-      setText(message.content || '');
+      setText(content);
     }
 
     return () => {
       isMounted = false;
     };
-  }, [message.content, message.encryptionMetadata?.iv, conversationId]);
+  }, [message.content, message.encryptionMetadata?.iv, message.iv, message.isEncrypted, message.conversation, conversationId]);
 
   return <p className="break-words font-medium">{text}</p>;
 };
@@ -131,13 +141,20 @@ const StoryReplyMessageText = ({ reply }) => {
 
   useEffect(() => {
     let isMounted = true;
-    const convId = reply.conversationId?.toString();
-    const iv = reply.encryptionMetadata?.iv;
+    const content = reply.message || '';
 
-    if (convId && iv && reply.message) {
+    if (reply.isEncrypted === false || !content) {
+      setText(content);
+      return;
+    }
+
+    const convId = reply.conversationId?.toString();
+    const iv = reply.encryptionMetadata?.iv || reply.iv;
+
+    if (convId && iv && content) {
       getConversationCryptoKey(convId).then((key) => {
         if (key && isMounted) {
-          decryptMessage(reply.message, iv, key).then((decrypted) => {
+          decryptMessage(content, iv, key).then((decrypted) => {
             if (isMounted && decrypted) {
               setText(decrypted);
             }
@@ -145,13 +162,13 @@ const StoryReplyMessageText = ({ reply }) => {
         }
       });
     } else {
-      setText(reply.message || '');
+      setText(content);
     }
 
     return () => {
       isMounted = false;
     };
-  }, [reply.message, reply.encryptionMetadata?.iv, reply.conversationId]);
+  }, [reply.message, reply.encryptionMetadata?.iv, reply.iv, reply.isEncrypted, reply.conversationId]);
 
   return <span>{text}</span>;
 };
@@ -675,13 +692,13 @@ export const AdminDashboard = () => {
           const decryptedReplies = await Promise.all(
             d.replies.map(async (r) => {
               const convId = r.conversationId?.toString();
-              const iv = r.encryptionMetadata?.iv;
+              const iv = r.encryptionMetadata?.iv || r.iv;
               if (convId && iv && r.message) {
                 try {
                   const convKey = await getConversationCryptoKey(convId);
                   if (convKey) {
                     const plain = await decryptMessage(r.message, iv, convKey);
-                    return { ...r, message: plain };
+                    return { ...r, message: plain, isEncrypted: false };
                   }
                 } catch (e) {}
               }
@@ -942,13 +959,13 @@ export const AdminDashboard = () => {
       if (!payload?.message) return;
       let msg = payload.message;
       const convId = (payload.conversationId || msg.conversation?._id || msg.conversation || activeReplyConvId)?.toString();
-      const iv = msg.encryptionMetadata?.iv;
+      const iv = msg.encryptionMetadata?.iv || msg.iv;
       if (convId && iv && msg.content) {
         try {
           const convKey = await getConversationCryptoKey(convId);
           if (convKey) {
             const plain = await decryptMessage(msg.content, iv, convKey);
-            msg = { ...msg, content: plain };
+            msg = { ...msg, content: plain, isEncrypted: false };
           }
         } catch (e) {}
       }
@@ -1442,7 +1459,7 @@ export const AdminDashboard = () => {
     const cleanAuthor = (storyPublisherName || 'PulseChat').trim();
     const cleanText = storyText.trim();
 
-    if (storyType === 'text' && !cleanText && !storyHasPoll) {
+    if (storyType === 'text' && isHtmlEmpty(cleanText) && !storyHasPoll) {
       showMsg('Story text or poll is required.');
       return;
     }
@@ -1481,7 +1498,7 @@ export const AdminDashboard = () => {
         hasPoll: storyHasPoll,
         poll: storyHasPoll
           ? {
-              question: storyPollQuestion.trim() || cleanText || 'Official PulseChat Poll',
+              question: storyPollQuestion.trim() || getPlainTextFromHtml(cleanText) || 'Official PulseChat Poll',
               options: storyPollOptions.map((o) => o.trim()).filter(Boolean)
             }
           : undefined,
@@ -1629,11 +1646,13 @@ export const AdminDashboard = () => {
           if (convKey) {
             const decryptedMessages = await Promise.all(
               rawMessages.map(async (m) => {
-                const iv = m.encryptionMetadata?.iv;
-                if (iv && m.content) {
+                const messageConvId = (m.conversation?._id || m.conversation || convId)?.toString();
+                const keyToUse = messageConvId === convId ? convKey : (await getConversationCryptoKey(messageConvId)) || convKey;
+                const iv = m.encryptionMetadata?.iv || m.iv;
+                if (iv && m.content && keyToUse) {
                   try {
-                    const plain = await decryptMessage(m.content, iv, convKey);
-                    return { ...m, content: plain };
+                    const plain = await decryptMessage(m.content, iv, keyToUse);
+                    return { ...m, content: plain, isEncrypted: false };
                   } catch (e) {
                     return m;
                   }
@@ -7220,21 +7239,23 @@ export const AdminDashboard = () => {
                   </div>
                 </div>
 
-                {/* 5. Story Text / Message */}
+                {/* 5. Story Text / Message with Rich Formatting & Hyperlinks */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <label className="block font-bold text-slate-300 text-xs">
-                      Story Message Text
+                      Story Message Text (Selection Formatting & Links)
                     </label>
-                    <span className="text-[10px] text-violet-400 font-mono">{storyText.length}/700</span>
                   </div>
-                  <textarea
-                    rows={3}
-                    maxLength={700}
+                  <StoryRichTextEditor
                     value={storyText}
-                    onChange={(e) => setStoryText(e.target.value)}
-                    placeholder="Enter the official story announcement text..."
-                    className="w-full px-3.5 py-2.5 bg-[#1C1530] border border-violet-900/40 rounded-xl text-white placeholder-slate-500 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                    onChange={setStoryText}
+                    placeholder="Enter the official story announcement text (select text to format or link)..."
+                    fontClass={storyFont === 'serif' ? 'font-serif' : storyFont === 'mono' ? 'font-mono' : 'font-sans'}
+                    minHeight="120px"
+                    containerStyle={{
+                      color: storyTextColor || '#ffffff',
+                      ...getStoryTextStyle({ textColor: storyTextColor, textGradient: storyTextGradient, bold: storyIsBold, italic: storyIsItalic })
+                    }}
                   />
                 </div>
 
@@ -7375,21 +7396,24 @@ export const AdminDashboard = () => {
                   </div>
 
                   {/* Story Text / Poll content inside mockup */}
-                  <div className="flex-1 flex flex-col justify-center items-center text-center my-3 relative z-10 px-2 space-y-2">
-                    <p
-                      className={`text-sm leading-snug drop-shadow-md ${
+                  <div className="flex-1 flex flex-col justify-center items-center text-center my-3 relative z-10 px-2 space-y-2 overflow-y-auto no-scrollbar max-h-[380px]">
+                    <div
+                      className={`text-sm leading-snug drop-shadow-md break-words ${
+                        storyHasPoll ? 'max-h-16 overflow-hidden line-clamp-2' : 'max-h-48 overflow-y-auto no-scrollbar'
+                      } ${
                         storyFont === 'serif' ? 'font-serif' : storyFont === 'mono' ? 'font-mono' : 'font-sans'
                       } ${storyIsBold ? 'font-bold' : 'font-normal'} ${storyIsItalic ? 'italic' : 'not-italic'}`}
                       style={getStoryTextStyle({ textColor: storyTextColor, textGradient: storyTextGradient, bold: storyIsBold, italic: storyIsItalic })}
-                    >
-                      {storyText || 'Story text preview will render here...'}
-                    </p>
+                      dangerouslySetInnerHTML={{
+                        __html: autolinkStoryHtml(storyText || 'Story text preview will render here...')
+                      }}
+                    />
 
                     {storyHasPoll && (
-                      <div className="w-full p-2.5 rounded-2xl bg-black/50 backdrop-blur-md border border-white/20 text-left space-y-1.5 shadow-lg">
+                      <div className="w-full max-h-[190px] overflow-y-auto no-scrollbar p-2.5 rounded-2xl bg-black/60 backdrop-blur-md border border-white/20 text-left space-y-1.5 shadow-lg flex-shrink-0">
                         <div className="text-[10px] font-bold text-white flex items-center space-x-1">
-                          <Vote className="w-3 h-3 text-purple-300" />
-                          <span className="truncate">{storyPollQuestion || storyText || 'Official Poll'}</span>
+                          <Vote className="w-3 h-3 text-purple-300 flex-shrink-0" />
+                          <span className="truncate">{getPlainTextFromHtml(storyPollQuestion) || getPlainTextFromHtml(storyText) || 'Official Poll'}</span>
                         </div>
                         <div className="space-y-1">
                           {storyPollOptions.map((opt, oIdx) => (
@@ -7594,13 +7618,22 @@ export const AdminDashboard = () => {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-300 mb-1">Story Text</label>
-                <textarea
-                  rows={3}
+                <label className="block font-bold text-slate-300 mb-1">Story Text (Selection Formatting & Links)</label>
+                <StoryRichTextEditor
                   value={editStoryText}
-                  onChange={(e) => setEditStoryText(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-[#1C1530] border border-violet-900/40 rounded-xl text-white font-medium focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
-                  placeholder="Official story text..."
+                  onChange={setEditStoryText}
+                  placeholder="Official story text (select text to format or link)..."
+                  fontClass={editStoryFont === 'serif' ? 'font-serif' : editStoryFont === 'mono' ? 'font-mono' : 'font-sans'}
+                  minHeight="120px"
+                  containerStyle={{
+                    color: editStoryTextColor || '#ffffff',
+                    ...getStoryTextStyle({
+                      textColor: editStoryTextColor,
+                      textGradient: editStoryTextGradient,
+                      bold: editStoryIsBold,
+                      italic: editStoryIsItalic
+                    })
+                  }}
                 />
               </div>
 
@@ -7995,8 +8028,8 @@ export const AdminDashboard = () => {
                         : editStoryBg
                   }}
                 >
-                  <p
-                    className={`text-sm leading-snug drop-shadow-md line-clamp-3 ${
+                  <div
+                    className={`text-sm leading-snug drop-shadow-md break-words ${
                       editStoryFont === 'serif' ? 'font-serif' : editStoryFont === 'mono' ? 'font-mono' : 'font-sans'
                     } ${editStoryIsBold ? 'font-bold' : 'font-normal'} ${editStoryIsItalic ? 'italic' : 'not-italic'}`}
                     style={getStoryTextStyle({
@@ -8005,9 +8038,10 @@ export const AdminDashboard = () => {
                       bold: editStoryIsBold,
                       italic: editStoryIsItalic
                     })}
-                  >
-                    {editStoryText || 'Story text preview...'}
-                  </p>
+                    dangerouslySetInnerHTML={{
+                      __html: autolinkStoryHtml(editStoryText || 'Story text preview...')
+                    }}
+                  />
                 </div>
               </div>
 

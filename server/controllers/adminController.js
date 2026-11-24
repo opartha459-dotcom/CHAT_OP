@@ -3105,11 +3105,8 @@ const sendOfficialReply = async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       const convIdStr = conversation._id.toString();
-      // Deliver to user conversation room and user room
+      // Deliver cleanly once to conversation room and notify user room of conversation update
       io.to(convIdStr).emit('message:received', populatedMsg);
-      io.to(convIdStr).emit('message:new', populatedMsg);
-      io.to(`user:${targetUserId}`).emit('message:received', populatedMsg);
-      io.to(`user:${targetUserId}`).emit('message:new', populatedMsg);
       io.to(`user:${targetUserId}`).emit('conversation:updated', {
         conversationId: convIdStr,
         lastMessage: populatedMsg
