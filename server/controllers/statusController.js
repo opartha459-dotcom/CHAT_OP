@@ -4,6 +4,7 @@ const Block = require('../models/Block');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const User = require('../models/User');
+const { getOrCreateOfficialUser } = require('../utils/officialAccount');
 
 const USER_FIELDS = 'username nickname avatar status';
 const PUBLIC_USER_FIELDS = 'username nickname avatar';
@@ -345,8 +346,9 @@ const createStatus = async (req, res) => {
           'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
         font: style?.font || 'sans',
         textColor: style?.textColor || '#ffffff',
-        bold: Boolean(style?.bold),
-        italic: Boolean(style?.italic)
+        textGradient: style?.textGradient || '',
+        bold: Boolean(style?.bold === true || style?.bold === 'true' || style?.bold === 1 || style?.bold === '1'),
+        italic: Boolean(style?.italic === true || style?.italic === 'true' || style?.italic === 1 || style?.italic === '1')
       },
 
       privacy: {
@@ -482,12 +484,16 @@ const getStatusFeed = async (req, res) => {
         );
 
       if (!userMap.has(groupKey)) {
+        const officialAvatar = (status.officialAuthorAvatar && !status.officialAuthorAvatar.includes('1618005182384'))
+          ? status.officialAuthorAvatar
+          : '/icons/icon-192.png';
+
         const displayUser = isOfficial
           ? {
               _id: groupKey,
               username: 'pulsechat',
               nickname: status.officialAuthorName || 'PulseChat',
-              avatar: status.officialAuthorAvatar || '',
+              avatar: officialAvatar,
               isOfficial: true,
               isVerified: true
             }
@@ -507,6 +513,9 @@ const getStatusFeed = async (req, res) => {
 
       group.statuses.push({
         ...status,
+        officialAuthorAvatar: (status.officialAuthorAvatar && !status.officialAuthorAvatar.includes('1618005182384'))
+          ? status.officialAuthorAvatar
+          : '/icons/icon-192.png',
         hasViewed,
         // Privacy rule: Only the creator (or admin for official stories) can view the full viewers list
         viewers: isOwner ? (status.viewers || []) : [],
@@ -1204,7 +1213,7 @@ const deleteStatus = async (req, res) => {
 const replyToStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { message } = req.body;
+    const { message, isEncrypted, encryptionMetadata } = req.body;
     const currentUserId = req.user._id;
 
     if (!message || !message.trim()) {
@@ -1231,19 +1240,50 @@ const replyToStatus = async (req, res) => {
       });
     }
 
-    // Determine recipient user ID
+    const isOfficialStory = Boolean(status.isAdminStory);
     let recipientId = null;
     let authorDisplayName = 'PulseChat';
+    let conversation = null;
 
-    if (status.isAdminStory) {
-      recipientId = status.user?._id || status.user;
+    if (isOfficialStory) {
+      // Official Story reply: route to the unified Official PulseChat system identity
+      const officialUser = await getOrCreateOfficialUser(
+        status.officialAuthorName || 'PulseChat',
+        status.officialAuthorAvatar || ''
+      );
+      recipientId = officialUser?._id;
       authorDisplayName = status.officialAuthorName || 'PulseChat';
 
       if (!recipientId) {
-        const adminUser = await User.findOne({ role: 'admin', isBanned: false });
-        if (adminUser) recipientId = adminUser._id;
+        return res.status(500).json({
+          success: false,
+          message: 'Official system channel unavailable.'
+        });
+      }
+
+      // Find or create private conversation between current user and official account
+      conversation = await Conversation.findOne({
+        type: 'private',
+        participants: { $all: [currentUserId, recipientId], $size: 2 }
+      });
+
+      if (!conversation) {
+        conversation = await Conversation.create({
+          type: 'private',
+          participants: [currentUserId, recipientId],
+          isOfficial: true,
+          isEncrypted: false,
+          unreadCounts: {
+            [currentUserId.toString()]: 0,
+            [recipientId.toString()]: 1
+          }
+        });
+      } else if (!conversation.isOfficial) {
+        conversation.isOfficial = true;
+        await conversation.save();
       }
     } else {
+      // Normal user story reply: route to the story owner's personal chat
       recipientId = status.user?._id || status.user;
       authorDisplayName = status.user?.nickname || status.user?.username || 'User';
 
@@ -1253,46 +1293,46 @@ const replyToStatus = async (req, res) => {
           message: 'Cannot reply to your own story.'
         });
       }
-    }
 
-    if (!recipientId) {
-      return res.status(404).json({
-        success: false,
-        message: 'Story recipient not found.'
+      if (!recipientId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Story recipient not found.'
+        });
+      }
+
+      // Block check between normal users
+      const isBlocked = await Block.findOne({
+        $or: [
+          { blocker: currentUserId, blocked: recipientId },
+          { blocker: recipientId, blocked: currentUserId }
+        ]
       });
-    }
 
-    // Block check between users
-    const isBlocked = await Block.findOne({
-      $or: [
-        { blocker: currentUserId, blocked: recipientId },
-        { blocker: recipientId, blocked: currentUserId }
-      ]
-    });
+      if (isBlocked) {
+        return res.status(403).json({
+          success: false,
+          message: 'Cannot send reply. Communication is blocked.'
+        });
+      }
 
-    if (isBlocked) {
-      return res.status(403).json({
-        success: false,
-        message: 'Cannot send reply. Communication is blocked.'
-      });
-    }
-
-    // Find or create private 1-on-1 conversation
-    let conversation = await Conversation.findOne({
-      type: 'private',
-      participants: { $all: [currentUserId, recipientId], $size: 2 }
-    });
-
-    if (!conversation) {
-      conversation = await Conversation.create({
+      // Find or create private 1-on-1 conversation
+      conversation = await Conversation.findOne({
         type: 'private',
-        participants: [currentUserId, recipientId],
-        isEncrypted: false,
-        unreadCounts: {
-          [currentUserId.toString()]: 0,
-          [recipientId.toString()]: 1
-        }
+        participants: { $all: [currentUserId, recipientId], $size: 2 }
       });
+
+      if (!conversation) {
+        conversation = await Conversation.create({
+          type: 'private',
+          participants: [currentUserId, recipientId],
+          isEncrypted: false,
+          unreadCounts: {
+            [currentUserId.toString()]: 0,
+            [recipientId.toString()]: 1
+          }
+        });
+      }
     }
 
     const cleanMessage = message.trim();
@@ -1302,7 +1342,7 @@ const replyToStatus = async (req, res) => {
       storyMediaUrl: status.mediaUrl || '',
       storyType: status.type || 'text',
       authorName: authorDisplayName,
-      isAdminStory: Boolean(status.isAdminStory)
+      isAdminStory: isOfficialStory
     };
 
     const newMsg = await Message.create({
@@ -1310,6 +1350,8 @@ const replyToStatus = async (req, res) => {
       sender: currentUserId,
       content: cleanMessage,
       messageType: 'text',
+      isEncrypted: Boolean(isEncrypted),
+      encryptionMetadata: encryptionMetadata || {},
       storyReply: storyReplyData
     });
 
@@ -1322,6 +1364,12 @@ const replyToStatus = async (req, res) => {
     conversation.unreadCounts = conversation.unreadCounts || {};
     conversation.unreadCounts[recipientId.toString()] =
       (conversation.unreadCounts[recipientId.toString()] || 0) + 1;
+    // If conversation was deleted for sender, restore it
+    if (conversation.deletedFor && conversation.deletedFor.length > 0) {
+      conversation.deletedFor = conversation.deletedFor.filter(
+        (uid) => uid.toString() !== currentUserId.toString()
+      );
+    }
     conversation.markModified('unreadCounts');
     await conversation.save();
 
@@ -1331,6 +1379,8 @@ const replyToStatus = async (req, res) => {
       user: currentUserId,
       message: cleanMessage,
       conversationId: conversation._id,
+      isEncrypted: Boolean(isEncrypted),
+      encryptionMetadata: encryptionMetadata || {},
       createdAt: new Date()
     });
 
@@ -1343,17 +1393,16 @@ const replyToStatus = async (req, res) => {
 
     const io = getSocket(req);
     if (io) {
-      // 1. Deliver message to conversation & recipient room
-      io.to(`conversation:${conversation._id}`).emit('message:new', {
-        message: populatedMsg,
-        conversationId: conversation._id
-      });
-      io.to(`user:${recipientId}`).emit('message:new', {
-        message: populatedMsg,
-        conversationId: conversation._id
-      });
+      const convIdStr = conversation._id.toString();
+      // 1. Deliver message to conversation & user room
+      io.to(convIdStr).emit('message:received', populatedMsg);
+      io.to(convIdStr).emit('message:new', populatedMsg);
+      io.to(`user:${currentUserId}`).emit('message:received', populatedMsg);
+      io.to(`user:${currentUserId}`).emit('message:new', populatedMsg);
 
       const replyPayload = {
+        _id: populatedMsg._id.toString(),
+        replyId: populatedMsg._id.toString(),
         statusId: getId(status._id),
         sender: {
           _id: req.user._id,
@@ -1363,27 +1412,31 @@ const replyToStatus = async (req, res) => {
           email: req.user.email
         },
         message: cleanMessage,
+        isEncrypted: Boolean(isEncrypted),
+        encryptionMetadata: encryptionMetadata || {},
         conversationId: conversation._id,
         story: {
           _id: getId(status._id),
           text: status.text,
           mediaUrl: status.mediaUrl,
           type: status.type,
-          isAdminStory: Boolean(status.isAdminStory),
-          officialAuthorName: status.officialAuthorName
+          isAdminStory: isOfficialStory,
+          officialAuthorName: status.officialAuthorName || 'PulseChat'
         },
-        createdAt: new Date()
+        createdAt: populatedMsg.createdAt || new Date()
       };
 
-      // 2. Emit status:reply to story owner
-      io.to(`user:${recipientId}`).emit('status:reply', replyPayload);
-
-      // 3. If official admin story, broadcast to all admin sockets for live dashboard
-      if (status.isAdminStory) {
-        io.emit('status:admin_story_reply', replyPayload);
+      if (isOfficialStory) {
+        // Broadcast official reply once to admins
+        io.to('admin:room').emit('status:admin_story_reply', replyPayload);
+      } else {
+        // Normal story: deliver directly to the story owner's personal chat room
+        io.to(`user:${recipientId}`).emit('message:received', populatedMsg);
+        io.to(`user:${recipientId}`).emit('message:new', populatedMsg);
+        io.to(`user:${recipientId}`).emit('status:reply', replyPayload);
       }
 
-      // 4. Emit viewer update
+      // Viewer update
       const viewerPayload = getViewerPayload(req, { user: currentUserId, viewedAt: new Date(), completed: true });
       emitViewerUpdate(req, status, viewerPayload, status.viewers.length);
     }

@@ -86,6 +86,12 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
               <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
                 {title}
               </span>
+              {activeConversation.isOfficial && (
+                <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shrink-0 shadow-xs uppercase tracking-wider">
+                  <ShieldCheck className="w-2.5 h-2.5 mr-0.5" />
+                  Official
+                </span>
+              )}
               <button
                 type="button"
                 onClick={(e) => {

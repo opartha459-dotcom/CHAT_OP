@@ -45,6 +45,7 @@ import {
   KeyRound,
   Info,
   Trash2,
+  ShieldCheck,
   CheckSquare,
   Globe
 } from 'lucide-react';
@@ -72,6 +73,7 @@ export const Sidebar = () => {
     conversations,
     activeConversation,
     selectConversation,
+    deleteConversation,
     searchQuery,
     setSearchQuery,
     loadingConversations,
@@ -855,9 +857,17 @@ export const Sidebar = () => {
                       {/* Chat details */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
-                          <h3 className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white truncate">
-                            {title}
-                          </h3>
+                          <div className="flex items-center space-x-1.5 truncate min-w-0">
+                            <h3 className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white truncate">
+                              {title}
+                            </h3>
+                            {conv.isOfficial && (
+                              <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shrink-0 shadow-xs uppercase tracking-wider">
+                                <ShieldCheck className="w-2.5 h-2.5 mr-0.5" />
+                                Official
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[10px] sm:text-[11px] font-mono text-slate-400 flex-shrink-0 ml-1">
                             {formatTime(lastMsg?.createdAt || conv.updatedAt)}
                           </span>
@@ -887,8 +897,21 @@ export const Sidebar = () => {
                             )}
                           </div>
 
-                          {/* Unread badge & Pin */}
+                          {/* Actions: Delete Conversation, Unread badge & Pin */}
                           <div className="flex items-center space-x-1.5 flex-shrink-0 ml-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Delete conversation with "${title}"? This will remove the chat history for you.`)) {
+                                  deleteConversation(conv._id);
+                                }
+                              }}
+                              className="p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                              title="Delete conversation"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                             {conv.isPinned && (
                               <Pin className="w-3 h-3 text-slate-400 fill-slate-400 rotate-45" />
                             )}

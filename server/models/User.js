@@ -105,6 +105,12 @@ const userSchema = new mongoose.Schema(
       index: true
     },
 
+    isOfficial: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+
     isBanned: {
       type: Boolean,
       default: false,

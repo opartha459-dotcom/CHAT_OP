@@ -58,9 +58,24 @@ const getConversations = async (req, res) => {
         }
       }
 
+      const isOfficial = Boolean(
+        conv.isOfficial ||
+        otherUser?.isOfficial ||
+        (otherUser?.username || '').toLowerCase() === 'pulsechat_official' ||
+        (otherUser?.username || '').toLowerCase() === 'pulsechat'
+      );
+
+      if (isOfficial && otherUser) {
+        otherUser.isOfficial = true;
+        if (!otherUser.nickname || (otherUser.username || '').toLowerCase() === 'pulsechat_official') {
+          otherUser.nickname = otherUser.nickname || 'PulseChat';
+        }
+      }
+
       return {
         _id: conv._id,
         type: conv.type,
+        isOfficial,
         participants,
         groupDetails: conv.groupDetails,
         lastMessage: conv.lastMessage,
@@ -278,6 +293,12 @@ const deleteConversation = async (req, res) => {
     );
 
     await conversation.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${currentUserId}`).emit('conversation:deleted', { conversationId: id });
+    }
+
     return res.json({ success: true, message: 'Conversation deleted.' });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Error deleting conversation.' });

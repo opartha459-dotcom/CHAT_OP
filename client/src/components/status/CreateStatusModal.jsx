@@ -18,20 +18,20 @@ import {
   Search,
   Lock,
   UserX,
-  ChevronRight
+  ChevronRight,
+  Sparkles,
+  Sliders,
+  Pipette
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { Avatar } from '../common/Avatar';
-
-const PRESET_BACKGROUNDS = [
-  { id: 'royal', label: 'Royal', style: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)' },
-  { id: 'sunset', label: 'Sunset', style: 'linear-gradient(135deg, #f43f5e 0%, #fb923c 100%)' },
-  { id: 'emerald', label: 'Emerald', style: 'linear-gradient(135deg, #059669 0%, #10b981 100%)' },
-  { id: 'midnight', label: 'Midnight', style: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' },
-  { id: 'cyan', label: 'Neon Cyan', style: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)' },
-  { id: 'berry', label: 'Berry', style: 'linear-gradient(135deg, #9333ea 0%, #ec4899 100%)' }
-];
+import {
+  PRESET_BACKGROUNDS,
+  PRESET_TEXT_COLORS,
+  PRESET_TEXT_GRADIENTS,
+  getStoryTextStyle
+} from '../../utils/storyStyles';
 
 const FONTS = [
   { id: 'sans', label: 'Modern Sans', class: 'font-sans' },
@@ -50,6 +50,26 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
   const [isItalic, setIsItalic] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Rich Text Color & Gradient State
+  const [bgStyle, setBgStyle] = useState(PRESET_BACKGROUNDS[0].style);
+  const [textColor, setTextColor] = useState('#ffffff');
+  const [textGradient, setTextGradient] = useState('');
+  const [activeToolbar, setActiveToolbar] = useState('none'); // 'none' | 'bg' | 'text'
+
+  // Custom Background State
+  const [customBgTab, setCustomBgTab] = useState('presets'); // 'presets' | 'gradient' | 'solid'
+  const [customBg1, setCustomBg1] = useState('#ec4899');
+  const [customBg2, setCustomBg2] = useState('#8b5cf6');
+  const [customBgAngle, setCustomBgAngle] = useState(135);
+  const [customBgSolid, setCustomBgSolid] = useState('#1e1b4b');
+
+  // Custom Text Color State
+  const [customTextTab, setCustomTextTab] = useState('presets'); // 'presets' | 'gradients' | 'custom_color' | 'custom_gradient'
+  const [customTextColor, setCustomTextColor] = useState('#ffffff');
+  const [customText1, setCustomText1] = useState('#facc15');
+  const [customText2, setCustomText2] = useState('#f43f5e');
+  const [customTextAngle, setCustomTextAngle] = useState(135);
 
   const [hasPoll, setHasPoll] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
@@ -205,7 +225,11 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
   const currentFont = FONTS[fontIndex];
 
   const cycleBackground = () => {
-    setBgIndex((prev) => (prev + 1) % PRESET_BACKGROUNDS.length);
+    setBgIndex((prev) => {
+      const next = (prev + 1) % PRESET_BACKGROUNDS.length;
+      setBgStyle(PRESET_BACKGROUNDS[next].style);
+      return next;
+    });
   };
 
   const cycleFont = () => {
@@ -310,9 +334,10 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
         type: 'text',
         text: cleanText,
         style: {
-          background: currentBg.style,
+          background: bgStyle,
           font: currentFont.id,
-          textColor: '#ffffff',
+          textColor,
+          textGradient,
           bold: isBold,
           italic: isItalic
         },
@@ -393,7 +418,7 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div
         className="w-full sm:max-w-md h-full sm:h-[640px] sm:rounded-3xl overflow-hidden shadow-2xl relative flex flex-col justify-between p-5 transition-all duration-300"
-        style={{ background: currentBg.style }}
+        style={{ background: bgStyle }}
       >
         <div className="flex items-center justify-between text-white relative z-20">
           <button
@@ -408,11 +433,24 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           <div className="flex items-center space-x-1.5 bg-black/35 backdrop-blur-md px-2 py-1 rounded-2xl border border-white/20 shadow-md">
             <button
               type="button"
-              onClick={cycleBackground}
-              className="p-1.5 hover:bg-white/20 rounded-xl transition active:scale-95 text-white cursor-pointer"
-              title="Change Background Gradient"
+              onClick={() => setActiveToolbar((prev) => (prev === 'bg' ? 'none' : 'bg'))}
+              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer ${
+                activeToolbar === 'bg' ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
+              }`}
+              title="Story Background (Presets, Custom Gradient, Solid)"
             >
               <Palette className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveToolbar((prev) => (prev === 'text' ? 'none' : 'text'))}
+              className={`p-1.5 rounded-xl transition active:scale-95 cursor-pointer flex items-center space-x-1 ${
+                activeToolbar === 'text' ? 'bg-white text-indigo-900 font-bold' : 'hover:bg-white/20 text-white'
+              }`}
+              title="Text Color & Gradient Options"
+            >
+              <Sparkles className="w-4 h-4" />
             </button>
 
             <button
@@ -456,6 +494,350 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           </div>
         </div>
 
+        {/* Slide-down Toolbar: Background Gradients & Colors */}
+        {activeToolbar === 'bg' && (
+          <div className="absolute top-16 inset-x-4 z-30 p-3 rounded-2xl bg-black/80 backdrop-blur-xl border border-white/20 shadow-2xl space-y-3 animate-in fade-in slide-in-from-top-2 text-white">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <div className="flex items-center space-x-1">
+                <button
+                  type="button"
+                  onClick={() => setCustomBgTab('presets')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                    customBgTab === 'presets' ? 'bg-white text-slate-900' : 'text-white/70 hover:text-white'
+                  }`}
+                >
+                  Presets ({PRESET_BACKGROUNDS.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomBgTab('gradient')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                    customBgTab === 'gradient' ? 'bg-white text-slate-900' : 'text-white/70 hover:text-white'
+                  }`}
+                >
+                  Custom Gradient
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomBgTab('solid')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                    customBgTab === 'solid' ? 'bg-white text-slate-900' : 'text-white/70 hover:text-white'
+                  }`}
+                >
+                  Custom Solid
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveToolbar('none')}
+                className="p-1 text-white/60 hover:text-white rounded-lg hover:bg-white/10"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Presets Grid */}
+            {customBgTab === 'presets' && (
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-36 overflow-y-auto pr-1">
+                {PRESET_BACKGROUNDS.map((bg) => (
+                  <button
+                    key={bg.id}
+                    type="button"
+                    onClick={() => setBgStyle(bg.style)}
+                    className={`h-9 rounded-xl flex items-center justify-center text-[9px] font-bold text-white shadow-xs transition transform hover:scale-105 active:scale-95 border ${
+                      bgStyle === bg.style ? 'ring-2 ring-white border-white scale-105' : 'border-transparent opacity-85 hover:opacity-100'
+                    }`}
+                    style={{ background: bg.style }}
+                  >
+                    {bg.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Custom Gradient Builder */}
+            {customBgTab === 'gradient' && (
+              <div className="space-y-2.5 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-white/80 mb-1">Color 1 (Start)</label>
+                    <div className="flex items-center space-x-1.5 p-1 bg-white/10 rounded-xl border border-white/20">
+                      <input
+                        type="color"
+                        value={customBg1}
+                        onChange={(e) => {
+                          setCustomBg1(e.target.value);
+                          setBgStyle(`linear-gradient(${customBgAngle}deg, ${e.target.value} 0%, ${customBg2} 100%)`);
+                        }}
+                        className="w-6 h-6 rounded-lg border-0 cursor-pointer bg-transparent"
+                      />
+                      <span className="font-mono text-[10px] text-white uppercase">{customBg1}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-white/80 mb-1">Color 2 (End)</label>
+                    <div className="flex items-center space-x-1.5 p-1 bg-white/10 rounded-xl border border-white/20">
+                      <input
+                        type="color"
+                        value={customBg2}
+                        onChange={(e) => {
+                          setCustomBg2(e.target.value);
+                          setBgStyle(`linear-gradient(${customBgAngle}deg, ${customBg1} 0%, ${e.target.value} 100%)`);
+                        }}
+                        className="w-6 h-6 rounded-lg border-0 cursor-pointer bg-transparent"
+                      />
+                      <span className="font-mono text-[10px] text-white uppercase">{customBg2}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Angle Presets */}
+                <div>
+                  <label className="block text-[10px] font-bold text-white/80 mb-1">Direction Angle</label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[45, 90, 135, 180].map((deg) => (
+                      <button
+                        key={deg}
+                        type="button"
+                        onClick={() => {
+                          setCustomBgAngle(deg);
+                          setBgStyle(`linear-gradient(${deg}deg, ${customBg1} 0%, ${customBg2} 100%)`);
+                        }}
+                        className={`py-1 rounded-lg text-[10px] font-bold transition border ${
+                          customBgAngle === deg ? 'bg-white text-slate-900 border-white' : 'bg-white/10 text-white border-white/10 hover:bg-white/20'
+                        }`}
+                      >
+                        {deg}°
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Custom Solid Background */}
+            {customBgTab === 'solid' && (
+              <div className="space-y-2 text-xs">
+                <label className="block text-[10px] font-bold text-white/80">Choose Solid Background Color</label>
+                <div className="flex items-center space-x-2 p-1.5 bg-white/10 rounded-xl border border-white/20">
+                  <input
+                    type="color"
+                    value={customBgSolid}
+                    onChange={(e) => {
+                      setCustomBgSolid(e.target.value);
+                      setBgStyle(e.target.value);
+                    }}
+                    className="w-8 h-8 rounded-lg border-0 cursor-pointer bg-transparent"
+                  />
+                  <input
+                    type="text"
+                    value={customBgSolid}
+                    onChange={(e) => {
+                      setCustomBgSolid(e.target.value);
+                      setBgStyle(e.target.value);
+                    }}
+                    className="flex-1 bg-transparent text-white font-mono text-xs uppercase outline-none"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Slide-down Toolbar: Text Color & Gradients */}
+        {activeToolbar === 'text' && (
+          <div className="absolute top-16 inset-x-4 z-30 p-3 rounded-2xl bg-black/80 backdrop-blur-xl border border-white/20 shadow-2xl space-y-3 animate-in fade-in slide-in-from-top-2 text-white">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <div className="flex items-center space-x-1">
+                <button
+                  type="button"
+                  onClick={() => setCustomTextTab('presets')}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition ${
+                    customTextTab === 'presets' ? 'bg-white text-slate-900' : 'text-white/70 hover:text-white'
+                  }`}
+                >
+                  Solid Colors
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomTextTab('gradients')}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition ${
+                    customTextTab === 'gradients' ? 'bg-white text-slate-900' : 'text-white/70 hover:text-white'
+                  }`}
+                >
+                  Gradients
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomTextTab('custom_color')}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition ${
+                    customTextTab === 'custom_color' ? 'bg-white text-slate-900' : 'text-white/70 hover:text-white'
+                  }`}
+                >
+                  Custom Color
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomTextTab('custom_gradient')}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition ${
+                    customTextTab === 'custom_gradient' ? 'bg-white text-slate-900' : 'text-white/70 hover:text-white'
+                  }`}
+                >
+                  Custom Gradient
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveToolbar('none')}
+                className="p-1 text-white/60 hover:text-white rounded-lg hover:bg-white/10"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Preset Solid Colors */}
+            {customTextTab === 'presets' && (
+              <div className="flex items-center justify-start flex-wrap gap-2 py-1">
+                {PRESET_TEXT_COLORS.map((col) => (
+                  <button
+                    key={col.id}
+                    type="button"
+                    onClick={() => {
+                      setTextColor(col.value);
+                      setTextGradient('');
+                    }}
+                    className={`w-7 h-7 rounded-full shadow-xs transition transform hover:scale-110 active:scale-95 border flex items-center justify-center ${
+                      textColor === col.value && !textGradient ? 'ring-2 ring-white border-white scale-110' : 'border-white/20'
+                    }`}
+                    style={{ background: col.value }}
+                    title={col.label}
+                  >
+                    {textColor === col.value && !textGradient && (
+                      <Check className={`w-3 h-3 stroke-[3] ${col.value === '#ffffff' || col.value === '#facc15' ? 'text-black' : 'text-white'}`} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Preset Text Gradients */}
+            {customTextTab === 'gradients' && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-1">
+                {PRESET_TEXT_GRADIENTS.map((grad) => (
+                  <button
+                    key={grad.id}
+                    type="button"
+                    onClick={() => {
+                      setTextGradient(grad.value);
+                      setTextColor(grad.value);
+                    }}
+                    className={`h-8 rounded-xl px-2 flex items-center justify-center font-black text-xs transition border shadow-xs ${
+                      textGradient === grad.value ? 'ring-2 ring-white border-white' : 'border-white/20 hover:border-white/60'
+                    }`}
+                    style={{ background: grad.value, color: '#000000' }}
+                  >
+                    <span className="drop-shadow-sm font-extrabold text-[10px]">{grad.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Custom Solid Text Color */}
+            {customTextTab === 'custom_color' && (
+              <div className="space-y-2 text-xs">
+                <label className="block text-[10px] font-bold text-white/80">Pick Any Custom Text Color</label>
+                <div className="flex items-center space-x-2 p-1.5 bg-white/10 rounded-xl border border-white/20">
+                  <input
+                    type="color"
+                    value={customTextColor}
+                    onChange={(e) => {
+                      setCustomTextColor(e.target.value);
+                      setTextColor(e.target.value);
+                      setTextGradient('');
+                    }}
+                    className="w-8 h-8 rounded-lg border-0 cursor-pointer bg-transparent"
+                  />
+                  <input
+                    type="text"
+                    value={customTextColor}
+                    onChange={(e) => {
+                      setCustomTextColor(e.target.value);
+                      setTextColor(e.target.value);
+                      setTextGradient('');
+                    }}
+                    className="flex-1 bg-transparent text-white font-mono text-xs uppercase outline-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Custom Text Gradient */}
+            {customTextTab === 'custom_gradient' && (
+              <div className="space-y-2.5 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-white/80 mb-1">Gradient Start Color</label>
+                    <div className="flex items-center space-x-1.5 p-1 bg-white/10 rounded-xl border border-white/20">
+                      <input
+                        type="color"
+                        value={customText1}
+                        onChange={(e) => {
+                          setCustomText1(e.target.value);
+                          const g = `linear-gradient(${customTextAngle}deg, ${e.target.value} 0%, ${customText2} 100%)`;
+                          setTextGradient(g);
+                          setTextColor(g);
+                        }}
+                        className="w-6 h-6 rounded-lg border-0 cursor-pointer bg-transparent"
+                      />
+                      <span className="font-mono text-[10px] text-white uppercase">{customText1}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-white/80 mb-1">Gradient End Color</label>
+                    <div className="flex items-center space-x-1.5 p-1 bg-white/10 rounded-xl border border-white/20">
+                      <input
+                        type="color"
+                        value={customText2}
+                        onChange={(e) => {
+                          setCustomText2(e.target.value);
+                          const g = `linear-gradient(${customTextAngle}deg, ${customText1} 0%, ${e.target.value} 100%)`;
+                          setTextGradient(g);
+                          setTextColor(g);
+                        }}
+                        className="w-6 h-6 rounded-lg border-0 cursor-pointer bg-transparent"
+                      />
+                      <span className="font-mono text-[10px] text-white uppercase">{customText2}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-white/80 mb-1">Gradient Angle</label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[45, 90, 135, 180].map((deg) => (
+                      <button
+                        key={deg}
+                        type="button"
+                        onClick={() => {
+                          setCustomTextAngle(deg);
+                          const g = `linear-gradient(${deg}deg, ${customText1} 0%, ${customText2} 100%)`;
+                          setTextGradient(g);
+                          setTextColor(g);
+                        }}
+                        className={`py-1 rounded-lg text-[10px] font-bold transition border ${
+                          customTextAngle === deg ? 'bg-white text-slate-900 border-white' : 'bg-white/10 text-white border-white/10 hover:bg-white/20'
+                        }`}
+                      >
+                        {deg}°
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex-1 flex flex-col items-center justify-center my-3 relative z-10 overflow-y-auto no-scrollbar">
           {error && (
             <div className="mb-2 px-3 py-1.5 bg-rose-900/80 text-rose-200 text-xs rounded-xl flex items-center space-x-1.5 border border-rose-700 shadow-sm animate-in shake">
@@ -471,7 +853,8 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
             placeholder={hasPoll ? 'Add a caption for your poll...' : 'Type a Pulse Story...'}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            className={`w-full bg-transparent text-white placeholder-white/60 text-center ${hasPoll ? 'text-lg' : 'text-xl sm:text-2xl'
+            style={getStoryTextStyle({ textColor, textGradient, bold: isBold, italic: isItalic })}
+            className={`w-full bg-transparent placeholder-white/60 text-center ${hasPoll ? 'text-lg' : 'text-xl sm:text-2xl'
               } outline-none resize-none leading-relaxed transition-all duration-200 ${currentFont.class
               } ${isBold ? 'font-bold' : 'font-normal'} ${isItalic ? 'italic' : 'not-italic'}`}
           />

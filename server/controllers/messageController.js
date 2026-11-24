@@ -172,6 +172,15 @@ const sendMessage = async (req, res) => {
           unreadCounts: Object.fromEntries(conversation.unreadCounts)
         });
       });
+
+      // 3. If official conversation, synchronize in real time to admin dashboard
+      if (conversation.isOfficial) {
+        io.to('admin:room').emit('admin:official_reply_sent', {
+          conversationId: convIdStr,
+          userId: currentUserId,
+          message: populatedMessage
+        });
+      }
     }
 
     return res.status(201).json({ success: true, message: populatedMessage });

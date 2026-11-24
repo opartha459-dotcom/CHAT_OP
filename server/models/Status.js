@@ -48,6 +48,18 @@ const statusSchema = new mongoose.Schema(
       textColor: {
         type: String,
         default: '#ffffff'
+      },
+      textGradient: {
+        type: String,
+        default: ''
+      },
+      bold: {
+        type: Boolean,
+        default: false
+      },
+      italic: {
+        type: Boolean,
+        default: false
       }
     },
     privacy: {
@@ -124,6 +136,15 @@ const statusSchema = new mongoose.Schema(
         conversationId: {
           type: mongoose.Schema.Types.ObjectId,
           ref: 'Conversation'
+        },
+        isEncrypted: {
+          type: Boolean,
+          default: false
+        },
+        encryptionMetadata: {
+          iv: { type: String, default: '' },
+          senderKeyId: { type: String, default: '' },
+          algorithm: { type: String, default: 'AES-GCM' }
         },
         createdAt: {
           type: Date,

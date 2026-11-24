@@ -6,6 +6,7 @@ const Session = require('../models/Session');
 const AuditLog = require('../models/AuditLog');
 const Status = require('../models/Status');
 const emailService = require('../services/emailService');
+const { getOrCreateOfficialUser } = require('../utils/officialAccount');
 
 // @desc Get moderation dashboard overview statistics
 // @route GET /api/admin/stats
@@ -2649,9 +2650,16 @@ const getAdminStories = async (req, res) => {
       .populate('replies.user', 'username nickname avatar email')
       .lean();
 
+    const sanitizedStories = stories.map((s) => ({
+      ...s,
+      officialAuthorAvatar: (!s.officialAuthorAvatar || s.officialAuthorAvatar.includes('1618005182384'))
+        ? '/icons/icon-192.png'
+        : s.officialAuthorAvatar
+    }));
+
     return res.json({
       success: true,
-      stories
+      stories: sanitizedStories
     });
   } catch (error) {
     console.error('[Get Admin Stories Error]', error);
@@ -2659,15 +2667,13 @@ const getAdminStories = async (req, res) => {
   }
 };
 
-// @desc Get all replies to official PulseChat stories (and all stories)
+// @desc Get all replies to official PulseChat stories
 // @route GET /api/admin/stories/replies
 const getAdminStoryReplies = async (req, res) => {
   try {
     const storiesWithReplies = await Status.find({
-      $or: [
-        { isAdminStory: true },
-        { 'replies.0': { $exists: true } }
-      ]
+      isAdminStory: true,
+      'replies.0': { $exists: true }
     })
       .sort({ createdAt: -1 })
       .populate('user', 'username nickname avatar')
@@ -2680,6 +2686,8 @@ const getAdminStoryReplies = async (req, res) => {
         flattenedReplies.push({
           _id: r._id,
           message: r.message,
+          isEncrypted: Boolean(r.isEncrypted),
+          encryptionMetadata: r.encryptionMetadata || {},
           createdAt: r.createdAt,
           conversationId: r.conversationId,
           user: r.user,
@@ -2760,6 +2768,7 @@ const createAdminStory = async (req, res) => {
       background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
       font: 'sans',
       textColor: '#ffffff',
+      textGradient: '',
       bold: false,
       italic: false
     };
@@ -2767,15 +2776,23 @@ const createAdminStory = async (req, res) => {
     const hours = Math.max(1, Math.min(720, Number(durationHours) || 24));
     const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
 
+    const cleanAvatar = (officialAuthorAvatar || '').trim();
+    const finalAvatar = (cleanAvatar && !cleanAvatar.includes('1618005182384')) ? cleanAvatar : '/icons/icon-192.png';
+
     const story = await Status.create({
       user: req.user._id,
       isAdminStory: true,
       officialAuthorName: cleanAuthorName,
-      officialAuthorAvatar: officialAuthorAvatar || '',
+      officialAuthorAvatar: finalAvatar,
       type,
       text: cleanText,
       mediaUrl: mediaUrl || '',
-      style: { ...defaultStyle, ...(style || {}) },
+      style: {
+        ...defaultStyle,
+        ...(style || {}),
+        bold: Boolean(style?.bold === true || style?.bold === 'true'),
+        italic: Boolean(style?.italic === true || style?.italic === 'true')
+      },
       privacy: {
         audience: 'everyone',
         allowedUsers: [],
@@ -2893,12 +2910,287 @@ const toggleAdminStoryPoll = async (req, res) => {
   }
 };
 
+// @desc Update an existing official story (collaborative editing by any admin)
+// @route PUT /api/admin/stories/:id
+const updateAdminStory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      text,
+      mediaUrl,
+      style,
+      officialAuthorName,
+      officialAuthorAvatar
+    } = req.body;
+
+    const story = await Status.findById(id);
+    if (!story || !story.isAdminStory) {
+      return res.status(404).json({ success: false, message: 'Official story not found.' });
+    }
+
+    if (text !== undefined) story.text = (text || '').trim();
+    if (mediaUrl !== undefined) story.mediaUrl = (mediaUrl || '').trim();
+    if (officialAuthorName !== undefined) story.officialAuthorName = (officialAuthorName || '').trim() || 'PulseChat';
+    if (officialAuthorAvatar !== undefined) story.officialAuthorAvatar = (officialAuthorAvatar || '').trim();
+    if (style) {
+      story.style = {
+        ...(story.style || {}),
+        ...style,
+        bold: style.bold !== undefined ? Boolean(style.bold === true || style.bold === 'true') : story.style?.bold,
+        italic: style.italic !== undefined ? Boolean(style.italic === true || style.italic === 'true') : story.style?.italic
+      };
+    }
+
+    story.markModified('style');
+    await story.save();
+
+    const populated = await Status.findById(story._id)
+      .populate('user', 'username nickname avatar')
+      .populate('viewers.user', 'username nickname avatar')
+      .populate('reactions.user', 'username nickname avatar')
+      .populate('poll.options.votes', 'username nickname avatar')
+      .populate('replies.user', 'username nickname avatar email')
+      .lean();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('status:admin_story_updated', { story: populated });
+      io.emit('status:updated', { statusId: id, status: populated });
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'update_admin_story',
+      target: story._id,
+      targetModel: 'Status',
+      details: `Updated official story "${story.officialAuthorName || 'PulseChat'}"`
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'Official story updated successfully.',
+      story: populated
+    });
+  } catch (error) {
+    console.error('[Update Admin Story Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to update official story.' });
+  }
+};
+
+// @desc Get official conversation thread messages between a user and PulseChat Official
+// @route GET /api/admin/stories/replies/conversation/:userId
+const getOfficialConversationMessages = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID is required.' });
+    }
+
+    const targetUser = await User.findById(userId, 'username nickname avatar email isBanned').lean();
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const officialUser = await getOrCreateOfficialUser();
+
+    let conversation = await Conversation.findOne({
+      type: 'private',
+      participants: { $all: [userId, officialUser._id], $size: 2 }
+    })
+      .populate('participants', 'username nickname avatar email')
+      .populate('lastMessage')
+      .lean();
+
+    let messages = [];
+    if (conversation) {
+      messages = await Message.find({ conversation: conversation._id })
+        .sort({ createdAt: 1 })
+        .populate('sender', 'username nickname avatar isOfficial')
+        .populate('adminResponder', 'username nickname avatar email')
+        .lean();
+    }
+
+    return res.json({
+      success: true,
+      conversation,
+      messages,
+      user: targetUser
+    });
+  } catch (error) {
+    console.error('[Get Official Conversation Messages Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch conversation history.' });
+  }
+};
+
+// @desc Send a response from unified official identity to a user
+// @route POST /api/admin/stories/replies/send
+const sendOfficialReply = async (req, res) => {
+  try {
+    const { userId, conversationId, message } = req.body;
+    const cleanMessage = (message || '').trim();
+
+    if (!cleanMessage) {
+      return res.status(400).json({ success: false, message: 'Reply message cannot be empty.' });
+    }
+
+    if (!userId && !conversationId) {
+      return res.status(400).json({ success: false, message: 'User ID or conversation ID is required.' });
+    }
+
+    const officialUser = await getOrCreateOfficialUser();
+
+    let targetUserId = userId;
+    let conversation = null;
+
+    if (conversationId) {
+      conversation = await Conversation.findById(conversationId);
+      if (conversation) {
+        const other = conversation.participants.find((p) => p.toString() !== officialUser._id.toString());
+        if (other) targetUserId = other.toString();
+      }
+    }
+
+    if (!conversation && targetUserId) {
+      conversation = await Conversation.findOne({
+        type: 'private',
+        participants: { $all: [targetUserId, officialUser._id], $size: 2 }
+      });
+    }
+
+    if (!conversation && targetUserId) {
+      conversation = await Conversation.create({
+        type: 'private',
+        participants: [targetUserId, officialUser._id],
+        isOfficial: true,
+        isEncrypted: false,
+        unreadCounts: {
+          [targetUserId.toString()]: 0,
+          [officialUser._id.toString()]: 0
+        }
+      });
+    }
+
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Conversation could not be found or created.' });
+    }
+
+    const newMsg = await Message.create({
+      conversation: conversation._id,
+      sender: officialUser._id,
+      content: cleanMessage,
+      messageType: 'text',
+      adminResponder: req.user._id,
+      isOfficialResponse: true,
+      readBy: [{ user: officialUser._id, readAt: new Date() }],
+      deliveredTo: [{ user: officialUser._id, deliveredAt: new Date() }, { user: targetUserId, deliveredAt: new Date() }]
+    });
+
+    const populatedMsg = await Message.findById(newMsg._id)
+      .populate('sender', 'username nickname avatar isOfficial')
+      .populate('adminResponder', 'username nickname avatar email')
+      .lean();
+
+    conversation.lastMessage = newMsg._id;
+    conversation.unreadCounts = conversation.unreadCounts || {};
+    conversation.unreadCounts[targetUserId.toString()] =
+      (conversation.unreadCounts[targetUserId.toString()] || 0) + 1;
+    if (conversation.deletedFor && conversation.deletedFor.length > 0) {
+      conversation.deletedFor = conversation.deletedFor.filter(
+        (uid) => uid.toString() !== targetUserId.toString()
+      );
+    }
+    conversation.markModified('unreadCounts');
+    await conversation.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      const convIdStr = conversation._id.toString();
+      // Deliver to user conversation room and user room
+      io.to(convIdStr).emit('message:received', populatedMsg);
+      io.to(convIdStr).emit('message:new', populatedMsg);
+      io.to(`user:${targetUserId}`).emit('message:received', populatedMsg);
+      io.to(`user:${targetUserId}`).emit('message:new', populatedMsg);
+      io.to(`user:${targetUserId}`).emit('conversation:updated', {
+        conversationId: convIdStr,
+        lastMessage: populatedMsg
+      });
+
+      // Synchronize across all admin dashboards in real time (deliver once to admin:room)
+      const adminSyncPayload = {
+        message: populatedMsg,
+        conversationId: conversation._id,
+        userId: targetUserId
+      };
+      io.to('admin:room').emit('admin:official_reply_sent', adminSyncPayload);
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'send_official_reply',
+      target: targetUserId,
+      targetModel: 'User',
+      details: `Admin ${req.user.nickname || req.user.username} sent official response to user: "${cleanMessage.substring(0, 60)}"`
+    }).catch(() => {});
+
+    return res.status(201).json({
+      success: true,
+      message: 'Official response sent successfully.',
+      reply: populatedMsg,
+      conversationId: conversation._id
+    });
+  } catch (error) {
+    console.error('[Send Official Reply Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to send official response.' });
+  }
+};
+
+// @desc Delete an official conversation thread
+// @route DELETE /api/admin/stories/replies/conversation/:id
+const deleteAdminConversation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const conversation = await Conversation.findById(id);
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Conversation not found.' });
+    }
+
+    await Message.deleteMany({ conversation: id });
+    await Conversation.findByIdAndDelete(id);
+
+    const io = req.app.get('io');
+    if (io) {
+      conversation.participants.forEach((p) => {
+        io.to(`user:${p}`).emit('conversation:deleted', { conversationId: id });
+      });
+      io.to('admin:room').emit('conversation:deleted', { conversationId: id });
+      io.emit('conversation:deleted', { conversationId: id });
+    }
+
+    await AuditLog.create({
+      admin: req.user._id,
+      action: 'delete_conversation',
+      target: id,
+      targetModel: 'Conversation',
+      details: `Admin deleted conversation ${id}`
+    }).catch(() => {});
+
+    return res.json({ success: true, message: 'Conversation deleted successfully.' });
+  } catch (error) {
+    console.error('[Delete Admin Conversation Error]', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete conversation.' });
+  }
+};
+
 module.exports = {
   getAdminStories,
   getAdminStoryReplies,
   createAdminStory,
+  updateAdminStory,
   deleteAdminStory,
   toggleAdminStoryPoll,
+  getOfficialConversationMessages,
+  sendOfficialReply,
+  deleteAdminConversation,
   getDashboardStats,
   getAnalytics,
   getUsers,

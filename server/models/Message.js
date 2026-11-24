@@ -95,6 +95,14 @@ const messageSchema = new mongoose.Schema(
       authorName: { type: String, default: '' },
       isAdminStory: { type: Boolean, default: false }
     },
+    adminResponder: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    isOfficialResponse: {
+      type: Boolean,
+      default: false
+    },
     forwardFrom: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Message'

@@ -5,7 +5,23 @@ import { useFeatureFlags } from './FeatureFlagsContext';
 import { StatusViewerModal } from '../components/status/StatusViewerModal';
 import { CreateStatusModal } from '../components/status/CreateStatusModal';
 
-const StatusContext = createContext();
+const defaultStatusContext = {
+  feed: [],
+  fetchFeed: () => {},
+  activeUserId: null,
+  setActiveUserId: () => {},
+  activeGroup: null,
+  myStatusGroup: null,
+  otherStatusGroups: [],
+  hasActiveStatus: () => false,
+  hasUnviewedStatus: () => false,
+  hasAnyUnviewed: false,
+  markStatusViewed: () => {},
+  createModalOpen: false,
+  setCreateModalOpen: () => {}
+};
+
+const StatusContext = createContext(defaultStatusContext);
 
 export const StatusProvider = ({ children }) => {
   const { user, token } = useAuth();
@@ -192,7 +208,7 @@ export const StatusProvider = ({ children }) => {
       {children}
 
       {/* Global Status Viewer Modal */}
-      {featureFlags.statusesEnabled !== false && activeUserId !== null && activeGroup && (
+      {featureFlags?.statusesEnabled !== false && activeUserId !== null && activeGroup && (
         <StatusViewerModal
           isOpen={true}
           statusGroup={activeGroup}
@@ -208,7 +224,7 @@ export const StatusProvider = ({ children }) => {
       )}
 
       {/* Global Create Status Modal */}
-      {featureFlags.statusesEnabled !== false && (
+      {featureFlags?.statusesEnabled !== false && (
         <CreateStatusModal
           isOpen={createModalOpen}
           onClose={() => setCreateModalOpen(false)}
@@ -221,8 +237,5 @@ export const StatusProvider = ({ children }) => {
 
 export const useStatus = () => {
   const context = useContext(StatusContext);
-  if (!context) {
-    throw new Error('useStatus must be used within a StatusProvider');
-  }
-  return context;
+  return context || defaultStatusContext;
 };

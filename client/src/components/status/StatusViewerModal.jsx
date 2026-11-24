@@ -25,6 +25,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import { Avatar } from '../common/Avatar';
+import { getStoryTextStyle } from '../../utils/storyStyles';
 
 const QUICK_EMOJIS = ['❤️', '😂', '🔥', '👏', '😮', '😢'];
 
@@ -43,6 +44,7 @@ export const StatusViewerModal = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [activeStatus, setActiveStatus] = useState(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [isReplying, setIsReplying] = useState(false);
   const [sheetTab, setSheetTab] = useState(null);
   const [voting, setVoting] = useState(false);
   const [pollError, setPollError] = useState('');
@@ -466,9 +468,18 @@ export const StatusViewerModal = ({
     };
   }, [socket, isOpen, isOwnerOrAdmin]);
 
+  // Determine if story timer must stay paused
+  const shouldPause = Boolean(
+    isPaused ||
+    isReplying ||
+    replyText.trim().length > 0 ||
+    sendingReply ||
+    sheetTab !== null
+  );
+
   // Story timer and animated progress bar.
   useEffect(() => {
-    if (!isOpen || isPaused || sheetTab !== null || !activeStatus) {
+    if (!isOpen || shouldPause || !activeStatus) {
       return undefined;
     }
 
@@ -508,8 +519,7 @@ export const StatusViewerModal = ({
     };
   }, [
     isOpen,
-    isPaused,
-    sheetTab,
+    shouldPause,
     currentIndex,
     statuses.length,
     onNextUser,
@@ -521,6 +531,9 @@ export const StatusViewerModal = ({
   useEffect(() => {
     elapsedRef.current = 0;
     setProgress(0);
+    setReplyText('');
+    setIsReplying(false);
+    setIsPaused(false);
   }, [activeStatus?._id]);
 
   if (!isOpen || !activeStatus) return null;
@@ -532,6 +545,9 @@ export const StatusViewerModal = ({
     elapsedRef.current = 0;
     setProgress(0);
     setSheetTab(null);
+    setReplyText('');
+    setIsReplying(false);
+    setIsPaused(false);
 
     if (activeStatusRef.current?._id) {
       handleCompleteCurrentStatus(activeStatusRef.current._id);
@@ -550,6 +566,9 @@ export const StatusViewerModal = ({
     elapsedRef.current = 0;
     setProgress(0);
     setSheetTab(null);
+    setReplyText('');
+    setIsReplying(false);
+    setIsPaused(false);
 
     if (currentIndex > 0) {
       setCurrentIndex((prev) => prev - 1);
@@ -635,6 +654,7 @@ export const StatusViewerModal = ({
     const messageToSend = replyText.trim();
     setSendingReply(true);
     setIsPaused(true);
+    setIsReplying(true);
 
     try {
       const res = await fetch(`/api/status/${sId}/reply`, {
@@ -649,6 +669,8 @@ export const StatusViewerModal = ({
       const data = await res.json();
       if (data.success) {
         setReplyText('');
+        setIsReplying(false);
+        setIsPaused(false);
         setReplySuccess(true);
         setTimeout(() => setReplySuccess(false), 2500);
         // Mark status completed and advance view
@@ -658,6 +680,7 @@ export const StatusViewerModal = ({
       console.error('Error replying to story:', err);
     } finally {
       setSendingReply(false);
+      setIsReplying(false);
       setIsPaused(false);
     }
   };
@@ -872,9 +895,17 @@ export const StatusViewerModal = ({
         className="relative w-full sm:max-w-md h-full sm:h-[690px] sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col justify-between p-5"
         style={{ background: bgStyle }}
         onMouseDown={() => setIsPaused(true)}
-        onMouseUp={() => setIsPaused(false)}
+        onMouseUp={() => {
+          if (!isReplying && !replyText.trim() && !sendingReply) {
+            setIsPaused(false);
+          }
+        }}
         onTouchStart={() => setIsPaused(true)}
-        onTouchEnd={() => setIsPaused(false)}
+        onTouchEnd={() => {
+          if (!isReplying && !replyText.trim() && !sendingReply) {
+            setIsPaused(false);
+          }
+        }}
       >
         {/* Top Segmented Progress Bars */}
         <div className="flex items-center space-x-1.5 relative z-20">
@@ -905,14 +936,34 @@ export const StatusViewerModal = ({
         {/* Header: User Info & Controls */}
         <div className="flex items-center justify-between text-white mt-3 relative z-20">
           <div className="flex items-center space-x-2.5">
-            <Avatar
-              src={statusGroup.user?.avatar}
-              name={
-                statusGroup.user?.nickname ||
-                statusGroup.user?.username
-              }
-              size="sm"
-            />
+            {Boolean(activeStatus?.isAdminStory || statusGroup.user?.isOfficial || (statusGroup.user?.nickname || '').toLowerCase().includes('pulsechat')) ? (
+              <div className="w-8 h-8 rounded-full overflow-hidden border border-white/40 shadow-sm shrink-0 bg-slate-900 flex items-center justify-center">
+                <img
+                  src={
+                    (activeStatus?.officialAuthorAvatar && !activeStatus.officialAuthorAvatar.includes('1618005182384'))
+                      ? activeStatus.officialAuthorAvatar
+                      : (statusGroup.user?.avatar && !statusGroup.user.avatar.includes('1618005182384'))
+                      ? statusGroup.user.avatar
+                      : '/icons/icon-192.png'
+                  }
+                  alt="PulseChat"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = '/icons/icon.svg';
+                  }}
+                />
+              </div>
+            ) : (
+              <Avatar
+                src={statusGroup.user?.avatar}
+                name={
+                  statusGroup.user?.nickname ||
+                  statusGroup.user?.username
+                }
+                size="sm"
+              />
+            )}
 
             <div>
               <div className="font-bold text-xs flex items-center space-x-1.5">
@@ -960,12 +1011,30 @@ export const StatusViewerModal = ({
 
         {/* Interactive Tap Zones */}
         <div
-          onClick={handlePrev}
+          onClick={() => {
+            if (isReplying || replyText.trim()) {
+              if (!replyText.trim()) {
+                setIsReplying(false);
+                setIsPaused(false);
+              }
+              return;
+            }
+            handlePrev();
+          }}
           className="absolute left-0 top-16 bottom-24 w-1/3 z-10 cursor-pointer"
         />
 
         <div
-          onClick={handleNext}
+          onClick={() => {
+            if (isReplying || replyText.trim()) {
+              if (!replyText.trim()) {
+                setIsReplying(false);
+                setIsPaused(false);
+              }
+              return;
+            }
+            handleNext();
+          }}
           className="absolute right-0 top-16 bottom-24 w-2/3 z-10 cursor-pointer"
         />
 
@@ -973,9 +1042,16 @@ export const StatusViewerModal = ({
         <div className="flex-1 flex flex-col items-center justify-center p-3 text-center text-white relative z-20 overflow-y-auto no-scrollbar space-y-4">
           {activeStatus.text && (
             <p
-              className={`text-xl sm:text-2xl leading-relaxed max-w-sm break-words ${fontClass} ${activeStatus.style?.bold ? 'font-bold' : 'font-normal'
-                } ${activeStatus.style?.italic ? 'italic' : 'not-italic'
-                }`}
+              style={getStoryTextStyle(activeStatus.style)}
+              className={`text-xl sm:text-2xl leading-relaxed max-w-sm break-words ${fontClass} ${
+                activeStatus.style?.bold === true || activeStatus.style?.bold === 'true'
+                  ? 'font-bold'
+                  : 'font-normal'
+              } ${
+                activeStatus.style?.italic === true || activeStatus.style?.italic === 'true'
+                  ? 'italic'
+                  : 'not-italic'
+              }`}
             >
               {activeStatus.text}
             </p>
@@ -1353,15 +1429,26 @@ export const StatusViewerModal = ({
               onSubmit={handleSendReply}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
               className="w-full flex items-center space-x-2 bg-black/60 backdrop-blur-2xl border border-white/25 rounded-full px-4 py-2 shadow-2xl transition-all focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-400/40"
             >
               <input
                 type="text"
                 value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                onFocus={() => setIsPaused(true)}
+                onChange={(e) => {
+                  setReplyText(e.target.value);
+                  setIsReplying(true);
+                  setIsPaused(true);
+                }}
+                onFocus={() => {
+                  setIsReplying(true);
+                  setIsPaused(true);
+                }}
                 onBlur={() => {
-                  if (!replyText.trim()) setIsPaused(false);
+                  if (!replyText.trim()) {
+                    setIsReplying(false);
+                    setIsPaused(false);
+                  }
                 }}
                 placeholder={
                   activeStatus.isAdminStory

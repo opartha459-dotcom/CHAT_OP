@@ -158,8 +158,8 @@ export default function App() {
               <MaintenanceProvider>
                 <ChatProvider>
                   <CallProvider>
-                    <StatusProvider>
-                      <BrowserRouter>
+                    <BrowserRouter>
+                      <StatusProvider>
                         <MaintenanceBanner />
                         <Routes>
                           {/* Landing — smart home: logged-in users go straight to /chat (replace keeps history clean) */}
@@ -241,8 +241,8 @@ export default function App() {
 
                         {/* Sci-Fi 01 Green Data Cloud Split-Screen Intro Animation */}
                         <CyberSplitscreenLoader />
-                      </BrowserRouter>
-                    </StatusProvider>
+                      </StatusProvider>
+                    </BrowserRouter>
                   </CallProvider>
                 </ChatProvider>
               </MaintenanceProvider>

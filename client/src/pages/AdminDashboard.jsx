@@ -58,7 +58,10 @@ import {
   Copy,
   Calendar,
   Type,
-  Globe
+  Globe,
+  Pipette,
+  Bold,
+  Italic
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
@@ -83,6 +86,75 @@ import { OfficialContactSettingsCard } from '../components/admin/OfficialContact
 import { StorageManagementTab } from '../components/admin/StorageManagementTab';
 import { AdminAnalyticsCharts } from '../components/admin/AdminAnalyticsCharts';
 import { ChatsManagementTab } from '../components/admin/ChatsManagementTab';
+import {
+  PRESET_BACKGROUNDS,
+  PRESET_TEXT_COLORS,
+  PRESET_TEXT_GRADIENTS,
+  getStoryTextStyle
+} from '../utils/storyStyles';
+import { decryptMessage, getConversationCryptoKey } from '../utils/crypto';
+
+// Subcomponent to automatically decrypt and render official conversation message content
+const OfficialMessageContent = ({ message, conversationId }) => {
+  const [text, setText] = useState(message.content || '');
+
+  useEffect(() => {
+    let isMounted = true;
+    const convId = conversationId || (message.conversation?._id || message.conversation)?.toString();
+    const iv = message.encryptionMetadata?.iv;
+
+    if (convId && iv && message.content) {
+      getConversationCryptoKey(convId).then((key) => {
+        if (key && isMounted) {
+          decryptMessage(message.content, iv, key).then((decrypted) => {
+            if (isMounted && decrypted) {
+              setText(decrypted);
+            }
+          });
+        }
+      });
+    } else {
+      setText(message.content || '');
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [message.content, message.encryptionMetadata?.iv, conversationId]);
+
+  return <p className="break-words font-medium">{text}</p>;
+};
+
+// Subcomponent to automatically decrypt and render story reply text in cards
+const StoryReplyMessageText = ({ reply }) => {
+  const [text, setText] = useState(reply.message || '');
+
+  useEffect(() => {
+    let isMounted = true;
+    const convId = reply.conversationId?.toString();
+    const iv = reply.encryptionMetadata?.iv;
+
+    if (convId && iv && reply.message) {
+      getConversationCryptoKey(convId).then((key) => {
+        if (key && isMounted) {
+          decryptMessage(reply.message, iv, key).then((decrypted) => {
+            if (isMounted && decrypted) {
+              setText(decrypted);
+            }
+          });
+        }
+      });
+    } else {
+      setText(reply.message || '');
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [reply.message, reply.encryptionMetadata?.iv, reply.conversationId]);
+
+  return <span>{text}</span>;
+};
 
 export const AdminDashboard = () => {
   const auth = useAuth();
@@ -286,11 +358,24 @@ export const AdminDashboard = () => {
   const [replySearchQuery, setReplySearchQuery] = useState('');
   const [createStoryModalOpen, setCreateStoryModalOpen] = useState(false);
   const [storyPublisherName, setStoryPublisherName] = useState('PulseChat');
-  const [storyPublisherAvatar, setStoryPublisherAvatar] = useState('');
+  const [storyPublisherAvatar, setStoryPublisherAvatar] = useState('/icons/icon-192.png');
   const [storyType, setStoryType] = useState('text'); // 'text' | 'media'
   const [storyText, setStoryText] = useState('');
   const [storyMediaUrl, setStoryMediaUrl] = useState('');
   const [storyBgTheme, setStoryBgTheme] = useState('royal');
+  const [storyBgStyle, setStoryBgStyle] = useState(PRESET_BACKGROUNDS[0].style);
+  const [storyBgTab, setStoryBgTab] = useState('presets'); // 'presets' | 'gradient' | 'solid'
+  const [storyCustomBg1, setStoryCustomBg1] = useState('#ec4899');
+  const [storyCustomBg2, setStoryCustomBg2] = useState('#8b5cf6');
+  const [storyCustomBgAngle, setStoryCustomBgAngle] = useState(135);
+  const [storyCustomBgSolid, setStoryCustomBgSolid] = useState('#1e1b4b');
+  const [storyTextColor, setStoryTextColor] = useState('#ffffff');
+  const [storyTextGradient, setStoryTextGradient] = useState('');
+  const [storyTextTab, setStoryTextTab] = useState('presets'); // 'presets' | 'gradients' | 'custom_color' | 'custom_gradient'
+  const [storyCustomTextColor, setStoryCustomTextColor] = useState('#ffffff');
+  const [storyCustomText1, setStoryCustomText1] = useState('#facc15');
+  const [storyCustomText2, setStoryCustomText2] = useState('#f43f5e');
+  const [storyCustomTextAngle, setStoryCustomTextAngle] = useState(135);
   const [storyFont, setStoryFont] = useState('sans');
   const [storyIsBold, setStoryIsBold] = useState(false);
   const [storyIsItalic, setStoryIsItalic] = useState(false);
@@ -300,6 +385,40 @@ export const AdminDashboard = () => {
   const [storyDurationHours, setStoryDurationHours] = useState(24);
   const [isPublishingStory, setIsPublishingStory] = useState(false);
   const [storyInspectModal, setStoryInspectModal] = useState(null);
+
+  // Collaborative Story Editing State
+  const [editStoryModalOpen, setEditStoryModalOpen] = useState(false);
+  const [editingStory, setEditingStory] = useState(null);
+  const [editStoryAuthor, setEditStoryAuthor] = useState('');
+  const [editStoryText, setEditStoryText] = useState('');
+  const [editStoryMediaUrl, setEditStoryMediaUrl] = useState('');
+  const [editStoryBg, setEditStoryBg] = useState('');
+  const [editStoryBgTab, setEditStoryBgTab] = useState('presets'); // 'presets' | 'gradient' | 'solid'
+  const [editStoryCustomBg1, setEditStoryCustomBg1] = useState('#ec4899');
+  const [editStoryCustomBg2, setEditStoryCustomBg2] = useState('#8b5cf6');
+  const [editStoryCustomBgAngle, setEditStoryCustomBgAngle] = useState(135);
+  const [editStoryCustomBgSolid, setEditStoryCustomBgSolid] = useState('#1e1b4b');
+  const [editStoryTextColor, setEditStoryTextColor] = useState('#ffffff');
+  const [editStoryTextGradient, setEditStoryTextGradient] = useState('');
+  const [editStoryTextTab, setEditStoryTextTab] = useState('presets'); // 'presets' | 'gradients' | 'custom_color' | 'custom_gradient'
+  const [editStoryCustomTextColor, setEditStoryCustomTextColor] = useState('#ffffff');
+  const [editStoryCustomText1, setEditStoryCustomText1] = useState('#facc15');
+  const [editStoryCustomText2, setEditStoryCustomText2] = useState('#f43f5e');
+  const [editStoryCustomTextAngle, setEditStoryCustomTextAngle] = useState(135);
+  const [editStoryFont, setEditStoryFont] = useState('sans');
+  const [editStoryIsBold, setEditStoryIsBold] = useState(false);
+  const [editStoryIsItalic, setEditStoryIsItalic] = useState(false);
+  const [savingEditStory, setSavingEditStory] = useState(false);
+
+  // Official Story Reply Conversation Drawer/Modal State
+  const [officialReplyModalOpen, setOfficialReplyModalOpen] = useState(false);
+  const [activeReplyUser, setActiveReplyUser] = useState(null);
+  const [activeReplyStory, setActiveReplyStory] = useState(null);
+  const [activeReplyConvId, setActiveReplyConvId] = useState(null);
+  const [officialConvMessages, setOfficialConvMessages] = useState([]);
+  const [loadingOfficialConv, setLoadingOfficialConv] = useState(false);
+  const [officialResponseText, setOfficialResponseText] = useState('');
+  const [sendingOfficialResponse, setSendingOfficialResponse] = useState(false);
 
   const showMsg = (msg) => {
     setFeedback(msg);
@@ -552,7 +671,25 @@ export const AdminDashboard = () => {
       const res = await fetch('/api/admin/stories/replies', { headers: authHeaders(), credentials: 'include' });
       if (res.ok) {
         const d = await res.json();
-        if (d.success && Array.isArray(d.replies)) setAdminStoryReplies(d.replies);
+        if (d.success && Array.isArray(d.replies)) {
+          const decryptedReplies = await Promise.all(
+            d.replies.map(async (r) => {
+              const convId = r.conversationId?.toString();
+              const iv = r.encryptionMetadata?.iv;
+              if (convId && iv && r.message) {
+                try {
+                  const convKey = await getConversationCryptoKey(convId);
+                  if (convKey) {
+                    const plain = await decryptMessage(r.message, iv, convKey);
+                    return { ...r, message: plain };
+                  }
+                } catch (e) {}
+              }
+              return r;
+            })
+          );
+          setAdminStoryReplies(decryptedReplies);
+        }
       }
     } catch (e) {
       console.warn('Error loading story replies', e);
@@ -736,23 +873,62 @@ export const AdminDashboard = () => {
       });
     };
 
-    const handleAdminStoryReply = (payload) => {
+    const handleAdminStoryReply = async (payload) => {
       if (!payload?.statusId) return;
+      let replyMessage = payload.message;
+      const convId = payload.conversationId?.toString();
+      const iv = payload.encryptionMetadata?.iv;
+      if (convId && iv && replyMessage) {
+        try {
+          const convKey = await getConversationCryptoKey(convId);
+          if (convKey) {
+            replyMessage = await decryptMessage(replyMessage, iv, convKey);
+          }
+        } catch (e) {}
+      }
+
+      const replyId = (payload.replyId || payload._id || `${payload.conversationId || ''}_${payload.message}_${payload.sender?._id || ''}`)?.toString();
       const newReply = {
-        _id: payload.replyId || `${Date.now()}_${Math.random()}`,
-        message: payload.message,
+        _id: replyId,
+        replyId,
+        message: replyMessage,
         createdAt: payload.createdAt || new Date(),
         conversationId: payload.conversationId,
         user: payload.sender,
         story: payload.story
       };
-      setAdminStoryReplies((prev) => [newReply, ...prev]);
+      setAdminStoryReplies((prev) => {
+        if (!prev) return [newReply];
+        if (
+          prev.some((r) => {
+            const rId = (r.replyId || r._id)?.toString();
+            if (rId && rId === replyId) return true;
+            if (
+              r.conversationId?.toString() === payload.conversationId?.toString() &&
+              r.message === replyMessage &&
+              Math.abs(new Date(r.createdAt) - new Date(payload.createdAt || new Date())) < 5000
+            ) return true;
+            return false;
+          })
+        ) {
+          return prev;
+        }
+        return [newReply, ...prev];
+      });
 
       // Also update replies in adminStories
       setAdminStories((prevStories) =>
         prevStories.map((story) => {
           if (story._id?.toString() !== payload.statusId?.toString()) return story;
           const replies = story.replies || [];
+          if (
+            replies.some((r) => {
+              const rId = (r.replyId || r._id)?.toString();
+              return rId && rId === replyId;
+            })
+          ) {
+            return story;
+          }
           return {
             ...story,
             replies: [...replies, newReply],
@@ -760,6 +936,50 @@ export const AdminDashboard = () => {
           };
         })
       );
+    };
+
+    const handleAdminOfficialReply = async (payload) => {
+      if (!payload?.message) return;
+      let msg = payload.message;
+      const convId = (payload.conversationId || msg.conversation?._id || msg.conversation || activeReplyConvId)?.toString();
+      const iv = msg.encryptionMetadata?.iv;
+      if (convId && iv && msg.content) {
+        try {
+          const convKey = await getConversationCryptoKey(convId);
+          if (convKey) {
+            const plain = await decryptMessage(msg.content, iv, convKey);
+            msg = { ...msg, content: plain };
+          }
+        } catch (e) {}
+      }
+      const incomingId = (msg._id?.toString() || msg._id);
+      setOfficialConvMessages((prev) => {
+        if (!prev || prev.length === 0) return [msg];
+        if (prev.some((m) => (m._id?.toString() || m._id) === incomingId)) return prev;
+        return [...prev, msg];
+      });
+      loadAdminStoryReplies();
+    };
+
+    const handleAdminStoryCreated = (payload) => {
+      const s = payload?.status;
+      if (s?.isAdminStory) {
+        setAdminStories((prev) => [s, ...prev.filter((item) => item._id !== s._id)]);
+      }
+    };
+
+    const handleAdminStoryUpdated = (payload) => {
+      const s = payload?.story || payload?.status;
+      if (s?._id) {
+        setAdminStories((prev) => prev.map((item) => (item._id === s._id ? { ...item, ...s } : item)));
+      }
+    };
+
+    const handleAdminStoryDeleted = (payload) => {
+      const sId = payload?.statusId;
+      if (sId) {
+        setAdminStories((prev) => prev.filter((item) => item._id !== sId));
+      }
     };
 
     socket.on('admin:new_verification_request', handleNewCodeReq);
@@ -776,6 +996,11 @@ export const AdminDashboard = () => {
     socket.on('status:admin_story_poll', handleAdminStoryPoll);
     socket.on('status:admin_story_reply', handleAdminStoryReply);
     socket.on('status:reply', handleAdminStoryReply);
+    socket.on('admin:official_reply_sent', handleAdminOfficialReply);
+    socket.on('status:admin_story_created', handleAdminStoryCreated);
+    socket.on('status:admin_story_updated', handleAdminStoryUpdated);
+    socket.on('status:admin_story_deleted', handleAdminStoryDeleted);
+    socket.on('status:deleted', handleAdminStoryDeleted);
 
     return () => {
       socket.off('admin:new_verification_request', handleNewCodeReq);
@@ -792,6 +1017,11 @@ export const AdminDashboard = () => {
       socket.off('status:admin_story_poll', handleAdminStoryPoll);
       socket.off('status:admin_story_reply', handleAdminStoryReply);
       socket.off('status:reply', handleAdminStoryReply);
+      socket.off('admin:official_reply_sent', handleAdminOfficialReply);
+      socket.off('status:admin_story_created', handleAdminStoryCreated);
+      socket.off('status:admin_story_updated', handleAdminStoryUpdated);
+      socket.off('status:admin_story_deleted', handleAdminStoryDeleted);
+      socket.off('status:deleted', handleAdminStoryDeleted);
     };
   }, [socket, token]);
 
@@ -1185,11 +1415,16 @@ export const AdminDashboard = () => {
   // Actions: Official Pulse Stories
   const handleOpenCreateStory = () => {
     setStoryPublisherName('PulseChat');
-    setStoryPublisherAvatar('');
+    setStoryPublisherAvatar('/icons/icon-192.png');
     setStoryType('text');
     setStoryText('');
     setStoryMediaUrl('');
     setStoryBgTheme('royal');
+    setStoryBgStyle(PRESET_BACKGROUNDS[0].style);
+    setStoryBgTab('presets');
+    setStoryTextColor('#ffffff');
+    setStoryTextGradient('');
+    setStoryTextTab('presets');
     setStoryFont('sans');
     setStoryIsBold(false);
     setStoryIsItalic(false);
@@ -1227,27 +1462,19 @@ export const AdminDashboard = () => {
 
     setIsPublishingStory(true);
     try {
-      const PRESET_GRADIENTS = {
-        royal: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-        cyber: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)',
-        sunset: 'linear-gradient(135deg, #f43f5e 0%, #fb923c 100%)',
-        emerald: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-        midnight: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-        berry: 'linear-gradient(135deg, #9333ea 0%, #ec4899 100%)',
-        crimson: 'linear-gradient(135deg, #dc2626 0%, #e11d48 100%)',
-        amber: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)'
-      };
-
       const payload = {
         officialAuthorName: cleanAuthor,
-        officialAuthorAvatar: storyPublisherAvatar.trim(),
+        officialAuthorAvatar: (storyPublisherAvatar && !storyPublisherAvatar.includes('1618005182384'))
+          ? storyPublisherAvatar.trim()
+          : '/icons/icon-192.png',
         type: storyType,
         text: cleanText,
         mediaUrl: storyMediaUrl.trim(),
         style: {
-          background: PRESET_GRADIENTS[storyBgTheme] || PRESET_GRADIENTS.royal,
+          background: storyType === 'media' && !storyBgStyle ? PRESET_BACKGROUNDS[0].style : storyBgStyle,
           font: storyFont,
-          textColor: '#ffffff',
+          textColor: storyTextColor,
+          textGradient: storyTextGradient,
           bold: storyIsBold,
           italic: storyIsItalic
         },
@@ -1317,6 +1544,174 @@ export const AdminDashboard = () => {
         showMsg(d.message || 'Failed to toggle poll.');
       }
     } catch (e) {
+      showMsg('Network error.');
+    }
+  };
+
+  const handleOpenEditStory = (story) => {
+    setEditingStory(story);
+    setEditStoryAuthor(story.officialAuthorName || 'PulseChat');
+    setEditStoryText(story.text || '');
+    setEditStoryMediaUrl(story.mediaUrl || '');
+    setEditStoryBg(story.style?.background || PRESET_BACKGROUNDS[0].style);
+    setEditStoryBgTab('presets');
+    setEditStoryTextColor(story.style?.textColor || '#ffffff');
+    setEditStoryTextGradient(story.style?.textGradient || '');
+    setEditStoryTextTab('presets');
+    setEditStoryFont(story.style?.font || 'sans');
+    setEditStoryIsBold(Boolean(story.style?.bold === true || story.style?.bold === 'true'));
+    setEditStoryIsItalic(Boolean(story.style?.italic === true || story.style?.italic === 'true'));
+    setEditStoryModalOpen(true);
+  };
+
+  const handleSaveEditStory = async (e) => {
+    if (e) e.preventDefault();
+    if (!editingStory?._id) return;
+    setSavingEditStory(true);
+    try {
+      const res = await fetch(`/api/admin/stories/${editingStory._id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({
+          officialAuthorName: editStoryAuthor.trim(),
+          text: editStoryText.trim(),
+          mediaUrl: editStoryMediaUrl.trim(),
+          style: {
+            ...(editingStory.style || {}),
+            background: editStoryBg,
+            textColor: editStoryTextColor,
+            textGradient: editStoryTextGradient,
+            font: editStoryFont,
+            bold: editStoryIsBold,
+            italic: editStoryIsItalic
+          }
+        })
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg('Official story updated successfully.');
+        setEditStoryModalOpen(false);
+        setEditingStory(null);
+        loadAdminStories();
+      } else {
+        showMsg(d.message || 'Failed to update story.');
+      }
+    } catch (err) {
+      showMsg('Network error updating story.');
+    } finally {
+      setSavingEditStory(false);
+    }
+  };
+
+  const openOfficialReplyConversation = async (replyUser, story, conversationId) => {
+    if (!replyUser?._id) return;
+    setActiveReplyUser(replyUser);
+    setActiveReplyStory(story);
+    setActiveReplyConvId(conversationId || null);
+    setOfficialResponseText('');
+    setOfficialReplyModalOpen(true);
+    setLoadingOfficialConv(true);
+    try {
+      const res = await fetch(`/api/admin/stories/replies/conversation/${replyUser._id}`, {
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        const rawMessages = d.messages || [];
+        const convId = (d.conversation?._id || conversationId)?.toString();
+        if (d.conversation?._id) {
+          setActiveReplyConvId(d.conversation._id);
+        }
+        if (convId) {
+          const convKey = await getConversationCryptoKey(convId);
+          if (convKey) {
+            const decryptedMessages = await Promise.all(
+              rawMessages.map(async (m) => {
+                const iv = m.encryptionMetadata?.iv;
+                if (iv && m.content) {
+                  try {
+                    const plain = await decryptMessage(m.content, iv, convKey);
+                    return { ...m, content: plain };
+                  } catch (e) {
+                    return m;
+                  }
+                }
+                return m;
+              })
+            );
+            setOfficialConvMessages(decryptedMessages);
+          } else {
+            setOfficialConvMessages(rawMessages);
+          }
+        } else {
+          setOfficialConvMessages(rawMessages);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading official conversation:', err);
+    } finally {
+      setLoadingOfficialConv(false);
+    }
+  };
+
+  const handleSendOfficialResponse = async (e) => {
+    if (e) e.preventDefault();
+    if (!officialResponseText.trim() || !activeReplyUser?._id || sendingOfficialResponse) return;
+    setSendingOfficialResponse(true);
+    const msgToSend = officialResponseText.trim();
+    try {
+      const res = await fetch('/api/admin/stories/replies/send', {
+        method: 'POST',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({
+          userId: activeReplyUser._id,
+          conversationId: activeReplyConvId,
+          message: msgToSend
+        })
+      });
+      const d = await res.json();
+      if (d.success) {
+        setOfficialResponseText('');
+        if (d.reply) {
+          const replyId = (d.reply._id?.toString() || d.reply._id);
+          setOfficialConvMessages((prev) => {
+            if (!prev) return [d.reply];
+            if (prev.some((m) => (m._id?.toString() || m._id) === replyId)) return prev;
+            return [...prev, d.reply];
+          });
+        }
+        showMsg('Official reply delivered to user chat.');
+        loadAdminStoryReplies();
+      } else {
+        showMsg(d.message || 'Failed to send official response.');
+      }
+    } catch (err) {
+      showMsg('Network error sending response.');
+    } finally {
+      setSendingOfficialResponse(false);
+    }
+  };
+
+  const handleDeleteAdminConversation = async (convId) => {
+    if (!window.confirm('Delete this conversation history completely? This will remove all messages in this thread.')) return;
+    try {
+      const res = await fetch(`/api/admin/stories/replies/conversation/${convId}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+        credentials: 'include'
+      });
+      const d = await res.json();
+      if (d.success) {
+        showMsg('Conversation deleted successfully.');
+        setOfficialReplyModalOpen(false);
+        loadAdminStoryReplies();
+      } else {
+        showMsg(d.message || 'Failed to delete conversation.');
+      }
+    } catch (err) {
       showMsg('Network error.');
     }
   };
@@ -3211,12 +3606,20 @@ export const AdminDashboard = () => {
                         <div className="p-4 border-b border-violet-900/30 flex items-center justify-between">
                           <div className="flex items-center space-x-2.5 min-w-0">
                             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-fuchsia-600 p-[1.5px] shrink-0">
-                              <div className="w-full h-full rounded-full bg-[#1C1530] flex items-center justify-center font-bold text-white text-xs">
-                                {story.officialAuthorAvatar ? (
-                                  <img src={story.officialAuthorAvatar} alt="Logo" className="w-full h-full rounded-full object-cover" />
-                                ) : (
-                                  (story.officialAuthorName || 'PulseChat')[0]?.toUpperCase()
-                                )}
+                              <div className="w-full h-full rounded-full bg-[#1C1530] overflow-hidden flex items-center justify-center font-bold text-white text-xs">
+                                <img
+                                  src={
+                                    (story.officialAuthorAvatar && !story.officialAuthorAvatar.includes('1618005182384'))
+                                      ? story.officialAuthorAvatar
+                                      : '/icons/icon-192.png'
+                                  }
+                                  alt="PulseChat"
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = '/icons/icon.svg';
+                                  }}
+                                />
                               </div>
                             </div>
                             <div className="min-w-0">
@@ -3259,9 +3662,10 @@ export const AdminDashboard = () => {
                           <div className="relative z-10 space-y-2 max-w-xs">
                             {story.text && (
                               <p
-                                className={`text-white text-sm sm:text-base leading-snug drop-shadow-md line-clamp-4 ${
+                                className={`text-sm sm:text-base leading-snug drop-shadow-md line-clamp-4 ${
                                   story.style?.font === 'serif' ? 'font-serif' : story.style?.font === 'mono' ? 'font-mono' : 'font-sans'
                                 } ${story.style?.bold ? 'font-bold' : 'font-normal'} ${story.style?.italic ? 'italic' : 'not-italic'}`}
+                                style={getStoryTextStyle(story.style)}
                               >
                                 {story.text}
                               </p>
@@ -3326,6 +3730,15 @@ export const AdminDashboard = () => {
                                 {story.poll?.isClosed ? 'Reopen Poll' : 'Close Poll'}
                               </button>
                             )}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditStory(story)}
+                              className="px-2.5 py-1 text-[11px] font-semibold bg-[#231C38] hover:bg-[#2A2242] text-violet-200 rounded-lg border border-violet-900/30 transition cursor-pointer flex items-center space-x-1"
+                              title="Edit official story content & styling"
+                            >
+                              <Pencil className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
                             <button
                               type="button"
                               onClick={() => setStoryInspectModal(story)}
@@ -3499,28 +3912,21 @@ export const AdminDashboard = () => {
                                   <MessageSquare className="w-2.5 h-2.5" />
                                   <span>User Reply</span>
                                 </div>
-                                <p className="text-xs sm:text-sm text-white font-medium break-words leading-relaxed">
-                                  {reply.message}
-                                </p>
+                                <div className="text-xs sm:text-sm text-white font-medium break-words leading-relaxed">
+                                  <StoryReplyMessageText reply={reply} />
+                                </div>
                               </div>
 
-                              {/* Action Button: Open Conversation */}
+                              {/* Action Button: View Conversation & Reply */}
                               <div className="pt-1 flex items-center justify-end">
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    if (reply.conversationId) {
-                                      localStorage.setItem('pulsechat_pending_chat', reply.conversationId);
-                                      navigate('/chat');
-                                    } else if (reply.user?._id) {
-                                      handleOpenUserChat(reply.user._id);
-                                    }
-                                  }}
-                                  className="px-3.5 py-1.5 bg-violet-600/30 hover:bg-violet-600/50 text-violet-200 hover:text-white rounded-xl border border-violet-500/30 text-xs font-bold flex items-center space-x-1.5 transition cursor-pointer shadow-md active:scale-95"
+                                  onClick={() => openOfficialReplyConversation(reply.user, reply.story, reply.conversationId)}
+                                  className="px-3.5 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 transition cursor-pointer shadow-md shadow-violet-950/50 active:scale-95"
+                                  title="Open shared official conversation thread to respond as PulseChat"
                                 >
-                                  <MessageSquare className="w-3.5 h-3.5" />
-                                  <span>Open Conversation</span>
-                                  <ExternalLink className="w-3 h-3 ml-0.5 opacity-70" />
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                  <span>View & Reply (Official)</span>
                                 </button>
                               </div>
                             </div>
@@ -6433,41 +6839,335 @@ export const AdminDashboard = () => {
                   </div>
                 )}
 
-                {/* 3. Visual Background Theme */}
+                {/* 3. Visual Background Designer */}
                 {storyType === 'text' && (
-                  <div className="space-y-1.5">
-                    <label className="block font-bold text-slate-300 text-xs">
-                      Background Gradient Theme
-                    </label>
-                    <div className="grid grid-cols-4 gap-2">
-                      {[
-                        { id: 'royal', label: 'Royal', class: 'from-indigo-600 to-purple-600' },
-                        { id: 'cyber', label: 'Cyber', class: 'from-cyan-600 to-blue-600' },
-                        { id: 'sunset', label: 'Sunset', class: 'from-rose-600 to-amber-600' },
-                        { id: 'emerald', label: 'Emerald', class: 'from-emerald-600 to-teal-600' },
-                        { id: 'midnight', label: 'Midnight', class: 'from-slate-900 to-slate-800' },
-                        { id: 'berry', label: 'Berry', class: 'from-purple-600 to-pink-600' },
-                        { id: 'crimson', label: 'Crimson', class: 'from-red-600 to-rose-600' },
-                        { id: 'amber', label: 'Amber', class: 'from-amber-600 to-yellow-600' }
-                      ].map((bg) => (
+                  <div className="space-y-2 p-3 bg-[#18112e] rounded-2xl border border-violet-900/40">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-violet-900/30">
+                      <div className="flex items-center space-x-1.5 font-bold text-slate-200 text-xs">
+                        <Palette className="w-3.5 h-3.5 text-violet-400" />
+                        <span>Background Canvas</span>
+                      </div>
+                      <div className="flex items-center space-x-1 bg-[#130d24] p-0.5 rounded-lg border border-violet-900/40">
                         <button
-                          key={bg.id}
                           type="button"
-                          onClick={() => setStoryBgTheme(bg.id)}
-                          className={`p-2 rounded-xl text-center font-bold text-[10px] bg-gradient-to-r ${bg.class} text-white transition cursor-pointer relative shadow-xs ${
-                            storyBgTheme === bg.id ? 'ring-2 ring-white scale-102 shadow-lg' : 'opacity-70 hover:opacity-100'
+                          onClick={() => setStoryBgTab('presets')}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                            storyBgTab === 'presets' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
                           }`}
                         >
-                          {bg.label}
-                          {storyBgTheme === bg.id && <Check className="w-3 h-3 absolute top-1 right-1" />}
+                          Presets
                         </button>
-                      ))}
+                        <button
+                          type="button"
+                          onClick={() => setStoryBgTab('gradient')}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                            storyBgTab === 'gradient' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Gradient
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setStoryBgTab('solid')}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                            storyBgTab === 'solid' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Solid
+                        </button>
+                      </div>
                     </div>
+
+                    {storyBgTab === 'presets' && (
+                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-32 overflow-y-auto pr-1">
+                        {PRESET_BACKGROUNDS.map((bg) => (
+                          <button
+                            key={bg.id}
+                            type="button"
+                            onClick={() => setStoryBgStyle(bg.style)}
+                            className={`h-8 rounded-lg flex items-center justify-center font-bold text-[9px] text-white shadow-xs transition border relative cursor-pointer ${
+                              storyBgStyle === bg.style ? 'border-white ring-2 ring-violet-400 scale-102' : 'border-transparent opacity-80 hover:opacity-100'
+                            }`}
+                            style={{ background: bg.style }}
+                          >
+                            {bg.label}
+                            {storyBgStyle === bg.style && <Check className="w-3 h-3 absolute top-0.5 right-0.5" />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {storyBgTab === 'gradient' && (
+                      <div className="space-y-2 text-xs">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-300 mb-1">Color 1 (Start)</label>
+                            <div className="flex items-center space-x-1.5 p-1 bg-[#1C1530] rounded-xl border border-violet-900/40">
+                              <input
+                                type="color"
+                                value={storyCustomBg1}
+                                onChange={(e) => {
+                                  setStoryCustomBg1(e.target.value);
+                                  setStoryBgStyle(`linear-gradient(${storyCustomBgAngle}deg, ${e.target.value} 0%, ${storyCustomBg2} 100%)`);
+                                }}
+                                className="w-6 h-6 rounded-lg border-0 cursor-pointer bg-transparent"
+                              />
+                              <span className="font-mono text-[10px] text-white uppercase">{storyCustomBg1}</span>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-300 mb-1">Color 2 (End)</label>
+                            <div className="flex items-center space-x-1.5 p-1 bg-[#1C1530] rounded-xl border border-violet-900/40">
+                              <input
+                                type="color"
+                                value={storyCustomBg2}
+                                onChange={(e) => {
+                                  setStoryCustomBg2(e.target.value);
+                                  setStoryBgStyle(`linear-gradient(${storyCustomBgAngle}deg, ${storyCustomBg1} 0%, ${e.target.value} 100%)`);
+                                }}
+                                className="w-6 h-6 rounded-lg border-0 cursor-pointer bg-transparent"
+                              />
+                              <span className="font-mono text-[10px] text-white uppercase">{storyCustomBg2}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-300 mb-1">Angle / Direction</label>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            {[45, 90, 135, 180].map((deg) => (
+                              <button
+                                key={deg}
+                                type="button"
+                                onClick={() => {
+                                  setStoryCustomBgAngle(deg);
+                                  setStoryBgStyle(`linear-gradient(${deg}deg, ${storyCustomBg1} 0%, ${storyCustomBg2} 100%)`);
+                                }}
+                                className={`py-1 rounded-lg text-[10px] font-bold transition border cursor-pointer ${
+                                  storyCustomBgAngle === deg ? 'bg-violet-600 text-white border-violet-400' : 'bg-[#1C1530] text-slate-300 border-violet-900/40 hover:bg-violet-900/30'
+                                }`}
+                              >
+                                {deg}°
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {storyBgTab === 'solid' && (
+                      <div className="space-y-1.5 text-xs">
+                        <label className="block text-[10px] font-bold text-slate-300">Choose Solid Color</label>
+                        <div className="flex items-center space-x-2 p-1.5 bg-[#1C1530] rounded-xl border border-violet-900/40">
+                          <input
+                            type="color"
+                            value={storyCustomBgSolid}
+                            onChange={(e) => {
+                              setStoryCustomBgSolid(e.target.value);
+                              setStoryBgStyle(e.target.value);
+                            }}
+                            className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
+                          />
+                          <input
+                            type="text"
+                            value={storyCustomBgSolid}
+                            onChange={(e) => {
+                              setStoryCustomBgSolid(e.target.value);
+                              setStoryBgStyle(e.target.value);
+                            }}
+                            className="flex-1 bg-transparent text-white font-mono text-xs uppercase outline-none"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* 4. Typography Font & Styling */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* Text Color & Gradient Styling */}
+                <div className="space-y-2 p-3 bg-[#18112e] rounded-2xl border border-violet-900/40">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-violet-900/30">
+                    <div className="flex items-center space-x-1.5 font-bold text-slate-200 text-xs">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Text Color & Gradients</span>
+                    </div>
+                    <div className="flex items-center space-x-1 bg-[#130d24] p-0.5 rounded-lg border border-violet-900/40">
+                      <button
+                        type="button"
+                        onClick={() => setStoryTextTab('presets')}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                          storyTextTab === 'presets' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Solid
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStoryTextTab('gradients')}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                          storyTextTab === 'gradients' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Gradient
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStoryTextTab('custom_color')}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                          storyTextTab === 'custom_color' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Custom
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStoryTextTab('custom_gradient')}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                          storyTextTab === 'custom_gradient' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Custom Grad
+                      </button>
+                    </div>
+                  </div>
+
+                  {storyTextTab === 'presets' && (
+                    <div className="flex items-center justify-start flex-wrap gap-2 py-1">
+                      {PRESET_TEXT_COLORS.map((col) => (
+                        <button
+                          key={col.id}
+                          type="button"
+                          onClick={() => {
+                            setStoryTextColor(col.value);
+                            setStoryTextGradient('');
+                          }}
+                          className={`w-7 h-7 rounded-full shadow-xs transition transform hover:scale-110 active:scale-95 border flex items-center justify-center cursor-pointer ${
+                            storyTextColor === col.value && !storyTextGradient ? 'ring-2 ring-white border-white scale-110' : 'border-white/20'
+                          }`}
+                          style={{ background: col.value }}
+                          title={col.label}
+                        >
+                          {storyTextColor === col.value && !storyTextGradient && (
+                            <Check className={`w-3 h-3 stroke-[3] ${col.value === '#ffffff' || col.value === '#facc15' ? 'text-black' : 'text-white'}`} />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {storyTextTab === 'gradients' && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 py-1">
+                      {PRESET_TEXT_GRADIENTS.map((grad) => (
+                        <button
+                          key={grad.id}
+                          type="button"
+                          onClick={() => {
+                            setStoryTextGradient(grad.value);
+                            setStoryTextColor(grad.value);
+                          }}
+                          className={`h-7 rounded-lg px-2 flex items-center justify-center font-black text-xs transition border cursor-pointer ${
+                            storyTextGradient === grad.value ? 'ring-2 ring-white border-white' : 'border-white/20 hover:border-white/60'
+                          }`}
+                          style={{ background: grad.value, color: '#000000' }}
+                        >
+                          <span className="drop-shadow-sm font-extrabold text-[9px]">{grad.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {storyTextTab === 'custom_color' && (
+                    <div className="space-y-1.5 text-xs">
+                      <label className="block text-[10px] font-bold text-slate-300">Choose Custom Text Color</label>
+                      <div className="flex items-center space-x-2 p-1.5 bg-[#1C1530] rounded-xl border border-violet-900/40">
+                        <input
+                          type="color"
+                          value={storyCustomTextColor}
+                          onChange={(e) => {
+                            setStoryCustomTextColor(e.target.value);
+                            setStoryTextColor(e.target.value);
+                            setStoryTextGradient('');
+                          }}
+                          className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
+                        />
+                        <input
+                          type="text"
+                          value={storyCustomTextColor}
+                          onChange={(e) => {
+                            setStoryCustomTextColor(e.target.value);
+                            setStoryTextColor(e.target.value);
+                            setStoryTextGradient('');
+                          }}
+                          className="flex-1 bg-transparent text-white font-mono text-xs uppercase outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {storyTextTab === 'custom_gradient' && (
+                    <div className="space-y-2 text-xs">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-300 mb-1">Color 1 (Start)</label>
+                          <div className="flex items-center space-x-1.5 p-1 bg-[#1C1530] rounded-xl border border-violet-900/40">
+                            <input
+                              type="color"
+                              value={storyCustomText1}
+                              onChange={(e) => {
+                                setStoryCustomText1(e.target.value);
+                                const grad = `linear-gradient(${storyCustomTextAngle}deg, ${e.target.value} 0%, ${storyCustomText2} 100%)`;
+                                setStoryTextGradient(grad);
+                                setStoryTextColor(grad);
+                              }}
+                              className="w-6 h-6 rounded-lg border-0 cursor-pointer bg-transparent"
+                            />
+                            <span className="font-mono text-[10px] text-white uppercase">{storyCustomText1}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-300 mb-1">Color 2 (End)</label>
+                          <div className="flex items-center space-x-1.5 p-1 bg-[#1C1530] rounded-xl border border-violet-900/40">
+                            <input
+                              type="color"
+                              value={storyCustomText2}
+                              onChange={(e) => {
+                                setStoryCustomText2(e.target.value);
+                                const grad = `linear-gradient(${storyCustomTextAngle}deg, ${storyCustomText1} 0%, ${e.target.value} 100%)`;
+                                setStoryTextGradient(grad);
+                                setStoryTextColor(grad);
+                              }}
+                              className="w-6 h-6 rounded-lg border-0 cursor-pointer bg-transparent"
+                            />
+                            <span className="font-mono text-[10px] text-white uppercase">{storyCustomText2}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 mb-1">Angle / Direction</label>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {[45, 90, 135, 180].map((deg) => (
+                            <button
+                              key={deg}
+                              type="button"
+                              onClick={() => {
+                                setStoryCustomTextAngle(deg);
+                                const grad = `linear-gradient(${deg}deg, ${storyCustomText1} 0%, ${storyCustomText2} 100%)`;
+                                setStoryTextGradient(grad);
+                                setStoryTextColor(grad);
+                              }}
+                              className={`py-1 rounded-lg text-[10px] font-bold transition border cursor-pointer ${
+                                storyCustomTextAngle === deg ? 'bg-violet-600 text-white border-violet-400' : 'bg-[#1C1530] text-slate-300 border-violet-900/40 hover:bg-violet-900/30'
+                              }`}
+                            >
+                              {deg}°
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Typography Font, Bold/Italic & Duration */}
+                <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <label className="block font-bold text-slate-300 text-xs">Typography</label>
                     <select
@@ -6481,16 +7181,41 @@ export const AdminDashboard = () => {
                     </select>
                   </div>
                   <div className="space-y-1">
+                    <label className="block font-bold text-slate-300 text-xs">Formatting</label>
+                    <div className="flex items-center space-x-1.5 h-[38px]">
+                      <button
+                        type="button"
+                        onClick={() => setStoryIsBold(!storyIsBold)}
+                        className={`flex-1 h-full rounded-xl flex items-center justify-center font-bold text-xs border transition cursor-pointer ${
+                          storyIsBold ? 'bg-violet-600 border-violet-400 text-white' : 'bg-[#1C1530] border-violet-900/40 text-slate-300 hover:text-white'
+                        }`}
+                        title="Toggle Bold"
+                      >
+                        <Bold className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStoryIsItalic(!storyIsItalic)}
+                        className={`flex-1 h-full rounded-xl flex items-center justify-center font-bold text-xs border transition cursor-pointer ${
+                          storyIsItalic ? 'bg-violet-600 border-violet-400 text-white' : 'bg-[#1C1530] border-violet-900/40 text-slate-300 hover:text-white'
+                        }`}
+                        title="Toggle Italic"
+                      >
+                        <Italic className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
                     <label className="block font-bold text-slate-300 text-xs">Duration</label>
                     <select
                       value={storyDurationHours}
                       onChange={(e) => setStoryDurationHours(Number(e.target.value))}
                       className="w-full px-3 py-2 bg-[#1C1530] border border-violet-900/40 rounded-xl text-white font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-500/50"
                     >
-                      <option value={24}>24 Hours (Standard)</option>
-                      <option value={48}>48 Hours (2 Days)</option>
-                      <option value={72}>72 Hours (3 Days)</option>
-                      <option value={168}>7 Days (1 Week)</option>
+                      <option value={24}>24 Hours</option>
+                      <option value={48}>48 Hours</option>
+                      <option value={72}>72 Hours</option>
+                      <option value={168}>7 Days</option>
                     </select>
                   </div>
                 </div>
@@ -6610,16 +7335,7 @@ export const AdminDashboard = () => {
                     background:
                       storyType === 'media' && storyMediaUrl
                         ? `url("${storyMediaUrl}") center/cover no-repeat`
-                        : {
-                            royal: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-                            cyber: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)',
-                            sunset: 'linear-gradient(135deg, #f43f5e 0%, #fb923c 100%)',
-                            emerald: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                            midnight: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-                            berry: 'linear-gradient(135deg, #9333ea 0%, #ec4899 100%)',
-                            crimson: 'linear-gradient(135deg, #dc2626 0%, #e11d48 100%)',
-                            amber: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)'
-                          }[storyBgTheme] || 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)'
+                        : storyBgStyle
                   }}
                 >
                   {/* Top Bar inside mockup */}
@@ -6631,8 +7347,20 @@ export const AdminDashboard = () => {
 
                     {/* Author & official badge */}
                     <div className="flex items-center space-x-2">
-                      <div className="w-7 h-7 rounded-full bg-black/40 border border-white/30 flex items-center justify-center font-bold text-white text-[10px]">
-                        {(storyPublisherName || 'PulseChat')[0]?.toUpperCase()}
+                      <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-900 border border-white/30 flex items-center justify-center shrink-0">
+                        <img
+                          src={
+                            (storyPublisherAvatar && !storyPublisherAvatar.includes('1618005182384'))
+                              ? storyPublisherAvatar
+                              : '/icons/icon-192.png'
+                          }
+                          alt="PulseChat"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = '/icons/icon.svg';
+                          }}
+                        />
                       </div>
                       <div className="min-w-0">
                         <div className="font-bold text-[11px] text-white flex items-center space-x-1 truncate">
@@ -6649,9 +7377,10 @@ export const AdminDashboard = () => {
                   {/* Story Text / Poll content inside mockup */}
                   <div className="flex-1 flex flex-col justify-center items-center text-center my-3 relative z-10 px-2 space-y-2">
                     <p
-                      className={`text-white text-sm leading-snug drop-shadow-md ${
+                      className={`text-sm leading-snug drop-shadow-md ${
                         storyFont === 'serif' ? 'font-serif' : storyFont === 'mono' ? 'font-mono' : 'font-sans'
-                      }`}
+                      } ${storyIsBold ? 'font-bold' : 'font-normal'} ${storyIsItalic ? 'italic' : 'not-italic'}`}
+                      style={getStoryTextStyle({ textColor: storyTextColor, textGradient: storyTextGradient, bold: storyIsBold, italic: storyIsItalic })}
                     >
                       {storyText || 'Story text preview will render here...'}
                     </p>
@@ -6825,6 +7554,658 @@ export const AdminDashboard = () => {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Collaborative Edit Story Modal */}
+      {editStoryModalOpen && editingStory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-xl bg-[#130E24] rounded-3xl border border-violet-900/50 shadow-2xl p-5 space-y-4 max-h-[92vh] flex flex-col text-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-violet-900/40">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 rounded-xl bg-violet-600/30 border border-violet-500/40 flex items-center justify-center text-violet-300">
+                  <Pencil className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Edit Official Story</h3>
+                  <p className="text-xs text-violet-300/60">Collaborative update — changes sync to all admins and users in real time</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setEditStoryModalOpen(false); setEditingStory(null); }}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-violet-900/30 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditStory} className="space-y-4 overflow-y-auto pr-1 text-xs">
+              <div>
+                <label className="block font-bold text-slate-300 mb-1">Publisher Display Name</label>
+                <input
+                  type="text"
+                  value={editStoryAuthor}
+                  onChange={(e) => setEditStoryAuthor(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[#1C1530] border border-violet-900/40 rounded-xl text-white font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  placeholder="PulseChat"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-300 mb-1">Story Text</label>
+                <textarea
+                  rows={3}
+                  value={editStoryText}
+                  onChange={(e) => setEditStoryText(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[#1C1530] border border-violet-900/40 rounded-xl text-white font-medium focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
+                  placeholder="Official story text..."
+                />
+              </div>
+
+              {editingStory.type === 'media' && (
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1">Media Image URL</label>
+                  <input
+                    type="url"
+                    value={editStoryMediaUrl}
+                    onChange={(e) => setEditStoryMediaUrl(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-[#1C1530] border border-violet-900/40 rounded-xl text-white font-mono text-xs focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                    placeholder="https://..."
+                  />
+                </div>
+              )}
+
+              {/* Typography & Formatting for Edit */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block font-bold text-slate-300">Typography</label>
+                  <select
+                    value={editStoryFont}
+                    onChange={(e) => setEditStoryFont(e.target.value)}
+                    className="w-full px-3 py-2 bg-[#1C1530] border border-violet-900/40 rounded-xl text-white font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  >
+                    <option value="sans">Modern Sans</option>
+                    <option value="serif">Editorial Serif</option>
+                    <option value="mono">Tech Mono</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="block font-bold text-slate-300">Formatting</label>
+                  <div className="flex items-center space-x-1.5 h-[38px]">
+                    <button
+                      type="button"
+                      onClick={() => setEditStoryIsBold(!editStoryIsBold)}
+                      className={`flex-1 h-full rounded-xl flex items-center justify-center font-bold text-xs border transition cursor-pointer ${
+                        editStoryIsBold ? 'bg-violet-600 border-violet-400 text-white' : 'bg-[#1C1530] border-violet-900/40 text-slate-300 hover:text-white'
+                      }`}
+                      title="Toggle Bold"
+                    >
+                      <Bold className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditStoryIsItalic(!editStoryIsItalic)}
+                      className={`flex-1 h-full rounded-xl flex items-center justify-center font-bold text-xs border transition cursor-pointer ${
+                        editStoryIsItalic ? 'bg-violet-600 border-violet-400 text-white' : 'bg-[#1C1530] border-violet-900/40 text-slate-300 hover:text-white'
+                      }`}
+                      title="Toggle Italic"
+                    >
+                      <Italic className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Background Designer for Edit */}
+              <div className="space-y-2 p-3 bg-[#18112e] rounded-2xl border border-violet-900/40">
+                <div className="flex items-center justify-between pb-1.5 border-b border-violet-900/30">
+                  <div className="flex items-center space-x-1.5 font-bold text-slate-200 text-xs">
+                    <Palette className="w-3.5 h-3.5 text-violet-400" />
+                    <span>Background Canvas</span>
+                  </div>
+                  <div className="flex items-center space-x-1 bg-[#130d24] p-0.5 rounded-lg border border-violet-900/40">
+                    <button
+                      type="button"
+                      onClick={() => setEditStoryBgTab('presets')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                        editStoryBgTab === 'presets' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Presets
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditStoryBgTab('gradient')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                        editStoryBgTab === 'gradient' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Gradient
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditStoryBgTab('solid')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                        editStoryBgTab === 'solid' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Solid
+                    </button>
+                  </div>
+                </div>
+
+                {editStoryBgTab === 'presets' && (
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-32 overflow-y-auto pr-1">
+                    {PRESET_BACKGROUNDS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setEditStoryBg(preset.style)}
+                        className={`h-8 rounded-lg flex items-center justify-center font-bold text-[9px] text-white shadow-xs transition border relative cursor-pointer ${
+                          editStoryBg === preset.style ? 'border-white ring-2 ring-violet-500 scale-102' : 'border-transparent opacity-80 hover:opacity-100'
+                        }`}
+                        style={{ background: preset.style }}
+                      >
+                        {preset.label}
+                        {editStoryBg === preset.style && <Check className="w-3 h-3 absolute top-0.5 right-0.5" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {editStoryBgTab === 'gradient' && (
+                  <div className="space-y-2 text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 mb-1">Color 1 (Start)</label>
+                        <div className="flex items-center space-x-1.5 p-1 bg-[#1C1530] rounded-xl border border-violet-900/40">
+                          <input
+                            type="color"
+                            value={editStoryCustomBg1}
+                            onChange={(e) => {
+                              setEditStoryCustomBg1(e.target.value);
+                              setEditStoryBg(`linear-gradient(${editStoryCustomBgAngle}deg, ${e.target.value} 0%, ${editStoryCustomBg2} 100%)`);
+                            }}
+                            className="w-6 h-6 rounded-lg border-0 cursor-pointer bg-transparent"
+                          />
+                          <span className="font-mono text-[10px] text-white uppercase">{editStoryCustomBg1}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 mb-1">Color 2 (End)</label>
+                        <div className="flex items-center space-x-1.5 p-1 bg-[#1C1530] rounded-xl border border-violet-900/40">
+                          <input
+                            type="color"
+                            value={editStoryCustomBg2}
+                            onChange={(e) => {
+                              setEditStoryCustomBg2(e.target.value);
+                              setEditStoryBg(`linear-gradient(${editStoryCustomBgAngle}deg, ${editStoryCustomBg1} 0%, ${e.target.value} 100%)`);
+                            }}
+                            className="w-6 h-6 rounded-lg border-0 cursor-pointer bg-transparent"
+                          />
+                          <span className="font-mono text-[10px] text-white uppercase">{editStoryCustomBg2}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-300 mb-1">Angle / Direction</label>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[45, 90, 135, 180].map((deg) => (
+                          <button
+                            key={deg}
+                            type="button"
+                            onClick={() => {
+                              setEditStoryCustomBgAngle(deg);
+                              setEditStoryBg(`linear-gradient(${deg}deg, ${editStoryCustomBg1} 0%, ${editStoryCustomBg2} 100%)`);
+                            }}
+                            className={`py-1 rounded-lg text-[10px] font-bold transition border cursor-pointer ${
+                              editStoryCustomBgAngle === deg ? 'bg-violet-600 text-white border-violet-400' : 'bg-[#1C1530] text-slate-300 border-violet-900/40 hover:bg-violet-900/30'
+                            }`}
+                          >
+                            {deg}°
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {editStoryBgTab === 'solid' && (
+                  <div className="space-y-1.5 text-xs">
+                    <label className="block text-[10px] font-bold text-slate-300">Choose Solid Color</label>
+                    <div className="flex items-center space-x-2 p-1.5 bg-[#1C1530] rounded-xl border border-violet-900/40">
+                      <input
+                        type="color"
+                        value={editStoryCustomBgSolid}
+                        onChange={(e) => {
+                          setEditStoryCustomBgSolid(e.target.value);
+                          setEditStoryBg(e.target.value);
+                        }}
+                        className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
+                      />
+                      <input
+                        type="text"
+                        value={editStoryCustomBgSolid}
+                        onChange={(e) => {
+                          setEditStoryCustomBgSolid(e.target.value);
+                          setEditStoryBg(e.target.value);
+                        }}
+                        className="flex-1 bg-transparent text-white font-mono text-xs uppercase outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Text Color & Gradient Styling for Edit */}
+              <div className="space-y-2 p-3 bg-[#18112e] rounded-2xl border border-violet-900/40">
+                <div className="flex items-center justify-between pb-1.5 border-b border-violet-900/30">
+                  <div className="flex items-center space-x-1.5 font-bold text-slate-200 text-xs">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Text Color & Gradients</span>
+                  </div>
+                  <div className="flex items-center space-x-1 bg-[#130d24] p-0.5 rounded-lg border border-violet-900/40">
+                    <button
+                      type="button"
+                      onClick={() => setEditStoryTextTab('presets')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                        editStoryTextTab === 'presets' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Solid
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditStoryTextTab('gradients')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                        editStoryTextTab === 'gradients' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Gradient
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditStoryTextTab('custom_color')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                        editStoryTextTab === 'custom_color' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Custom
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditStoryTextTab('custom_gradient')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                        editStoryTextTab === 'custom_gradient' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Custom Grad
+                    </button>
+                  </div>
+                </div>
+
+                {editStoryTextTab === 'presets' && (
+                  <div className="flex items-center justify-start flex-wrap gap-2 py-1">
+                    {PRESET_TEXT_COLORS.map((col) => (
+                      <button
+                        key={col.id}
+                        type="button"
+                        onClick={() => {
+                          setEditStoryTextColor(col.value);
+                          setEditStoryTextGradient('');
+                        }}
+                        className={`w-7 h-7 rounded-full shadow-xs transition transform hover:scale-110 active:scale-95 border flex items-center justify-center cursor-pointer ${
+                          editStoryTextColor === col.value && !editStoryTextGradient ? 'ring-2 ring-white border-white scale-110' : 'border-white/20'
+                        }`}
+                        style={{ background: col.value }}
+                        title={col.label}
+                      >
+                        {editStoryTextColor === col.value && !editStoryTextGradient && (
+                          <Check className={`w-3 h-3 stroke-[3] ${col.value === '#ffffff' || col.value === '#facc15' ? 'text-black' : 'text-white'}`} />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {editStoryTextTab === 'gradients' && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 py-1">
+                    {PRESET_TEXT_GRADIENTS.map((grad) => (
+                      <button
+                        key={grad.id}
+                        type="button"
+                        onClick={() => {
+                          setEditStoryTextGradient(grad.value);
+                          setEditStoryTextColor(grad.value);
+                        }}
+                        className={`h-7 rounded-lg px-2 flex items-center justify-center font-black text-xs transition border cursor-pointer ${
+                          editStoryTextGradient === grad.value ? 'ring-2 ring-white border-white' : 'border-white/20 hover:border-white/60'
+                        }`}
+                        style={{ background: grad.value, color: '#000000' }}
+                      >
+                        <span className="drop-shadow-sm font-extrabold text-[9px]">{grad.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {editStoryTextTab === 'custom_color' && (
+                  <div className="space-y-1.5 text-xs">
+                    <label className="block text-[10px] font-bold text-slate-300">Choose Custom Text Color</label>
+                    <div className="flex items-center space-x-2 p-1.5 bg-[#1C1530] rounded-xl border border-violet-900/40">
+                      <input
+                        type="color"
+                        value={editStoryCustomTextColor}
+                        onChange={(e) => {
+                          setEditStoryCustomTextColor(e.target.value);
+                          setEditStoryTextColor(e.target.value);
+                          setEditStoryTextGradient('');
+                        }}
+                        className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
+                      />
+                      <input
+                        type="text"
+                        value={editStoryCustomTextColor}
+                        onChange={(e) => {
+                          setEditStoryCustomTextColor(e.target.value);
+                          setEditStoryTextColor(e.target.value);
+                          setEditStoryTextGradient('');
+                        }}
+                        className="flex-1 bg-transparent text-white font-mono text-xs uppercase outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {editStoryTextTab === 'custom_gradient' && (
+                  <div className="space-y-2 text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 mb-1">Color 1 (Start)</label>
+                        <div className="flex items-center space-x-1.5 p-1 bg-[#1C1530] rounded-xl border border-violet-900/40">
+                          <input
+                            type="color"
+                            value={editStoryCustomText1}
+                            onChange={(e) => {
+                              setEditStoryCustomText1(e.target.value);
+                              const grad = `linear-gradient(${editStoryCustomTextAngle}deg, ${e.target.value} 0%, ${editStoryCustomText2} 100%)`;
+                              setEditStoryTextGradient(grad);
+                              setEditStoryTextColor(grad);
+                            }}
+                            className="w-6 h-6 rounded-lg border-0 cursor-pointer bg-transparent"
+                          />
+                          <span className="font-mono text-[10px] text-white uppercase">{editStoryCustomText1}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-300 mb-1">Color 2 (End)</label>
+                        <div className="flex items-center space-x-1.5 p-1 bg-[#1C1530] rounded-xl border border-violet-900/40">
+                          <input
+                            type="color"
+                            value={editStoryCustomText2}
+                            onChange={(e) => {
+                              setEditStoryCustomText2(e.target.value);
+                              const grad = `linear-gradient(${editStoryCustomTextAngle}deg, ${editStoryCustomText1} 0%, ${e.target.value} 100%)`;
+                              setEditStoryTextGradient(grad);
+                              setEditStoryTextColor(grad);
+                            }}
+                            className="w-6 h-6 rounded-lg border-0 cursor-pointer bg-transparent"
+                          />
+                          <span className="font-mono text-[10px] text-white uppercase">{editStoryCustomText2}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-300 mb-1">Angle / Direction</label>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[45, 90, 135, 180].map((deg) => (
+                          <button
+                            key={deg}
+                            type="button"
+                            onClick={() => {
+                              setEditStoryCustomTextAngle(deg);
+                              const grad = `linear-gradient(${deg}deg, ${editStoryCustomText1} 0%, ${editStoryCustomText2} 100%)`;
+                              setEditStoryTextGradient(grad);
+                              setEditStoryTextColor(grad);
+                            }}
+                            className={`py-1 rounded-lg text-[10px] font-bold transition border cursor-pointer ${
+                              editStoryCustomTextAngle === deg ? 'bg-violet-600 text-white border-violet-400' : 'bg-[#1C1530] text-slate-300 border-violet-900/40 hover:bg-violet-900/30'
+                            }`}
+                          >
+                            {deg}°
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Live Mini Preview inside Edit Modal */}
+              <div className="space-y-1.5">
+                <label className="block font-bold text-slate-300 text-xs">Live Edit Preview</label>
+                <div
+                  className="w-full h-32 rounded-2xl p-4 flex flex-col justify-center items-center text-center relative overflow-hidden select-none border border-violet-900/40 shadow-inner"
+                  style={{
+                    background:
+                      editingStory.type === 'media' && editStoryMediaUrl
+                        ? `url("${editStoryMediaUrl}") center/cover no-repeat`
+                        : editStoryBg
+                  }}
+                >
+                  <p
+                    className={`text-sm leading-snug drop-shadow-md line-clamp-3 ${
+                      editStoryFont === 'serif' ? 'font-serif' : editStoryFont === 'mono' ? 'font-mono' : 'font-sans'
+                    } ${editStoryIsBold ? 'font-bold' : 'font-normal'} ${editStoryIsItalic ? 'italic' : 'not-italic'}`}
+                    style={getStoryTextStyle({
+                      textColor: editStoryTextColor,
+                      textGradient: editStoryTextGradient,
+                      bold: editStoryIsBold,
+                      italic: editStoryIsItalic
+                    })}
+                  >
+                    {editStoryText || 'Story text preview...'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end space-x-2 border-t border-violet-900/30">
+                <button
+                  type="button"
+                  onClick={() => { setEditStoryModalOpen(false); setEditingStory(null); }}
+                  className="px-4 py-2 bg-[#231C38] hover:bg-[#2A2242] text-violet-300 rounded-xl font-bold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEditStory}
+                  className="px-5 py-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold rounded-xl shadow-lg transition cursor-pointer disabled:opacity-50 flex items-center space-x-1.5"
+                >
+                  {savingEditStory ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Official Conversation Thread Modal */}
+      {officialReplyModalOpen && activeReplyUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-2xl bg-[#130E24] rounded-3xl border border-violet-900/50 shadow-2xl p-4 sm:p-6 space-y-4 max-h-[92vh] flex flex-col text-slate-100">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-violet-900/40">
+              <div className="flex items-center space-x-3 min-w-0">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-violet-600 via-purple-600 to-fuchsia-600 p-[1.5px] shrink-0">
+                  <div className="w-full h-full rounded-full bg-[#1C1530] flex items-center justify-center font-bold text-white text-xs overflow-hidden">
+                    {activeReplyUser.avatar ? (
+                      <img src={activeReplyUser.avatar} alt={activeReplyUser.username} className="w-full h-full object-cover" />
+                    ) : (
+                      (activeReplyUser.nickname || activeReplyUser.username || 'U')[0]?.toUpperCase()
+                    )}
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-base font-bold text-white truncate">
+                      {activeReplyUser.nickname || activeReplyUser.username}
+                    </h3>
+                    {activeReplyUser.username && (
+                      <span className="text-xs text-violet-400/60 font-mono">
+                        @{activeReplyUser.username}
+                      </span>
+                    )}
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white uppercase tracking-wider shrink-0">
+                      Official Thread
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-violet-300/60 truncate">
+                    {activeReplyUser.email || 'PulseChat User'} · Unified Official Responses
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-1.5 shrink-0">
+                {activeReplyConvId && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteAdminConversation(activeReplyConvId)}
+                    className="p-1.5 text-rose-400 hover:text-rose-200 hover:bg-rose-950/40 rounded-xl transition cursor-pointer"
+                    title="Delete Conversation History"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setOfficialReplyModalOpen(false); setActiveReplyUser(null); }}
+                  className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-violet-900/30 transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Story Context Banner */}
+            {activeReplyStory && (
+              <div className="p-2.5 rounded-2xl bg-[#1C1530] border border-violet-900/40 flex items-center space-x-3 shrink-0">
+                {activeReplyStory.mediaUrl ? (
+                  <img
+                    src={activeReplyStory.mediaUrl}
+                    alt="Story"
+                    className="w-10 h-10 rounded-xl object-cover border border-violet-800/40 shrink-0"
+                  />
+                ) : (
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center text-[9px] font-black uppercase text-white shrink-0"
+                    style={{ background: activeReplyStory.style?.background || 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)' }}
+                  >
+                    Story
+                  </div>
+                )}
+                <div className="min-w-0 flex-1 text-xs">
+                  <div className="font-bold text-violet-300 flex items-center space-x-1.5 text-[10px]">
+                    <span>Original Story: {activeReplyStory.officialAuthorName || 'PulseChat'}</span>
+                    <span className="px-1 py-0.2 rounded text-[8px] bg-violet-500/20 text-violet-300 border border-violet-500/30 font-bold uppercase">
+                      Reference
+                    </span>
+                  </div>
+                  <p className="text-violet-200/80 line-clamp-1 text-[11px] mt-0.5">
+                    {activeReplyStory.text || (activeReplyStory.mediaUrl ? 'Photo / Media' : 'Story Content')}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Message Stream */}
+            <div className="flex-1 overflow-y-auto space-y-3 p-3 rounded-2xl bg-[#0D091A] border border-violet-900/30 min-h-[260px] max-h-[380px]">
+              {loadingOfficialConv ? (
+                <div className="py-12 flex flex-col items-center justify-center text-violet-400/60 space-y-2">
+                  <Loader2 className="w-6 h-6 animate-spin text-violet-500" />
+                  <span className="text-xs">Loading official conversation history...</span>
+                </div>
+              ) : officialConvMessages.length === 0 ? (
+                <div className="py-12 text-center text-violet-400/50 text-xs">
+                  No previous messages in this official conversation. Type below to send the first response!
+                </div>
+              ) : (
+                officialConvMessages.map((msg, mIdx) => {
+                  const isFromOfficial = Boolean(msg.isOfficialResponse || msg.sender?.isOfficial || (msg.sender?.username || '').toLowerCase() === 'pulsechat_official');
+
+                  return (
+                    <div
+                      key={msg._id || mIdx}
+                      className={`flex flex-col ${isFromOfficial ? 'items-end' : 'items-start'}`}
+                    >
+                      {/* Sender label */}
+                      <span className="text-[10px] text-violet-400/60 font-semibold mb-1 px-1">
+                        {isFromOfficial ? 'PulseChat Official' : activeReplyUser.nickname || activeReplyUser.username}
+                      </span>
+
+                      {/* Bubble */}
+                      <div
+                        className={`max-w-[82%] rounded-2xl p-3 text-xs leading-relaxed shadow-md ${
+                          isFromOfficial
+                            ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-tr-xs'
+                            : 'bg-[#1C1530] text-violet-100 border border-violet-900/50 rounded-tl-xs'
+                        }`}
+                      >
+                        {/* Story reply banner if attached */}
+                        {msg.storyReply && (
+                          <div className="mb-2 p-2 rounded-xl bg-black/30 border border-white/10 text-[10px]">
+                            <div className="font-bold text-violet-300">Replied to Story:</div>
+                            <div className="text-white/80 line-clamp-1">{msg.storyReply.storyText || 'Media Story'}</div>
+                          </div>
+                        )}
+                        <OfficialMessageContent message={msg} conversationId={activeReplyConvId} />
+                        <div className="flex items-center justify-end space-x-1.5 mt-1 text-[9px] opacity-75 font-mono">
+                          <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      </div>
+
+                      {/* Internal Admin Audit Badge (Visible only to admins) */}
+                      {isFromOfficial && msg.adminResponder && (
+                        <div className="text-[9px] text-violet-400/70 mt-0.5 px-1 font-mono">
+                          Replied by Admin: {msg.adminResponder.nickname || msg.adminResponder.username || 'Admin'}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Reply Input Bar */}
+            <form onSubmit={handleSendOfficialResponse} className="space-y-2 pt-1">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="text"
+                  value={officialResponseText}
+                  onChange={(e) => setOfficialResponseText(e.target.value)}
+                  placeholder={`Reply to @${activeReplyUser.username || 'user'} as PulseChat...`}
+                  className="flex-1 px-4 py-2.5 bg-[#1C1530] border border-violet-900/50 rounded-2xl text-xs text-white placeholder-violet-400/40 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                />
+                <button
+                  type="submit"
+                  disabled={!officialResponseText.trim() || sendingOfficialResponse}
+                  className="px-4 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold rounded-2xl text-xs shadow-md transition cursor-pointer disabled:opacity-40 flex items-center space-x-1.5 shrink-0"
+                >
+                  {sendingOfficialResponse ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5" />
+                  )}
+                  <span>Reply</span>
+                </button>
+              </div>
+              <p className="text-[10px] text-violet-400/60 px-1">
+                Unified Official Response · User sees response from <strong className="text-violet-300">PulseChat</strong>. All admins can see this history.
+              </p>
+            </form>
           </div>
         </div>
       )}

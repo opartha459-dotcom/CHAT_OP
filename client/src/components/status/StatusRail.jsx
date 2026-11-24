@@ -31,6 +31,29 @@ export const StatusRail = () => {
 
   // Render user avatar.
   const renderAvatar = (person, fallback = 'U') => {
+    const isOfficial = Boolean(
+      person?.isOfficial ||
+      (person?.nickname || '').toLowerCase().includes('pulsechat') ||
+      (person?.username || '').toLowerCase().includes('pulsechat')
+    );
+
+    if (isOfficial) {
+      const officialAvatar = (person?.avatar && !person.avatar.includes('1618005182384'))
+        ? person.avatar
+        : '/icons/icon-192.png';
+      return (
+        <img
+          src={officialAvatar}
+          alt="PulseChat"
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = '/icons/icon.svg';
+          }}
+        />
+      );
+    }
+
     const displayName =
       person?.nickname || person?.username || fallback;
 

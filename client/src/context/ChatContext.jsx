@@ -521,12 +521,24 @@ export const ChatProvider = ({ children }) => {
       }
     };
 
+    const handleConversationDeleted = ({ conversationId }) => {
+      if (!conversationId) return;
+      const cIdStr = conversationId.toString();
+      setConversations((prev) => prev.filter((c) => c._id?.toString() !== cIdStr));
+      messageCacheRef.current.delete(cIdStr);
+      if (activeConversationRef.current?._id?.toString() === cIdStr) {
+        setActiveConversation(null);
+        setMessages([]);
+      }
+    };
+
     socket.on('message:received', handleMessageReceived);
     socket.on('message:new', handleMessageReceived);
     socket.on('message:edited', handleMessageEdited);
     socket.on('message:deleted', handleMessageDeleted);
     socket.on('message:reacted', handleMessageReacted);
     socket.on('conversation:updated', handleConversationUpdated);
+    socket.on('conversation:deleted', handleConversationDeleted);
     socket.on('message:pinned', handleMessagePinned);
     socket.on('message:unpinned', handleMessageUnpinned);
     socket.on('poll:updated', handlePollUpdated);
@@ -538,6 +550,7 @@ export const ChatProvider = ({ children }) => {
       socket.off('message:deleted', handleMessageDeleted);
       socket.off('message:reacted', handleMessageReacted);
       socket.off('conversation:updated', handleConversationUpdated);
+      socket.off('conversation:deleted', handleConversationDeleted);
       socket.off('message:pinned', handleMessagePinned);
       socket.off('message:unpinned', handleMessageUnpinned);
       socket.off('poll:updated', handlePollUpdated);

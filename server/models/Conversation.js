@@ -65,6 +65,11 @@ const conversationSchema = new mongoose.Schema(
       type: Boolean,
       default: true
     },
+    isOfficial: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
     pinnedBy: [
       {
         type: mongoose.Schema.Types.ObjectId,

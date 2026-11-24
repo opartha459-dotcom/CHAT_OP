@@ -56,12 +56,25 @@ export const Avatar = ({
   const defaultRing = noRing ? '' : 'ring-1 ring-slate-700/60';
   const appliedRing = ringClass || defaultRing;
 
+  const isPulseChat = Boolean(
+    (name || '').toLowerCase().includes('pulsechat') ||
+    (name || '').toLowerCase() === 'official' ||
+    (src && typeof src === 'string' && src.includes('1618005182384'))
+  );
+  const effectiveSrc = (src && !src.includes('1618005182384')) ? src : (isPulseChat ? '/icons/icon-192.png' : null);
+
   return (
     <div className="relative inline-flex items-center justify-center flex-shrink-0">
-      {src ? (
+      {effectiveSrc ? (
         <img
-          src={src}
+          src={effectiveSrc}
           alt={name}
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            if (isPulseChat) {
+              e.currentTarget.src = '/icons/icon.svg';
+            }
+          }}
           className={`${sizeClasses[size] || sizeClasses.md} rounded-full object-cover shrink-0 aspect-square ${appliedRing}`}
         />
       ) : (
