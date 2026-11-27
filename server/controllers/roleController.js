@@ -10,6 +10,38 @@ const toSlug = (name) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
+const DEFAULT_PAGE_ACCESS = {
+  chats: true,
+  stories: true,
+  calls: true,
+  communities: true,
+  settings: true
+};
+
+const sanitizePageAccess = (raw) => {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  return {
+    chats: src.chats !== false,
+    stories: src.stories !== false,
+    calls: src.calls !== false,
+    communities: src.communities !== false,
+    settings: src.settings !== false
+  };
+};
+
+const sanitizeRestrictedMessages = (raw) => {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const clean = (v) => (typeof v === 'string' ? v.trim().slice(0, 300) : '');
+  return {
+    default: clean(src.default),
+    chats: clean(src.chats),
+    stories: clean(src.stories),
+    calls: clean(src.calls),
+    communities: clean(src.communities),
+    settings: clean(src.settings)
+  };
+};
+
 // @desc Get centralized permission catalog
 // @route GET /api/admin/permissions
 const getPermissionCatalog = async (req, res) => {
@@ -85,7 +117,7 @@ const getRoleById = async (req, res) => {
 // @route POST /api/admin/roles
 const createRole = async (req, res) => {
   try {
-    const { name, description = '', permissions = [] } = req.body;
+    const { name, description = '', permissions = [], pageAccess, restrictedMessages } = req.body;
     const cleanName = typeof name === 'string' ? name.trim() : '';
 
     if (!cleanName || cleanName.length < 2) {
@@ -110,8 +142,15 @@ const createRole = async (req, res) => {
     }
 
     const cleanPermissions = sanitizePermissions(permissions);
-    if (cleanPermissions.length === 0) {
-      return res.status(400).json({ success: false, message: 'Please select at least one valid permission.' });
+    const cleanPageAccess = sanitizePageAccess(pageAccess);
+    const cleanRestrictedMessages = sanitizeRestrictedMessages(restrictedMessages);
+    const hasPageRestriction = Object.values(cleanPageAccess).some((v) => v === false);
+
+    if (cleanPermissions.length === 0 && !hasPageRestriction) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please select at least one permission or configure app page access restrictions.'
+      });
     }
 
     const role = await Role.create({
@@ -119,6 +158,8 @@ const createRole = async (req, res) => {
       slug,
       description: String(description || '').trim(),
       permissions: cleanPermissions,
+      pageAccess: cleanPageAccess,
+      restrictedMessages: cleanRestrictedMessages,
       createdBy: req.user._id,
       updatedBy: req.user._id
     });
@@ -162,7 +203,7 @@ const updateRole = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Role not found.' });
     }
 
-    const { name, description, permissions } = req.body;
+    const { name, description, permissions, pageAccess, restrictedMessages } = req.body;
     const prevPermissions = [...(role.permissions || [])];
     const prevName = role.name;
 
@@ -187,10 +228,23 @@ const updateRole = async (req, res) => {
       role.description = String(description || '').trim();
     }
 
+    if (pageAccess !== undefined) {
+      role.pageAccess = sanitizePageAccess(pageAccess);
+    }
+
+    if (restrictedMessages !== undefined) {
+      role.restrictedMessages = sanitizeRestrictedMessages(restrictedMessages);
+    }
+
     if (permissions !== undefined) {
       const cleanPermissions = sanitizePermissions(permissions);
-      if (cleanPermissions.length === 0) {
-        return res.status(400).json({ success: false, message: 'Please select at least one valid permission.' });
+      const nextPageAccess = role.pageAccess || DEFAULT_PAGE_ACCESS;
+      const hasPageRestriction = Object.values(nextPageAccess).some((v) => v === false);
+      if (cleanPermissions.length === 0 && !hasPageRestriction) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please select at least one permission or configure app page access restrictions.'
+        });
       }
       role.permissions = cleanPermissions;
     }
@@ -263,6 +317,8 @@ const duplicateRole = async (req, res) => {
       slug: copySlug,
       description: source.description || '',
       permissions: sanitizePermissions(source.permissions),
+      pageAccess: sanitizePageAccess(source.pageAccess),
+      restrictedMessages: sanitizeRestrictedMessages(source.restrictedMessages),
       createdBy: req.user._id,
       updatedBy: req.user._id
     });

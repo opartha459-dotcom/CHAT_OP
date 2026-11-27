@@ -20,7 +20,7 @@ const protect = async (req, res, next) => {
     const decoded = verifyToken(token);
     const userId = decoded?.userId || decoded?.id;
     const user = userId
-      ? await User.findById(userId).populate('customRole', 'name slug description permissions')
+      ? await User.findById(userId).populate('customRole', 'name slug description permissions pageAccess restrictedMessages')
       : null;
 
     if (!decoded || !userId || !user) {

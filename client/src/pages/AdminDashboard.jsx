@@ -3576,24 +3576,16 @@ export const AdminDashboard = () => {
                         </button>
                       )}
 
-                      {isSuperAdminUser(user) && u.role !== 'admin' && (
+                      {isSuperAdminUser(user) && u._id !== user?._id && (
                         <button
                           onClick={() => setAssignRoleUser(u)}
                           className="px-2.5 py-1.5 text-[11px] font-semibold bg-indigo-950/50 hover:bg-indigo-900/50 text-indigo-300 border border-indigo-700/40 rounded-xl transition cursor-pointer flex items-center space-x-1 shrink-0"
-                          title="Assign custom role"
+                          title="Assign custom role or promote to Super Admin"
                         >
                           <Shield className="w-3 h-3" />
-                          <span>{u.customRole?.name ? 'Change Role' : 'Assign Role'}</span>
-                        </button>
-                      )}
-
-                      {isSuperAdminUser(user) && (
-                        <button
-                          onClick={() => handleRoleToggle(u)}
-                          className="px-2.5 py-1.5 text-[11px] font-semibold bg-[#19142B] hover:bg-[#1E1833] text-violet-200 border border-violet-900/30 rounded-xl transition cursor-pointer shrink-0"
-                          title="Toggle admin / user role"
-                        >
-                          {u.role === 'admin' ? 'Demote' : 'Make Admin'}
+                          <span>
+                            {u.role === 'admin' || u.customRole?.name ? 'Manage Role' : 'Make Admin / Role'}
+                          </span>
                         </button>
                       )}
 
@@ -9501,6 +9493,7 @@ export const AdminDashboard = () => {
         isOpen={Boolean(assignRoleUser)}
         onClose={() => setAssignRoleUser(null)}
         targetUser={assignRoleUser}
+        currentUserId={user?._id}
         roles={customRoles}
         authHeaders={authHeaders}
         onAssigned={(data) => {

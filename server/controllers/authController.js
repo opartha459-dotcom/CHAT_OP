@@ -539,7 +539,7 @@ const login = async (req, res) => {
     await session.save();
 
     setTokenCookie(res, token);
-    await user.populate('customRole', 'name slug description permissions');
+    await user.populate('customRole', 'name slug description permissions pageAccess restrictedMessages');
 
     return res.json({
       success: true,
@@ -1072,7 +1072,7 @@ const getMe = async (req, res) => {
     const user = await User.findById(req.user._id)
       .populate('privacySettings.statusAllowedUsers', 'username nickname avatar')
       .populate('privacySettings.statusExcludedUsers', 'username nickname avatar')
-      .populate('customRole', 'name slug description permissions');
+      .populate('customRole', 'name slug description permissions pageAccess restrictedMessages');
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }

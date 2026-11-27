@@ -32,7 +32,15 @@ const resolveUserAccess = (user) => {
           name: roleDoc.name,
           slug: roleDoc.slug,
           description: roleDoc.description || '',
-          permissions: effectivePermissions
+          permissions: effectivePermissions,
+          pageAccess: roleDoc.pageAccess || {
+            chats: true,
+            stories: true,
+            calls: true,
+            communities: true,
+            settings: true
+          },
+          restrictedMessages: roleDoc.restrictedMessages || {}
         }
       : null,
     effectivePermissions

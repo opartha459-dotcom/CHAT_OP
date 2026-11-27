@@ -1,6 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { useChat } from '../context/ChatContext';
+import { useAuth } from '../context/AuthContext';
 import { useStatus } from '../context/StatusContext';
+import { canAccessAppPage, getRestrictedPageMessage } from '../utils/permissions';
+import { PageAccessDenied } from '../components/common/PageAccessDenied';
 import { Sidebar } from '../components/chat/Sidebar';
 import { ChatArea } from '../components/chat/ChatArea';
 import { AnnouncementBanner } from '../components/chat/AnnouncementBanner';
@@ -8,6 +11,7 @@ import { AnnouncementBanner } from '../components/chat/AnnouncementBanner';
 import { SettingsPanel } from '../components/settings/SettingsPanel';
 
 export const ChatDashboard = () => {
+  const { user } = useAuth();
   const { activeConversation, selectConversation, mainTab, setMainTab, settingsSubTab, setSettingsSubTab } = useChat();
   const { activeUserId, createModalOpen } = useStatus();
   const convHistoryPushedRef = useRef(false);
@@ -84,6 +88,14 @@ export const ChatDashboard = () => {
           }`}
         >
           {mainTab === 'settings' ? (
+            !canAccessAppPage(user, 'settings') ? (
+              <PageAccessDenied
+                pageName="Settings"
+                message={getRestrictedPageMessage(user, 'settings')}
+                user={user}
+                onGoBack={canAccessAppPage(user, 'chats') ? () => setMainTab('chats') : undefined}
+              />
+            ) : (
             <div className="pulse-adaptive-surface w-full h-full bg-slate-50 dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 flex flex-col min-w-0 overflow-hidden">
               <SettingsPanel
                 isModal={false}
@@ -92,6 +104,13 @@ export const ChatDashboard = () => {
                 setActiveTab={setSettingsSubTab}
               />
             </div>
+            )
+          ) : !canAccessAppPage(user, 'chats') ? (
+            <PageAccessDenied
+              pageName="Chats"
+              message={getRestrictedPageMessage(user, 'chats')}
+              user={user}
+            />
           ) : (
             <ChatArea onBackToSidebar={() => selectConversation(null)} />
           )}

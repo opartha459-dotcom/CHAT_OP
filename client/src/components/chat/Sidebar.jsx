@@ -55,7 +55,8 @@ import { useCall } from '../../context/CallContext';
 import { useSocket } from '../../context/SocketContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useStatus } from '../../context/StatusContext';
-import { hasAdminAccess } from '../../utils/permissions';
+import { hasAdminAccess, canAccessAppPage, getRestrictedPageMessage } from '../../utils/permissions';
+import { PageAccessDenied } from '../common/PageAccessDenied';
 import { Avatar } from '../common/Avatar';
 import { SidebarSkeleton } from '../common/Skeleton';
 import { NewChatModal } from '../modals/NewChatModal';
@@ -755,6 +756,29 @@ export const Sidebar = () => {
         {/* 4. MAIN SCROLLABLE CONTENT AREA BY ACTIVE TAB                 */}
         {/* ============================================================ */}
         <div className="flex-1 overflow-y-auto no-scrollbar divide-y divide-slate-100/60 dark:divide-slate-900">
+          {!canAccessAppPage(user, mainTab) ? (
+            <PageAccessDenied
+              pageName={
+                mainTab === 'updates'
+                  ? 'Stories'
+                  : mainTab === 'calls'
+                  ? 'Calls'
+                  : mainTab === 'communities'
+                  ? 'Communities'
+                  : mainTab === 'settings'
+                  ? 'Settings'
+                  : 'Chats'
+              }
+              message={getRestrictedPageMessage(user, mainTab)}
+              user={user}
+              onGoBack={
+                mainTab !== 'chats' && canAccessAppPage(user, 'chats')
+                  ? () => setMainTab('chats')
+                  : undefined
+              }
+            />
+          ) : (
+          <>
           {/* TAB: CHATS */}
           {mainTab === 'chats' && (
             <>
@@ -1472,7 +1496,7 @@ export const Sidebar = () => {
           )}
 
           {/* Mobile Detail Slide-Over */}
-          {mobileSettingsOpen && mainTab === 'settings' && (
+          {mobileSettingsOpen && mainTab === 'settings' && canAccessAppPage(user, 'settings') && (
             <div className="absolute inset-0 z-50 bg-[#0B0F19] flex flex-col md:hidden animate-in slide-in-from-right duration-200">
               <div className="flex items-center space-x-2 px-4 py-3.5 border-b border-slate-800 bg-[#080C14] flex-shrink-0">
                 <button
@@ -1495,6 +1519,8 @@ export const Sidebar = () => {
                 />
               </div>
             </div>
+          )}
+          </>
           )}
         </div>
 

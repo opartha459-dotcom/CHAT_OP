@@ -31,6 +31,21 @@ const roleSchema = new mongoose.Schema(
         message: 'Role contains one or more invalid permission identifiers.'
       }
     },
+    pageAccess: {
+      chats: { type: Boolean, default: true },
+      stories: { type: Boolean, default: true },
+      calls: { type: Boolean, default: true },
+      communities: { type: Boolean, default: true },
+      settings: { type: Boolean, default: true }
+    },
+    restrictedMessages: {
+      default: { type: String, trim: true, maxlength: 300, default: '' },
+      chats: { type: String, trim: true, maxlength: 300, default: '' },
+      stories: { type: String, trim: true, maxlength: 300, default: '' },
+      calls: { type: String, trim: true, maxlength: 300, default: '' },
+      communities: { type: String, trim: true, maxlength: 300, default: '' },
+      settings: { type: String, trim: true, maxlength: 300, default: '' }
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
