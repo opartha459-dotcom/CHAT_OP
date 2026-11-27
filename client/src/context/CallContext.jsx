@@ -63,6 +63,30 @@ export const CallProvider = ({ children }) => {
   const callStateRef = useRef(callState);
   const userRef = useRef(user);
   const callTimerRef = useRef(null);
+  const isVideoOffRef = useRef(isVideoOff);
+
+  useEffect(() => {
+    isVideoOffRef.current = isVideoOff;
+  }, [isVideoOff]);
+
+  // Always pick the negotiated (mid !== null) non-stopped video transceiver first
+  const getVideoTransceiver = useCallback((pc) => {
+    const transceivers = pc?.getTransceivers?.() || [];
+    return (
+      transceivers.find(
+        (t) =>
+          !t.stopped &&
+          t.mid !== null &&
+          (t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video')
+      ) ||
+      transceivers.find(
+        (t) =>
+          !t.stopped &&
+          (t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video')
+      ) ||
+      null
+    );
+  }, []);
   const pendingJoinCallIdRef = useRef(null);
   const acceptingCallIdRef = useRef(null);
 
@@ -170,17 +194,22 @@ export const CallProvider = ({ children }) => {
       });
     }
 
-    // Ensure video & audio transceivers exist so mid-call screen share or camera activation works without renegotiation errors
-    try {
-      const senders = pc.getSenders();
-      if (!senders.some((s) => s.track?.kind === 'audio' || s.kind === 'audio')) {
-        pc.addTransceiver('audio', { direction: 'sendrecv' });
+    // Only pre-create transceivers on the initiator before creating the offer.
+    // On the answerer (isInitiator === false), setRemoteDescription(offer) will
+    // create the exact matched transceivers — pre-creating them here causes orphan
+    // mid:null transceivers that break mid-call video upgrades from the caller.
+    if (isInitiator) {
+      try {
+        const senders = pc.getSenders();
+        if (!senders.some((s) => s.track?.kind === 'audio' || s.kind === 'audio')) {
+          pc.addTransceiver('audio', { direction: 'sendrecv' });
+        }
+        if (!senders.some((s) => s.track?.kind === 'video' || s.kind === 'video')) {
+          pc.addTransceiver('video', { direction: 'sendrecv' });
+        }
+      } catch (e) {
+        console.warn('[WebRTC] Transceiver non-fatal warning', e);
       }
-      if (!senders.some((s) => s.track?.kind === 'video' || s.kind === 'video')) {
-        pc.addTransceiver('video', { direction: 'sendrecv' });
-      }
-    } catch (e) {
-      console.warn('[WebRTC] Transceiver non-fatal warning', e);
     }
 
     // Receive remote tracks and preserve multi-track stream
@@ -188,7 +217,7 @@ export const CallProvider = ({ children }) => {
       const incomingTrack = event.track;
       const isVideoTrack = incomingTrack.kind === 'video';
 
-      const updateRemoteStream = () => {
+      const updateRemoteStream = (forceVideoOn = false) => {
         setRemoteStreams((prev) => {
           const existing = prev[targetSocketId];
           let streamToUse;
@@ -203,12 +232,19 @@ export const CallProvider = ({ children }) => {
             streamToUse = new MediaStream([incomingTrack]);
           }
 
+          const hasLiveUnmutedVideo =
+            isVideoTrack && (forceVideoOn || (!incomingTrack.muted && incomingTrack.readyState === 'live'));
+
           return {
             ...prev,
             [targetSocketId]: {
               stream: streamToUse,
               user: targetUser || existing?.user,
-              isVideoOff: isVideoTrack ? false : (existing?.isVideoOff ?? false),
+              isVideoOff: isVideoTrack
+                ? hasLiveUnmutedVideo
+                  ? false
+                  : (existing?.isVideoOff ?? (currentCallRef.current?.callType === 'audio'))
+                : (existing?.isVideoOff ?? false),
               isMuted: existing?.isMuted ?? false,
               isScreenSharing: existing?.isScreenSharing ?? false
             }
@@ -216,10 +252,10 @@ export const CallProvider = ({ children }) => {
         });
       };
 
-      updateRemoteStream();
+      updateRemoteStream(false);
 
       incomingTrack.onunmute = () => {
-        updateRemoteStream();
+        updateRemoteStream(true);
       };
 
       incomingTrack.onended = () => {
@@ -494,6 +530,35 @@ export const CallProvider = ({ children }) => {
   const toggleVideo = useCallback(async () => {
     if (!localStreamRef.current) return;
 
+    const sendRenegotiationOffer = async (targetSocketId, pc) => {
+      const activeCallId = currentCallRef.current?.callId || currentCall?.callId;
+      const doOffer = async () => {
+        try {
+          const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+          await pc.setLocalDescription(offer);
+          socket?.emit('call:signal', {
+            toSocketId: targetSocketId,
+            callId: activeCallId,
+            signal: { type: 'offer', sdp: pc.localDescription }
+          });
+        } catch (err) {
+          console.warn('[WebRTC] Renegotiation offer warning:', err);
+        }
+      };
+
+      if (pc.signalingState === 'stable') {
+        await doOffer();
+      } else {
+        const onStable = () => {
+          if (pc.signalingState === 'stable') {
+            pc.removeEventListener('signalingstatechange', onStable);
+            doOffer();
+          }
+        };
+        pc.addEventListener('signalingstatechange', onStable);
+      }
+    };
+
     const existingVideoTrack = localStreamRef.current.getVideoTracks()[0];
     const isLiveTrack = existingVideoTrack && existingVideoTrack.readyState === 'live';
 
@@ -501,35 +566,27 @@ export const CallProvider = ({ children }) => {
       existingVideoTrack.enabled = !existingVideoTrack.enabled;
       const newOff = !existingVideoTrack.enabled;
       setIsVideoOff(newOff);
+      isVideoOffRef.current = newOff;
 
       for (const [targetSocketId, pc] of Object.entries(peerConnectionsRef.current)) {
         try {
-          const videoTransceiver = pc.getTransceivers?.().find(
-            (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
-          );
+          const videoTransceiver = getVideoTransceiver(pc);
 
           if (videoTransceiver && videoTransceiver.sender) {
             videoTransceiver.direction = newOff ? 'recvonly' : 'sendrecv';
             await videoTransceiver.sender.replaceTrack(newOff ? null : existingVideoTrack).catch(() => {});
           }
 
-          if (pc.signalingState === 'stable') {
-            const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-            await pc.setLocalDescription(offer);
-            socket?.emit('call:signal', {
-              toSocketId: targetSocketId,
-              callId: currentCallRef.current?.callId || currentCall?.callId,
-              signal: { type: 'offer', sdp: pc.localDescription }
-            });
-          }
+          await sendRenegotiationOffer(targetSocketId, pc);
         } catch (err) {
           console.warn('[WebRTC] Toggle live video track warning:', err);
         }
       }
 
-      if (socket && currentCall) {
+      const activeCallId = currentCallRef.current?.callId || currentCall?.callId;
+      if (socket && activeCallId) {
         socket.emit('call:toggle-media', {
-          callId: currentCall.callId,
+          callId: activeCallId,
           isVideoOff: newOff
         });
       }
@@ -548,16 +605,18 @@ export const CallProvider = ({ children }) => {
         localStreamRef.current = combinedStream;
         setLocalStream(combinedStream);
         setIsVideoOff(false);
+        isVideoOffRef.current = false;
 
         // Update call type to video
         setCurrentCall((prev) => (prev ? { ...prev, callType: 'video' } : prev));
+        if (currentCallRef.current) {
+          currentCallRef.current = { ...currentCallRef.current, callType: 'video' };
+        }
 
         // Add or replace track in all active peer connections AND trigger renegotiation
         for (const [targetSocketId, pc] of Object.entries(peerConnectionsRef.current)) {
           try {
-            let videoTransceiver = pc.getTransceivers?.().find(
-              (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
-            );
+            const videoTransceiver = getVideoTransceiver(pc);
 
             if (videoTransceiver) {
               videoTransceiver.direction = 'sendrecv';
@@ -573,25 +632,16 @@ export const CallProvider = ({ children }) => {
               }
             }
 
-            // Always renegotiate if peer connection is stable so the remote peer
-            // immediately receives updated SDP and begins decoding the camera video track
-            if (pc.signalingState === 'stable') {
-              const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-              await pc.setLocalDescription(offer);
-              socket?.emit('call:signal', {
-                toSocketId: targetSocketId,
-                callId: currentCallRef.current?.callId || currentCall?.callId,
-                signal: { type: 'offer', sdp: pc.localDescription }
-              });
-            }
+            await sendRenegotiationOffer(targetSocketId, pc);
           } catch (pcErr) {
             console.warn('[WebRTC] Mid-call video upgrade error:', pcErr);
           }
         }
 
-        if (socket && currentCall) {
+        const activeCallId = currentCallRef.current?.callId || currentCall?.callId;
+        if (socket && activeCallId) {
           socket.emit('call:toggle-media', {
-            callId: currentCall.callId,
+            callId: activeCallId,
             isVideoOff: false,
             callType: 'video'
           });
@@ -601,7 +651,7 @@ export const CallProvider = ({ children }) => {
         alert('Could not access camera. Please check your camera permissions.');
       }
     }
-  }, [socket, currentCall]);
+  }, [socket, currentCall, getVideoTransceiver]);
 
   // Screen Sharing Toggle (Mobile-friendly & desktop support)
   const toggleScreenShare = useCallback(async () => {
@@ -610,9 +660,7 @@ export const CallProvider = ({ children }) => {
       const webcamTrack = localStreamRef.current?.getVideoTracks()[0] || null;
       for (const [targetSocketId, pc] of Object.entries(peerConnectionsRef.current)) {
         try {
-          const videoTransceiver = pc.getTransceivers?.().find(
-            (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
-          );
+          const videoTransceiver = getVideoTransceiver(pc);
           const sender = videoTransceiver?.sender || pc.getSenders().find(
             (s) => s.track?.kind === 'video' || (s.track === null && videoTransceiver?.sender === s)
           );
@@ -1141,10 +1189,8 @@ useEffect(() => {
 
         // If local user has an active camera video track, ensure it is attached before answering
         const localVideo = localStreamRef.current?.getVideoTracks?.()[0];
-        if (localVideo && localVideo.readyState === 'live' && !isVideoOff) {
-          const videoTransceiver = pc.getTransceivers?.().find(
-            (t) => t.receiver?.track?.kind === 'video' || t.sender?.track?.kind === 'video'
-          );
+        if (localVideo && localVideo.readyState === 'live' && localVideo.enabled && !isVideoOffRef.current) {
+          const videoTransceiver = getVideoTransceiver(pc);
           if (videoTransceiver) {
             videoTransceiver.direction = 'sendrecv';
             if (videoTransceiver.sender && videoTransceiver.sender.track !== localVideo) {
@@ -1163,11 +1209,15 @@ useEffect(() => {
         });
 
         // Ensure remote video track from transceiver is reflected in remoteStreams
-        const remoteVideoTrack = pc.getTransceivers?.().find(
-          (t) => t.receiver?.track?.kind === 'video'
-        )?.receiver?.track;
+        const remoteVideoTransceiver = getVideoTransceiver(pc);
+        const remoteVideoTrack = remoteVideoTransceiver?.receiver?.track;
 
         if (remoteVideoTrack) {
+          const remoteIsSending =
+            !remoteVideoTrack.muted ||
+            remoteVideoTransceiver?.currentDirection === 'sendrecv' ||
+            remoteVideoTransceiver?.currentDirection === 'recvonly';
+
           setRemoteStreams((prev) => {
             const existing = prev[fromSocketId];
             if (!existing) return prev;
@@ -1177,13 +1227,15 @@ useEffect(() => {
             } else if (!s.getTracks().some((t) => t.id === remoteVideoTrack.id)) {
               s.addTrack(remoteVideoTrack);
               s = new MediaStream(s.getTracks());
+            } else {
+              s = new MediaStream(s.getTracks());
             }
             return {
               ...prev,
               [fromSocketId]: {
                 ...existing,
                 stream: s,
-                isVideoOff: false
+                isVideoOff: remoteIsSending && !remoteVideoTrack.muted ? false : existing.isVideoOff
               }
             };
           });
@@ -1203,11 +1255,15 @@ useEffect(() => {
           }
 
           // Ensure remote video track from transceiver is reflected in remoteStreams
-          const remoteVideoTrack = pc.getTransceivers?.().find(
-            (t) => t.receiver?.track?.kind === 'video'
-          )?.receiver?.track;
+          const remoteVideoTransceiver = getVideoTransceiver(pc);
+          const remoteVideoTrack = remoteVideoTransceiver?.receiver?.track;
 
           if (remoteVideoTrack) {
+            const remoteIsSending =
+              !remoteVideoTrack.muted ||
+              remoteVideoTransceiver?.currentDirection === 'sendrecv' ||
+              remoteVideoTransceiver?.currentDirection === 'recvonly';
+
             setRemoteStreams((prev) => {
               const existing = prev[fromSocketId];
               if (!existing) return prev;
@@ -1217,13 +1273,15 @@ useEffect(() => {
               } else if (!s.getTracks().some((t) => t.id === remoteVideoTrack.id)) {
                 s.addTrack(remoteVideoTrack);
                 s = new MediaStream(s.getTracks());
+              } else {
+                s = new MediaStream(s.getTracks());
               }
               return {
                 ...prev,
                 [fromSocketId]: {
                   ...existing,
                   stream: s,
-                  isVideoOff: false
+                  isVideoOff: remoteIsSending && !remoteVideoTrack.muted ? false : existing.isVideoOff
                 }
               };
             });
@@ -1340,7 +1398,7 @@ useEffect(() => {
     socket.off('call:offline');
     socket.off('call:user-offline');
   };
-}, [socket, createPeerConnection, removePeer, endCall, cleanupCall]);
+}, [socket, createPeerConnection, removePeer, endCall, cleanupCall, getVideoTransceiver]);
 
 return (
   <CallContext.Provider
