@@ -985,7 +985,7 @@ export const SettingsPanel = ({
   ];
 
   return (
-    <div className={`flex flex-col ${showNavigation ? 'md:flex-row' : ''} w-full h-full bg-[#0B0F19] text-slate-100 overflow-hidden ${isModal ? 'max-h-[85vh]' : ''
+    <div className={`pulse-adaptive-surface flex flex-col ${showNavigation ? 'md:flex-row' : ''} w-full h-full bg-slate-50 dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 overflow-hidden ${isModal ? 'max-h-[85vh]' : ''
       }`}>
       {showNavigation && (
         <div className="w-full md:w-60 bg-[#080C14] p-4 border-b md:border-b-0 md:border-r border-slate-800/80 flex flex-col justify-between flex-shrink-0">

@@ -88,55 +88,84 @@ const exportChat = async (req, res) => {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.html"`);
 
+      const escapeHtml = (str = '') =>
+        String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+
       let htmlRows = messages
         .map((m) => {
-          const timeStr = new Date(m.createdAt).toLocaleString();
-          const senderStr = m.sender ? (m.sender.nickname || m.sender.username) : 'System';
+          const timeStr = escapeHtml(new Date(m.createdAt).toLocaleString());
+          const senderStr = escapeHtml(m.sender ? (m.sender.nickname || m.sender.username) : 'System');
           const isMe = m.sender && m.sender._id.toString() === currentUserId.toString();
-          const contentStr = m.isDeletedForEveryone ? '<em>[This message was deleted]</em>' : (m.content || '');
+          const contentStr = m.isDeletedForEveryone
+            ? '<em>[This message was deleted]</em>'
+            : escapeHtml(m.content || '').replace(/\n/g, '<br/>');
           const attachmentStr = m.fileUrl
-            ? `<div class="attachment">📎 <a href="${m.fileUrl}" target="_blank">${m.fileName || 'Download Media'}</a></div>`
+            ? `<div class="attachment">Attachment: <a href="${escapeHtml(m.fileUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.fileName || 'Download Media')}</a></div>`
             : '';
 
           return `
             <div class="msg ${isMe ? 'msg-me' : 'msg-other'}">
-              <div class="sender">${senderStr}</div>
+              <div class="msg-meta">
+                <span class="sender">${senderStr}</span>
+                <span class="time">${timeStr}</span>
+              </div>
               <div class="bubble">${contentStr}${attachmentStr}</div>
-              <div class="time">${timeStr}</div>
             </div>
           `;
         })
         .join('');
 
+      const safeTitle = escapeHtml(title);
+      const safeUser = escapeHtml(req.user.username);
+
       const fullHtml = `
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
         <head>
           <meta charset="utf-8" />
-          <title>${title} - Chat Export</title>
+          <title>${safeTitle} - PulseChat Transcript</title>
           <style>
+            @page { size: A4; margin: 18mm 14mm; }
+            * { box-sizing: border-box; }
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
-            .container { max-width: 760px; margin: 0 auto; background: #1e293b; border-radius: 12px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
-            header { border-bottom: 1px solid #334155; padding-bottom: 16px; margin-bottom: 24px; }
-            h1 { margin: 0 0 8px; font-size: 22px; color: #818cf8; }
-            .meta { font-size: 13px; color: #94a3b8; }
-            .msg { margin-bottom: 16px; display: flex; flex-direction: column; }
+            .container { max-width: 780px; margin: 0 auto; background: #1e293b; border-radius: 14px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+            header { border-bottom: 1px solid #334155; padding-bottom: 16px; margin-bottom: 20px; }
+            h1 { margin: 0 0 6px; font-size: 20px; color: #818cf8; overflow-wrap: anywhere; }
+            .meta { font-size: 12px; color: #94a3b8; }
+            .msg { margin-bottom: 14px; display: flex; flex-direction: column; break-inside: avoid; page-break-inside: avoid; }
             .msg-me { align-items: flex-end; }
             .msg-other { align-items: flex-start; }
-            .sender { font-size: 12px; font-weight: 600; color: #a5b4fc; margin-bottom: 4px; }
-            .bubble { max-width: 80%; padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5; word-break: break-word; }
+            .msg-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+            .sender { font-size: 12px; font-weight: 600; color: #a5b4fc; }
+            .time { font-size: 11px; color: #64748b; }
+            .bubble { max-width: 78%; padding: 10px 14px; border-radius: 16px; font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
             .msg-me .bubble { background: #4f46e5; color: #fff; border-bottom-right-radius: 4px; }
             .msg-other .bubble { background: #334155; color: #f8fafc; border-bottom-left-radius: 4px; }
-            .time { font-size: 11px; color: #64748b; margin-top: 4px; }
-            .attachment { margin-top: 6px; font-size: 13px; }
-            .attachment a { color: #38bdf8; text-decoration: underline; }
+            .attachment { margin-top: 6px; font-size: 12px; }
+            .attachment a { color: #38bdf8; text-decoration: underline; overflow-wrap: anywhere; }
+            @media print {
+              body { background: #ffffff; color: #0f172a; padding: 0; }
+              .container { max-width: 100%; background: #ffffff; box-shadow: none; padding: 0; border-radius: 0; }
+              header { border-bottom-color: #e2e8f0; }
+              h1 { color: #4338ca; }
+              .meta, .time { color: #475569; }
+              .sender { color: #334155; }
+              .msg-me .bubble { background: #eef2ff; color: #1e1b4b; border: 1px solid #c7d2fe; }
+              .msg-other .bubble { background: #f8fafc; color: #0f172a; border: 1px solid #e2e8f0; }
+              .attachment a { color: #2563eb; }
+            }
           </style>
         </head>
         <body>
           <div class="container">
             <header>
-              <h1>${title}</h1>
-              <div class="meta">Exported on ${new Date().toLocaleString()} by @${req.user.username}</div>
+              <h1>${safeTitle}</h1>
+              <div class="meta">Exported on ${escapeHtml(new Date().toLocaleString())} by @${safeUser} • ${messages.length} messages</div>
             </header>
             <div class="chat-thread">
               ${htmlRows}

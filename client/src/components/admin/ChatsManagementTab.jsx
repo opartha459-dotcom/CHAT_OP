@@ -39,6 +39,39 @@ export const ChatsManagementTab = ({
   const [messageSearch, setMessageSearch] = useState('');
   const [deletingMessageId, setDeletingMessageId] = useState(null);
   const [deletingChatId, setDeletingChatId] = useState(null);
+  const [selectedChatIds, setSelectedChatIds] = useState([]);
+  const [bulkDeletingChats, setBulkDeletingChats] = useState(false);
+
+  const handleBulkDeleteChats = async () => {
+    if (!selectedChatIds.length) return;
+    if (
+      !window.confirm(
+        `Permanently delete ${selectedChatIds.length} selected conversation(s) and ALL of their messages? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setBulkDeletingChats(true);
+    try {
+      const results = await Promise.allSettled(
+        selectedChatIds.map((id) =>
+          fetch(`/api/admin/chats/${id}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+            credentials: 'include'
+          })
+        )
+      );
+      const deletedCount = results.filter((r) => r.status === 'fulfilled' && r.value?.ok).length;
+      setSelectedChatIds([]);
+      showFeedback?.(`Deleted ${deletedCount} of ${selectedChatIds.length} conversation(s).`, 'success');
+      loadAllChats?.();
+    } catch {
+      showFeedback?.('Failed during bulk chat deletion.', 'error');
+    } finally {
+      setBulkDeletingChats(false);
+    }
+  };
 
   // Filtered chats
   const filteredChats = useMemo(() => {
@@ -345,7 +378,61 @@ export const ChatsManagementTab = ({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-3.5">
+          {/* Bulk Select & Delete Bar for Chats */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2.5 bg-[#1F1833] border border-violet-800/40 rounded-2xl">
+            <div className="flex items-center space-x-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const allIds = filteredChats.map((c) => c._id);
+                  const allSelected = allIds.length > 0 && allIds.every((id) => selectedChatIds.includes(id));
+                  setSelectedChatIds(allSelected ? [] : allIds);
+                }}
+                className="flex items-center space-x-2 text-xs font-semibold text-violet-200 hover:text-white cursor-pointer"
+              >
+                <span
+                  className={`w-4 h-4 rounded border flex items-center justify-center transition ${
+                    filteredChats.length > 0 && filteredChats.every((c) => selectedChatIds.includes(c._id))
+                      ? 'bg-gradient-to-tr from-violet-600 to-fuchsia-600 border-violet-400 text-white'
+                      : 'bg-[#19142B] border-violet-700/60 text-transparent'
+                  }`}
+                >
+                  ✓
+                </span>
+                <span>Select All ({filteredChats.length})</span>
+              </button>
+
+              {selectedChatIds.length > 0 && (
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-violet-600/30 text-violet-200 border border-violet-500/40 font-mono">
+                  {selectedChatIds.length} selected
+                </span>
+              )}
+            </div>
+
+            {selectedChatIds.length > 0 && (
+              <div className="flex items-center space-x-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setSelectedChatIds([])}
+                  className="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold text-violet-300 hover:text-white bg-white/5 hover:bg-white/10 transition cursor-pointer"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkDeleteChats}
+                  disabled={bulkDeletingChats}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 disabled:opacity-50 shadow-md transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{bulkDeletingChats ? 'Deleting...' : `Delete Selected (${selectedChatIds.length})`}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredChats.map((c) => {
             const isGroup = c.type === 'group';
             const title = isGroup
@@ -355,14 +442,36 @@ export const ChatsManagementTab = ({
               ? c.groupDetails?.description || 'Active group channel'
               : `1-on-1 private encrypted chat (${c.participants?.length || 2} members)`;
 
+            const isSelectedChat = selectedChatIds.includes(c._id);
+
             return (
               <div
                 key={c._id}
-                className="p-5 bg-[#231C38] border border-violet-900/30 rounded-3xl shadow-md hover:border-violet-500/50 hover:shadow-lg hover:shadow-violet-950/40 transition-all flex flex-col justify-between space-y-4"
+                className={`p-5 bg-[#231C38] border rounded-3xl shadow-md hover:shadow-lg hover:shadow-violet-950/40 transition-all flex flex-col justify-between space-y-4 ${
+                  isSelectedChat
+                    ? 'border-fuchsia-500 ring-2 ring-fuchsia-500/40'
+                    : 'border-violet-900/30 hover:border-violet-500/50'
+                }`}
               >
                 {/* Card Top Info */}
                 <div className="space-y-3">
                   <div className="flex items-start space-x-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedChatIds((prev) =>
+                          prev.includes(c._id) ? prev.filter((id) => id !== c._id) : [...prev, c._id]
+                        )
+                      }
+                      aria-label={isSelectedChat ? 'Deselect chat' : 'Select chat'}
+                      className={`mt-1 w-5 h-5 rounded-md border flex items-center justify-center transition cursor-pointer shrink-0 text-[11px] font-bold ${
+                        isSelectedChat
+                          ? 'bg-gradient-to-tr from-violet-600 to-fuchsia-600 border-violet-400 text-white'
+                          : 'bg-[#19142B] border-violet-700/60 hover:border-violet-400 text-transparent'
+                      }`}
+                    >
+                      ✓
+                    </button>
                     <div
                       className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 shadow-xs ${
                         isGroup
@@ -458,6 +567,7 @@ export const ChatsManagementTab = ({
               </div>
             );
           })}
+          </div>
         </div>
       )}
 

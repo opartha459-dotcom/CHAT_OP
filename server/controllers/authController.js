@@ -4,7 +4,19 @@ const Session = require('../models/Session');
 const AccountRecoveryRequest = require('../models/AccountRecoveryRequest');
 const VerificationCode = require('../models/VerificationCode');
 const { generateToken, setTokenCookie, clearTokenCookie } = require('../utils/token');
+const { resolveUserAccess } = require('../middlewares/adminAuth');
 const emailService = require('../services/emailService');
+
+const serializeUserWithRbac = (user) => {
+  const obj = typeof user.toJSON === 'function' ? user.toJSON() : { ...user };
+  const rbac = resolveUserAccess(user);
+  return {
+    ...obj,
+    isSuperAdmin: rbac.isSuperAdmin,
+    customRole: rbac.customRole,
+    effectivePermissions: rbac.effectivePermissions
+  };
+};
 
 // Helper to hash single-use tokens with SHA-256
 const hashToken = (token) => {
@@ -527,11 +539,12 @@ const login = async (req, res) => {
     await session.save();
 
     setTokenCookie(res, token);
+    await user.populate('customRole', 'name slug description permissions');
 
     return res.json({
       success: true,
       message: 'Login successful.',
-      user: user.toJSON(),
+      user: serializeUserWithRbac(user),
       token
     });
   } catch (error) {
@@ -1058,7 +1071,8 @@ const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
       .populate('privacySettings.statusAllowedUsers', 'username nickname avatar')
-      .populate('privacySettings.statusExcludedUsers', 'username nickname avatar');
+      .populate('privacySettings.statusExcludedUsers', 'username nickname avatar')
+      .populate('customRole', 'name slug description permissions');
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
@@ -1072,7 +1086,7 @@ const getMe = async (req, res) => {
 
     return res.json({
       success: true,
-      user: user.toJSON()
+      user: serializeUserWithRbac(user)
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Error fetching profile.' });

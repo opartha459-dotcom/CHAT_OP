@@ -85,7 +85,7 @@ export const NewChatModal = ({ isOpen, onClose }) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md bg-[#0B0F19] text-slate-100 border border-slate-800/90 rounded-[28px] shadow-2xl shadow-purple-950/30 overflow-hidden flex flex-col max-h-[85vh]">
+      <div className="pulse-adaptive-surface w-full max-w-md bg-white dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800/90 rounded-[28px] shadow-2xl shadow-slate-900/15 dark:shadow-purple-950/30 overflow-hidden flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/80 bg-slate-900/40">
           <div className="flex items-center space-x-3">

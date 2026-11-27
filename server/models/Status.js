@@ -180,6 +180,11 @@ const statusSchema = new mongoose.Schema(
         default: false
       }
     },
+    lifeMode: {
+      type: String,
+      enum: ['24h', 'custom', 'forever'],
+      default: '24h'
+    },
     expiresAt: {
       type: Date,
       default: () => new Date(Date.now() + 24 * 60 * 60 * 1000),

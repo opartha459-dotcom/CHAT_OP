@@ -32,7 +32,10 @@ import {
   ArrowUpRight,
   Share2,
   Pin,
-  ImageOff
+  ImageOff,
+  MessageCircle,
+  Forward,
+  CheckSquare
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -58,8 +61,8 @@ const RenderMessageContent = ({ content, isMe, onOpenJoinModal }) => {
   const parts = content.split(URL_REGEX);
 
   return (
-    <div className="space-y-2">
-      <div className="whitespace-pre-wrap leading-relaxed break-words">
+    <div className="space-y-2 min-w-0 max-w-full">
+      <div className="whitespace-pre-wrap leading-relaxed break-words [overflow-wrap:anywhere]">
         {parts.map((part, i) => {
           if (!part) return null;
 
@@ -82,14 +85,14 @@ const RenderMessageContent = ({ content, isMe, onOpenJoinModal }) => {
                     onOpenJoinModal(groupInviteCode);
                   }
                 }}
-                className={`inline-flex items-center gap-0.5 underline underline-offset-2 break-all font-semibold transition ${
+                className={`inline underline underline-offset-2 break-all [overflow-wrap:anywhere] font-semibold transition ${
                   isMe
                     ? 'text-sky-200 hover:text-white'
                     : 'text-indigo-600 dark:text-indigo-400 hover:text-indigo-500'
                 }`}
               >
                 <span>{part}</span>
-                <ExternalLink className="w-3 h-3 inline flex-shrink-0 opacity-80 ml-0.5" />
+                <ExternalLink className="w-3 h-3 inline align-baseline opacity-80 ml-1" />
               </a>
             );
           }
@@ -142,9 +145,17 @@ const RenderMessageContent = ({ content, isMe, onOpenJoinModal }) => {
   );
 };
 
-export const MessageBubble = ({ message, isGroup = false }) => {
+export const MessageBubble = ({
+  message,
+  isGroup = false,
+  selectionMode = false,
+  isSelected = false,
+  onToggleSelect,
+  onStartSelect,
+  onForwardSingle
+}) => {
   const { user } = useAuth();
-  const { setReplyMessage, editMessage, deleteMessage, reactToMessage, activeConversation, authHeaders } = useChat();
+  const { setReplyMessage, replyPrivatelyFromGroup, editMessage, deleteMessage, reactToMessage, activeConversation, authHeaders } = useChat();
   const { startCall } = useCall();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -412,10 +423,25 @@ export const MessageBubble = ({ message, isGroup = false }) => {
     <>
       <div
         id={`msg-${message._id}`}
-        className={`group relative flex items-end space-x-2 my-2 select-text transition-all duration-300 ${
+        onClick={selectionMode ? () => onToggleSelect?.(message._id) : undefined}
+        className={`group relative flex items-end space-x-2 my-2 transition-all duration-200 ${
+          selectionMode ? 'cursor-pointer select-none px-2 py-1 rounded-2xl' : 'select-text'
+        } ${isSelected ? 'bg-indigo-500/10 dark:bg-indigo-500/15' : ''} ${
           isMe ? 'justify-end' : 'justify-start'
         }`}
       >
+        {/* Multi-select checkbox */}
+        {selectionMode && (
+          <div
+            className={`self-center w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition ${
+              isSelected
+                ? 'bg-indigo-600 border-indigo-500 text-white'
+                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900'
+            } ${isMe ? 'order-first mr-auto' : 'mr-1'}`}
+          >
+            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+          </div>
+        )}
         {/* Other user avatar in groups */}
         {!isMe && isGroup && (
           <Avatar
@@ -426,7 +452,7 @@ export const MessageBubble = ({ message, isGroup = false }) => {
         )}
 
         {/* Message wrapper */}
-        <div className={`relative max-w-[85%] md:max-w-[70%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+        <div className={`relative max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] min-w-0 flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
           {/* Sender nickname & role badge in group */}
           {!isMe && isGroup && (
             <div className="flex items-center space-x-1.5 mb-1 ml-1 select-none">
@@ -448,6 +474,14 @@ export const MessageBubble = ({ message, isGroup = false }) => {
             </div>
           )}
 
+          {/* Forwarded indicator */}
+          {message.forwardFrom && (
+            <div className="flex items-center space-x-1 text-[10px] italic text-slate-400 dark:text-slate-400 mb-0.5 px-1 select-none">
+              <Forward className="w-3 h-3" />
+              <span>Forwarded</span>
+            </div>
+          )}
+
           {/* Replied preview header */}
           {message.replyTo && (
             <div className={`text-xs px-3 py-1.5 mb-1 rounded-t-xl border-l-2 bg-slate-100 dark:bg-slate-800/80 max-w-full truncate ${
@@ -463,7 +497,7 @@ export const MessageBubble = ({ message, isGroup = false }) => {
           )}
 
           {/* Story Reply preview header */}
-          {message.storyReply && (
+          {Boolean(message.storyReply?.statusId || message.storyReply?.storyText || message.storyReply?.storyMediaUrl) && (
             <div className={`text-xs px-3 py-2 mb-1.5 rounded-xl border-l-4 bg-slate-100/90 dark:bg-slate-800/90 max-w-full flex items-center space-x-2.5 overflow-hidden shadow-sm ${
               isMe ? 'border-indigo-500' : 'border-purple-500'
             }`}>
@@ -497,7 +531,7 @@ export const MessageBubble = ({ message, isGroup = false }) => {
           {/* Bubble content */}
           <div
             onClick={() => setMobileActionsOpen((prev) => !prev)}
-            className={`relative px-4 py-2.5 rounded-2xl shadow-sm text-sm break-words cursor-pointer md:cursor-auto ${
+            className={`relative max-w-full min-w-0 px-3.5 sm:px-4 py-2.5 rounded-2xl shadow-sm text-sm break-words [overflow-wrap:anywhere] cursor-pointer md:cursor-auto ${
               isMe
                 ? 'bg-accent text-white rounded-br-xs'
                 : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-100 dark:border-slate-700/60 rounded-bl-xs'
@@ -620,7 +654,7 @@ export const MessageBubble = ({ message, isGroup = false }) => {
 
             {/* Bubble Footer: Timestamp, Edit tag, and Read Status */}
             <div
-              className={`flex items-center space-x-1.5 mt-1 text-[10px] ${
+              className={`flex items-center space-x-1.5 mt-1 text-[10px] shrink-0 whitespace-nowrap select-none ${
                 isMe ? 'text-indigo-200 justify-end' : 'text-slate-400 justify-end'
               }`}
             >
@@ -679,13 +713,18 @@ export const MessageBubble = ({ message, isGroup = false }) => {
           )}
         </div>
 
-        {/* Micro-Actions Toolbar (Mobile tap or Desktop hover) */}
-        {!isDeleted && (
+        {/* Micro-Actions Toolbar (Floating overlay on mobile tap, inline hover on desktop) */}
+        {!selectionMode && !isDeleted && (
           <div
+            onClick={(e) => e.stopPropagation()}
             className={`${
-              mobileActionsOpen ? 'flex opacity-100 scale-100 z-20 shadow-lg' : 'hidden md:flex opacity-0 group-hover:opacity-100'
-            } transition-all duration-150 items-center space-x-0.5 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-md ${
-              isMe ? 'order-first' : 'order-last'
+              mobileActionsOpen
+                ? `flex opacity-100 scale-100 z-30 shadow-lg max-md:absolute max-md:bottom-full max-md:mb-1.5 ${
+                    isMe ? 'max-md:right-0' : 'max-md:left-0'
+                  } max-md:max-w-[calc(100vw-2rem)]`
+                : 'hidden md:flex opacity-0 group-hover:opacity-100'
+            } transition-all duration-150 items-center space-x-0.5 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-md md:static ${
+              isMe ? 'md:order-first' : 'md:order-last'
             }`}
           >
             {/* Quick Emoji Reaction popup */}
@@ -699,13 +738,18 @@ export const MessageBubble = ({ message, isGroup = false }) => {
               </button>
 
               {showEmojiPicker && (
-                <div className="absolute bottom-full mb-1 left-0 flex items-center space-x-1 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-30">
+                <div
+                  className={`absolute bottom-full mb-1.5 ${
+                    isMe ? 'right-0 md:left-0 md:right-auto' : 'left-0'
+                  } flex items-center space-x-1 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-40`}
+                >
                   {QUICK_EMOJIS.map((emoji) => (
                     <button
                       key={emoji}
                       onClick={() => {
                         reactToMessage(message._id, emoji);
                         setShowEmojiPicker(false);
+                        setMobileActionsOpen(false);
                       }}
                       className="p-1 hover:scale-125 transition text-sm"
                     >
@@ -723,6 +767,35 @@ export const MessageBubble = ({ message, isGroup = false }) => {
               title="Reply"
             >
               <Reply className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Reply Privately (Group Chats) */}
+            {isGroup && !isMe && message.sender?._id && (
+              <button
+                onClick={() => replyPrivatelyFromGroup(message)}
+                className="p-1 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
+                title="Reply privately"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {/* Forward */}
+            <button
+              onClick={() => onForwardSingle?.(message)}
+              className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
+              title="Forward message"
+            >
+              <Forward className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Select multiple */}
+            <button
+              onClick={() => onStartSelect?.(message._id)}
+              className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
+              title="Select messages"
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
             </button>
 
             {/* Pin / Unpin message */}

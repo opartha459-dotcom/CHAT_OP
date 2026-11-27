@@ -166,6 +166,10 @@ export const HEADING_TRANSFORMS = [
 ];
 
 export const DEFAULT_THEME_CONFIG = {
+  appName: 'PulseChat',
+  appTagline: 'Encrypted Messenger',
+  appLogoUrl: '',
+  faviconUrl: '',
   accentColor: 'indigo',
   primaryColor: '#6366f1',
   primaryHover: '#4f46e5',
@@ -326,6 +330,22 @@ export const ThemeProvider = ({ children }) => {
       }
       if (linkEl.href !== targetUrl) {
         linkEl.href = targetUrl;
+      }
+    }
+
+    // 4. Dynamic Brand Title & Favicon
+    if (themeObj.appName && document.title !== themeObj.appName) {
+      document.title = themeObj.appName;
+    }
+    if (themeObj.faviconUrl) {
+      let iconEl = document.querySelector("link[rel~='icon']");
+      if (!iconEl) {
+        iconEl = document.createElement('link');
+        iconEl.rel = 'icon';
+        document.head.appendChild(iconEl);
+      }
+      if (iconEl.href !== themeObj.faviconUrl) {
+        iconEl.href = themeObj.faviconUrl;
       }
     }
   }, [isCustomTheme]);

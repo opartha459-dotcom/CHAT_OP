@@ -1,7 +1,6 @@
 // PulseChat Service Worker for PWA Installation and Offline Fallback
-const CACHE_NAME = "pulsechat-v1";
+const CACHE_NAME = "pulsechat-v2";
 const STATIC_ASSETS = [
-  "/",
   "/manifest.json",
   "/icons/icon.svg",
   "/icons/icon-192.png",
@@ -48,11 +47,15 @@ self.addEventListener("fetch", (event) => {
   // Only handle same-origin http(s) requests (skips chrome-extension://, CDNs, etc.)
   if (url.origin !== self.location.origin) return;
 
-  // Bypass API, Socket.io, Uploads, and Range requests (audio/video streaming)
+  // Bypass API, Socket.io, Uploads, Vite dev/HMR modules, and Range requests
   if (
     url.pathname.startsWith("/api") ||
     url.pathname.startsWith("/socket.io") ||
     url.pathname.startsWith("/uploads") ||
+    url.pathname.startsWith("/src/") ||
+    url.pathname.startsWith("/@") ||
+    url.pathname.startsWith("/node_modules/") ||
+    url.searchParams.has("t") ||
     req.headers.has("range")
   ) {
     return;
@@ -67,8 +70,9 @@ self.addEventListener("fetch", (event) => {
       try {
         const networkResponse = await fetch(req);
 
-        // Don't cache redirected responses (they break navigation when served from cache)
+        // Cache only immutable static assets (not HTML navigations or dev scripts)
         if (
+          !isNavigation &&
           networkResponse &&
           networkResponse.status === 200 &&
           networkResponse.type === "basic" &&

@@ -23,6 +23,10 @@ const systemConfigSchema = new mongoose.Schema(
       allowOldDataRequests: { type: Boolean, default: true }
     },
     defaultTheme: {
+      appName: { type: String, default: 'PulseChat' },
+      appTagline: { type: String, default: 'Encrypted Messenger' },
+      appLogoUrl: { type: String, default: '' },
+      faviconUrl: { type: String, default: '' },
       accentColor: { type: String, default: 'indigo' },
       primaryColor: { type: String, default: '#6366f1' },
       primaryHover: { type: String, default: '#4f46e5' },

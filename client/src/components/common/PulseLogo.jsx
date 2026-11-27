@@ -1,9 +1,10 @@
 import React from 'react';
+import { useTheme } from '../../context/ThemeContext';
 
 /**
- * PulseLogo - Creative, bespoke vector logo for PulseChat
- * Features an integrated speech bubble with a dynamic heartbeat/pulse wave,
- * glowing cyber-gradient accents, and energetic ripple emissions.
+ * PulseLogo - Dynamic brand logo for the application.
+ * Renders custom uploaded logo & app name when configured in Admin App Customization,
+ * falling back to the default PulseChat vector logo.
  */
 export const PulseLogo = ({
   size = 'md',
@@ -15,6 +16,9 @@ export const PulseLogo = ({
   iconOnly = false,
   showBeacon = false
 }) => {
+  const { activeTheme } = useTheme();
+  const customLogoUrl = activeTheme?.appLogoUrl || '';
+  const customAppName = activeTheme?.appName?.trim() || 'PulseChat';
   // Size presets
   const sizeMap = {
     xs: { icon: 24, font: 'text-sm', badge: 'text-[9px]' },
@@ -41,7 +45,14 @@ export const PulseLogo = ({
             }`}
         />
 
-        {/* Crisp vector logo */}
+        {/* Crisp custom image or vector logo */}
+        {customLogoUrl ? (
+          <img
+            src={customLogoUrl}
+            alt={customAppName}
+            className="w-full h-full object-cover rounded-2xl relative z-10 drop-shadow-md"
+          />
+        ) : (
         <svg
           viewBox="0 0 100 100"
           width={iconPx}
@@ -165,6 +176,7 @@ export const PulseLogo = ({
             filter="url(#plGlow)"
           />
         </svg>
+        )}
       </div>
 
       {/* Typography */}
@@ -176,8 +188,14 @@ export const PulseLogo = ({
                 textClassName || 'text-slate-900 dark:text-white'
               }`}
             >
-              <span className="text-indigo-600 dark:text-indigo-400">Pulse</span>
-              <span className="text-slate-900 dark:text-white">Chat</span>
+              {customAppName === 'PulseChat' ? (
+                <>
+                  <span className="text-indigo-600 dark:text-indigo-400">Pulse</span>
+                  <span className="text-slate-900 dark:text-white">Chat</span>
+                </>
+              ) : (
+                <span className="text-slate-900 dark:text-white">{customAppName}</span>
+              )}
             </span>
 
             {/* Optional glowing live indicator beacon */}

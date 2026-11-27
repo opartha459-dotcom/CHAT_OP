@@ -12,6 +12,8 @@ export const AuthProvider = ({ children }) => {
   // Initialize auth state
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const fetchMe = async () => {
       try {
         const storedToken = localStorage.getItem('pulsechat_token');
@@ -22,7 +24,8 @@ export const AuthProvider = ({ children }) => {
 
         const res = await fetch('/api/auth/me', {
           credentials: 'include',
-          headers
+          headers,
+          signal: controller.signal
         });
 
         const contentType = res.headers.get('content-type') || '';
@@ -54,6 +57,7 @@ export const AuthProvider = ({ children }) => {
         console.error('Failed to restore session:', err);
         if (isMounted) setUser(null);
       } finally {
+        clearTimeout(timeout);
         if (isMounted) setLoading(false);
       }
     };
@@ -61,6 +65,7 @@ export const AuthProvider = ({ children }) => {
     fetchMe();
     return () => {
       isMounted = false;
+      controller.abort();
     };
   }, []);
 

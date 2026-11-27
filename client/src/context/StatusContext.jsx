@@ -33,6 +33,32 @@ export const StatusProvider = ({ children }) => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [activeUserId, setActiveUserIdState] = useState(null);
   const [initialSlideMode, setInitialSlideMode] = useState('auto');
+  const statusPushedRef = React.useRef(false);
+
+  // Mobile hardware back button support for Status Viewer & Create Status modals
+  useEffect(() => {
+    const isModalOpen = Boolean(activeUserId || createModalOpen);
+    if (isModalOpen && !statusPushedRef.current) {
+      statusPushedRef.current = true;
+      window.history.pushState({ pulseGuard: 'status' }, '');
+    } else if (!isModalOpen) {
+      statusPushedRef.current = false;
+    }
+  }, [activeUserId, createModalOpen]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (activeUserId) {
+        statusPushedRef.current = false;
+        setActiveUserIdState(null);
+      } else if (createModalOpen) {
+        statusPushedRef.current = false;
+        setCreateModalOpen(false);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [activeUserId, createModalOpen]);
 
   const setActiveUserId = useCallback((userId) => {
     setInitialSlideMode('auto');
@@ -40,12 +66,12 @@ export const StatusProvider = ({ children }) => {
   }, []);
 
   const fetchFeed = useCallback(async () => {
-    if (!token) return;
+    if (!user && !token) return;
     try {
       const res = await fetch('/api/status/feed', {
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         credentials: 'include'
       });
@@ -56,7 +82,7 @@ export const StatusProvider = ({ children }) => {
     } catch (err) {
       console.error('Error fetching status feed:', err);
     }
-  }, [token]);
+  }, [user, token]);
 
   useEffect(() => {
     fetchFeed();

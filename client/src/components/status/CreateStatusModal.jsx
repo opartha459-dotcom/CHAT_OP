@@ -23,7 +23,10 @@ import {
   Sliders,
   Pipette,
   Eye,
-  EyeOff
+  EyeOff,
+  Clock,
+  Calendar,
+  Infinity as InfinityIcon
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -36,6 +39,11 @@ import {
 } from '../../utils/storyStyles';
 import { StoryRichTextEditor } from './StoryRichTextEditor';
 import { isHtmlEmpty, getPlainTextFromHtml } from '../../utils/storyRichText';
+
+const formatLocalDateTimeInput = (date) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 
 const FONTS = [
   { id: 'sans', label: 'Modern Sans', class: 'font-sans' },
@@ -83,6 +91,11 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
   const [allowedUsers, setAllowedUsers] = useState([]);
   const [excludedUsers, setExcludedUsers] = useState([]);
   const [privacySheetOpen, setPrivacySheetOpen] = useState(false);
+  const [lifeSheetOpen, setLifeSheetOpen] = useState(false);
+  const [lifeMode, setLifeMode] = useState('24h'); // '24h' | 'custom' | 'forever'
+  const [customExpiresAt, setCustomExpiresAt] = useState(() =>
+    formatLocalDateTimeInput(new Date(Date.now() + 48 * 60 * 60 * 1000))
+  );
   const [contactPickerMode, setContactPickerMode] = useState(null);
   const [contactSearchQuery, setContactSearchQuery] = useState('');
   const [searchedUsers, setSearchedUsers] = useState([]);
@@ -180,6 +193,9 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
     setAllowedUsers(Array.isArray(initialAllowed) ? initialAllowed : []);
     setExcludedUsers(Array.isArray(initialExcluded) ? initialExcluded : []);
     setPrivacySheetOpen(false);
+    setLifeSheetOpen(false);
+    setLifeMode('24h');
+    setCustomExpiresAt(formatLocalDateTimeInput(new Date(Date.now() + 48 * 60 * 60 * 1000)));
     setContactPickerMode(null);
     setContactSearchQuery('');
     setSearchedUsers([]);
@@ -322,6 +338,14 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
       return;
     }
 
+    if (lifeMode === 'custom') {
+      const parsedExpiry = customExpiresAt ? new Date(customExpiresAt) : null;
+      if (!parsedExpiry || Number.isNaN(parsedExpiry.getTime()) || parsedExpiry.getTime() <= Date.now()) {
+        setError('Please select a valid future date and time for Story Life.');
+        return;
+      }
+    }
+
     publishInFlightRef.current = true;
     setLoading(true);
     setError('');
@@ -352,6 +376,10 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           excludedUsers: targetExcludedUsers
         },
         hasPoll,
+        lifeMode,
+        ...(lifeMode === 'custom' && customExpiresAt
+          ? { customExpiresAt: new Date(customExpiresAt).toISOString() }
+          : {}),
         ...(hasPoll
           ? {
             poll: {
@@ -987,21 +1015,45 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           })()}
         </div>
 
-        <div className="flex items-center justify-between pt-3 border-t border-white/15 relative z-20 select-none">
-          <button
-            type="button"
-            onClick={() => setPrivacySheetOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 bg-black/35 hover:bg-black/50 rounded-xl text-white text-xs font-medium border border-white/20 transition cursor-pointer active:scale-95 shadow-sm"
-          >
-            {audience === 'everyone' ? (
-              <Globe className="w-3.5 h-3.5 text-indigo-300" />
-            ) : audience === 'custom' ? (
-              <Lock className="w-3.5 h-3.5 text-amber-300" />
-            ) : (
-              <Users className="w-3.5 h-3.5 text-emerald-300" />
-            )}
-            <span className="truncate max-w-[170px]">{privacyLabel}</span>
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/15 relative z-20 select-none">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setPrivacySheetOpen(true)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-black/35 hover:bg-black/50 rounded-xl text-white text-xs font-medium border border-white/20 transition cursor-pointer active:scale-95 shadow-sm"
+            >
+              {audience === 'everyone' ? (
+                <Globe className="w-3.5 h-3.5 text-indigo-300" />
+              ) : audience === 'custom' ? (
+                <Lock className="w-3.5 h-3.5 text-amber-300" />
+              ) : (
+                <Users className="w-3.5 h-3.5 text-emerald-300" />
+              )}
+              <span className="truncate max-w-[140px]">{privacyLabel}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setLifeSheetOpen(true)}
+              className="flex items-center space-x-1.5 px-2.5 py-1.5 bg-black/35 hover:bg-black/50 rounded-xl text-white text-xs font-medium border border-white/20 transition cursor-pointer active:scale-95 shadow-sm"
+              title="Set how long this story stays visible"
+            >
+              {lifeMode === 'forever' ? (
+                <InfinityIcon className="w-3.5 h-3.5 text-fuchsia-300" />
+              ) : lifeMode === 'custom' ? (
+                <Calendar className="w-3.5 h-3.5 text-amber-300" />
+              ) : (
+                <Clock className="w-3.5 h-3.5 text-sky-300" />
+              )}
+              <span>
+                {lifeMode === 'forever'
+                  ? 'Until Deleted'
+                  : lifeMode === 'custom'
+                  ? 'Custom Date'
+                  : '24h'}
+              </span>
+            </button>
+          </div>
 
           <button
             type="button"
@@ -1018,10 +1070,125 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
           </button>
         </div>
 
+        {lifeSheetOpen && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-0 z-40 bg-white/95 dark:bg-slate-950/95 backdrop-blur-2xl rounded-3xl p-5 flex flex-col justify-between animate-in fade-in zoom-in-95 duration-150 text-slate-900 dark:text-white"
+          >
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">Story Life</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Choose when this story expires</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLifeSheetOpen(false)}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-2.5 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setLifeMode('24h')}
+                  className={`w-full text-left p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between ${
+                    lifeMode === '24h'
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50 dark:bg-slate-900/60'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <Clock className="w-5 h-5 text-sky-500 dark:text-sky-400" />
+                    <div>
+                      <div className="font-semibold text-xs text-slate-900 dark:text-white">24 Hours (Default)</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">Automatically disappears after 24 hours</div>
+                    </div>
+                  </div>
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                    lifeMode === '24h' ? 'border-indigo-500 bg-indigo-500' : 'border-slate-400 dark:border-slate-600'
+                  }`}>
+                    {lifeMode === '24h' && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                  </div>
+                </button>
+
+                <div
+                  onClick={() => setLifeMode('custom')}
+                  className={`w-full text-left p-3 rounded-2xl border transition cursor-pointer space-y-2.5 ${
+                    lifeMode === 'custom'
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50 dark:bg-slate-900/60'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <Calendar className="w-5 h-5 text-amber-500 dark:text-amber-400" />
+                      <div>
+                        <div className="font-semibold text-xs text-slate-900 dark:text-white">Custom Date & Time</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">Pick an exact expiration date and time</div>
+                      </div>
+                    </div>
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                      lifeMode === 'custom' ? 'border-indigo-500 bg-indigo-500' : 'border-slate-400 dark:border-slate-600'
+                    }`}>
+                      {lifeMode === 'custom' && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                    </div>
+                  </div>
+
+                  {lifeMode === 'custom' && (
+                    <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="datetime-local"
+                        value={customExpiresAt}
+                        min={formatLocalDateTimeInput(new Date(Date.now() + 5 * 60 * 1000))}
+                        onChange={(e) => setCustomExpiresAt(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setLifeMode('forever')}
+                  className={`w-full text-left p-3 rounded-2xl border transition cursor-pointer flex items-center justify-between ${
+                    lifeMode === 'forever'
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50 dark:bg-slate-900/60'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <InfinityIcon className="w-5 h-5 text-fuchsia-500 dark:text-fuchsia-400" />
+                    <div>
+                      <div className="font-semibold text-xs text-slate-900 dark:text-white">Stay Until Deleted</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">Stays visible until you manually delete it</div>
+                    </div>
+                  </div>
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                    lifeMode === 'forever' ? 'border-indigo-500 bg-indigo-500' : 'border-slate-400 dark:border-slate-600'
+                  }`}>
+                    {lifeMode === 'forever' && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setLifeSheetOpen(false)}
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold text-xs transition cursor-pointer shadow-lg"
+            >
+              Done
+            </button>
+          </div>
+        )}
+
         {privacySheetOpen && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute inset-0 z-40 bg-slate-950/95 backdrop-blur-2xl rounded-3xl p-5 flex flex-col justify-between animate-in fade-in zoom-in-95 duration-150 text-white"
+            className="pulse-adaptive-surface absolute inset-0 z-40 bg-white/95 dark:bg-slate-950/95 backdrop-blur-2xl rounded-3xl p-5 flex flex-col justify-between animate-in fade-in zoom-in-95 duration-150 text-slate-900 dark:text-white"
           >
             <div>
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -1155,7 +1322,7 @@ export const CreateStatusModal = ({ isOpen, onClose, onStatusCreated }) => {
         {contactPickerMode && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute inset-0 z-50 bg-slate-950/98 backdrop-blur-2xl rounded-3xl p-5 flex flex-col justify-between animate-in slide-in-from-right duration-200 text-white"
+            className="pulse-adaptive-surface absolute inset-0 z-50 bg-white/98 dark:bg-slate-950/98 backdrop-blur-2xl rounded-3xl p-5 flex flex-col justify-between animate-in slide-in-from-right duration-200 text-slate-900 dark:text-white"
           >
             <div className="flex flex-col flex-1 min-h-0">
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">

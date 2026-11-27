@@ -4,6 +4,7 @@ import { useSocket } from './SocketContext';
 const MaintenanceContext = createContext({
   activeMaintenance: null,
   upcomingMaintenance: null,
+  maintenanceLoading: true,
   isFeatureInMaintenance: () => false,
   refreshMaintenance: () => {}
 });
@@ -12,17 +13,23 @@ export const MaintenanceProvider = ({ children }) => {
   const { socket } = useSocket();
   const [activeMaintenance, setActiveMaintenance] = useState(null);
   const [upcomingMaintenance, setUpcomingMaintenance] = useState(null);
+  const [maintenanceLoading, setMaintenanceLoading] = useState(true);
 
   const fetchMaintenance = useCallback(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
     try {
-      const res = await fetch('/api/system/maintenance');
+      const res = await fetch('/api/system/maintenance', { signal: controller.signal });
       const data = await res.json();
       if (data.success) {
         setActiveMaintenance(data.active || null);
         setUpcomingMaintenance(data.upcoming || null);
       }
     } catch (err) {
-      // Gracefully retain current state on network failure
+      // Gracefully retain current state on network failure/timeout
+    } finally {
+      clearTimeout(timeout);
+      setMaintenanceLoading(false);
     }
   }, []);
 
@@ -90,6 +97,7 @@ export const MaintenanceProvider = ({ children }) => {
       value={{
         activeMaintenance,
         upcomingMaintenance,
+        maintenanceLoading,
         isFeatureInMaintenance,
         refreshMaintenance: fetchMaintenance
       }}

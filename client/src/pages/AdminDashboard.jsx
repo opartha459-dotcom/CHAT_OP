@@ -87,6 +87,17 @@ import { StorageManagementTab } from '../components/admin/StorageManagementTab';
 import { AdminAnalyticsCharts } from '../components/admin/AdminAnalyticsCharts';
 import { ChatsManagementTab } from '../components/admin/ChatsManagementTab';
 import { StoryRingsCustomizationTab } from '../components/admin/StoryRingsCustomizationTab';
+import { AppCustomizationTab } from '../components/admin/AppCustomizationTab';
+import { RoleManagementTab } from '../components/admin/RoleManagementTab';
+import { RoleAssignmentModal } from '../components/admin/RoleAssignmentModal';
+import { AccessDenied } from '../components/admin/AdminSharedUI';
+import {
+  hasAdminAccess,
+  hasPermission,
+  hasAnyPermission,
+  isSuperAdminUser,
+  getRoleDisplayLabel
+} from '../utils/permissions';
 import {
   PRESET_BACKGROUNDS,
   PRESET_TEXT_COLORS,
@@ -217,6 +228,12 @@ export const AdminDashboard = () => {
   const [reports, setReports] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [selectedAuditLogs, setSelectedAuditLogs] = useState(new Set());
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [bulkDeletingUsers, setBulkDeletingUsers] = useState(false);
+  const [selectedAnnouncementIds, setSelectedAnnouncementIds] = useState([]);
+  const [bulkDeletingAnnouncements, setBulkDeletingAnnouncements] = useState(false);
+  const [selectedStoryIds, setSelectedStoryIds] = useState([]);
+  const [bulkDeletingStories, setBulkDeletingStories] = useState(false);
   const [dbStatus, setDbStatus] = useState(null);
   const [systemSettings, setSystemSettings] = useState(null);
 
@@ -443,12 +460,12 @@ export const AdminDashboard = () => {
     setTimeout(() => setFeedback(''), 4000);
   };
 
-  // Guard: non-admins redirected to chat
+  // Guard: non-admins redirected to 404/chat
   useEffect(() => {
     if (!auth.loading) {
       if (!user) {
         navigate('/login', { replace: true });
-      } else if (user.role !== 'admin') {
+      } else if (!hasAdminAccess(user)) {
         navigate('/chat', { replace: true });
       }
     }
@@ -716,28 +733,45 @@ export const AdminDashboard = () => {
     }
   };
 
-  // Full dashboard reload pass
+  const [customRoles, setCustomRoles] = useState([]);
+  const [assignRoleUser, setAssignRoleUser] = useState(null);
+
+  const loadCustomRoles = async () => {
+    if (!isSuperAdminUser(user)) return;
+    try {
+      const res = await fetch('/api/admin/roles', { headers: authHeaders(), credentials: 'include' });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.success) setCustomRoles(d.roles || []);
+      }
+    } catch {}
+  };
+
+  // Full dashboard reload pass (only fetches endpoints permitted for current user)
   const loadDashboard = async () => {
     setRefreshing(true);
-    await Promise.allSettled([
-      loadStats(),
-      loadDbStatus(),
-      loadTrashAccounts(),
-      loadSystemSettings(),
-      loadUsers(),
-      loadGroups(),
-      loadAdminStories(),
-      loadAdminStoryReplies(),
-      loadAnnouncements(),
-      loadAuditLogs(),
-      loadRecoveries(),
-      loadVerificationCodes()
-    ]);
+    const tasks = [];
+    if (hasPermission(user, 'analytics.view')) tasks.push(loadStats());
+    if (hasAnyPermission(user, ['database.view', 'analytics.view'])) tasks.push(loadDbStatus());
+    if (hasPermission(user, 'users.manage_deletion_requests')) tasks.push(loadTrashAccounts());
+    if (hasAnyPermission(user, ['system.manage_settings', 'system.manage_features'])) tasks.push(loadSystemSettings());
+    if (hasPermission(user, 'users.view')) tasks.push(loadUsers());
+    if (hasPermission(user, 'chats.view')) tasks.push(loadGroups());
+    if (hasPermission(user, 'statuses.view')) {
+      tasks.push(loadAdminStories(), loadAdminStoryReplies());
+    }
+    if (hasPermission(user, 'announcements.view')) tasks.push(loadAnnouncements());
+    if (hasPermission(user, 'audit.view')) tasks.push(loadAuditLogs());
+    if (hasPermission(user, 'recoveries.view')) tasks.push(loadRecoveries());
+    if (hasPermission(user, 'codes.view')) tasks.push(loadVerificationCodes());
+    if (isSuperAdminUser(user)) tasks.push(loadCustomRoles());
+
+    await Promise.allSettled(tasks);
     setRefreshing(false);
   };
 
   useEffect(() => {
-    if (user && user.role === 'admin') {
+    if (hasAdminAccess(user)) {
       loadDashboard();
     }
   }, [token, user]);
@@ -1162,6 +1196,34 @@ export const AdminDashboard = () => {
     }
   };
 
+  const handleBulkDeleteUsers = async (ids) => {
+    if (!ids?.length) return;
+    if (!window.confirm(`Permanently delete ${ids.length} selected user(s) and move them to Trash DB?`)) return;
+    setBulkDeletingUsers(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          fetch(`/api/admin/users/${id}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+            credentials: 'include',
+            body: JSON.stringify({ reason: 'Bulk removed by administrator' })
+          }).then((r) => r.json())
+        )
+      );
+      const deletedCount = results.filter((r) => r.status === 'fulfilled' && r.value?.success).length;
+      setSelectedUserIds([]);
+      showMsg(`Deleted ${deletedCount} of ${ids.length} selected user(s).`);
+      loadUsers();
+      loadStats();
+      loadTrashAccounts();
+    } catch {
+      showMsg('Error during bulk user deletion.');
+    } finally {
+      setBulkDeletingUsers(false);
+    }
+  };
+
   const handleSaveUser = async (e) => {
     e?.preventDefault?.();
     if (!editingUser) return;
@@ -1410,6 +1472,31 @@ export const AdminDashboard = () => {
     }
   };
 
+  const handleBulkDeleteAnnouncements = async (ids) => {
+    if (!ids?.length) return;
+    if (!window.confirm(`Are you sure you want to delete ${ids.length} selected announcement(s)?`)) return;
+    setBulkDeletingAnnouncements(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          fetch(`/api/announcements/admin/${id}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+            credentials: 'include'
+          }).then((r) => r.json())
+        )
+      );
+      const deletedCount = results.filter((r) => r.status === 'fulfilled' && r.value?.success).length;
+      setSelectedAnnouncementIds([]);
+      showMsg(`Deleted ${deletedCount} of ${ids.length} announcement(s).`);
+      loadAnnouncements();
+    } catch {
+      showMsg('Network error deleting announcements.');
+    } finally {
+      setBulkDeletingAnnouncements(false);
+    }
+  };
+
   const handleTogglePublishAnnouncement = async (a) => {
     try {
       const willPublish = a.isPublished === false;
@@ -1544,6 +1631,31 @@ export const AdminDashboard = () => {
       }
     } catch (e) {
       showMsg('Network error deleting story.');
+    }
+  };
+
+  const handleBulkDeleteStories = async (ids) => {
+    if (!ids?.length) return;
+    if (!window.confirm(`Delete ${ids.length} selected official story(ies)? They will immediately disappear for all users.`)) return;
+    setBulkDeletingStories(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          fetch(`/api/admin/stories/${id}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+            credentials: 'include'
+          }).then((r) => r.json())
+        )
+      );
+      const deletedCount = results.filter((r) => r.status === 'fulfilled' && r.value?.success).length;
+      setSelectedStoryIds([]);
+      showMsg(`Deleted ${deletedCount} of ${ids.length} official story(ies).`);
+      loadAdminStories();
+    } catch {
+      showMsg('Network error deleting stories.');
+    } finally {
+      setBulkDeletingStories(false);
     }
   };
 
@@ -2381,48 +2493,77 @@ export const AdminDashboard = () => {
     }
   };
 
-  const navSections = [
+  const allNavSections = [
     {
-      label: 'Core Platform',
+      label: 'Overview',
       items: [
-        { id: 'overview', label: 'Overview', icon: TrendingUp },
-        { id: 'users', label: 'Users', icon: Users },
-        { id: 'groups', label: 'Chats & Messaging', icon: MessageSquare },
-        { id: 'stories', label: 'Create Story', icon: CircleDashed },
-        { id: 'announcements', label: 'Announcements', icon: Bell },
+        { id: 'overview', label: 'Dashboard', icon: TrendingUp, permissions: ['analytics.view'] },
       ]
     },
     {
-      label: 'Theme & Appearance',
+      label: 'Management',
       items: [
-        { id: 'theme', label: 'Theme & Typography', icon: Palette },
-        { id: 'landing', label: 'Landing Page CMS', icon: Globe },
+        { id: 'users', label: 'Users', icon: Users, permissions: ['users.view'] },
+        { id: 'groups', label: 'Chats & Groups', icon: MessageSquare, permissions: ['chats.view'] },
+        { id: 'stories', label: 'Official Stories', icon: CircleDashed, permissions: ['statuses.view'] },
+        { id: 'announcements', label: 'Announcements', icon: Bell, permissions: ['announcements.view'] },
       ]
     },
     {
-      label: 'Features & Control',
+      label: 'Administration',
       items: [
-        { id: 'settings', label: 'Feature Flags', icon: Sliders },
-        { id: 'maintenance', label: 'Maintenance', icon: Wrench },
+        { id: 'roles', label: 'Role & Permissions', icon: Shield, superAdminOnly: true },
+        { id: 'audit', label: 'Admin Activity Logs', icon: FileText, permissions: ['audit.view'] },
       ]
     },
     {
       label: 'Security & Access',
       items: [
-        { id: 'codes', label: 'Code Dispatch', icon: KeyRound },
-        { id: 'recoveries', label: 'Account Recoveries', icon: RotateCcw },
-        { id: 'audit', label: 'Audit Logs', icon: FileText },
+        { id: 'codes', label: 'Code Dispatch', icon: KeyRound, permissions: ['codes.view'] },
+        { id: 'recoveries', label: 'Account Recoveries', icon: RotateCcw, permissions: ['recoveries.view'] },
       ]
     },
     {
-      label: 'Infrastructure',
+      label: 'Theme & Appearance',
       items: [
-        { id: 'databases', label: 'Databases & Health', icon: HardDrive },
-        { id: 'storage', label: 'Storage & DB Optimization', icon: Database },
+        { id: 'customization', label: 'App Customization', icon: Sparkles, permissions: ['system.manage_theme'] },
+        { id: 'landing', label: 'Landing Page CMS', icon: Globe, permissions: ['system.manage_landing'] },
+      ]
+    },
+    {
+      label: 'System & Infrastructure',
+      items: [
+        { id: 'settings', label: 'Application Settings', icon: Sliders, permissions: ['system.manage_settings', 'system.manage_features'] },
+        { id: 'maintenance', label: 'Maintenance Mode', icon: Wrench, permissions: ['system.manage_maintenance'] },
+        { id: 'databases', label: 'Database Management', icon: HardDrive, permissions: ['database.view', 'analytics.view'] },
+        { id: 'storage', label: 'Storage & Cleanup', icon: Database, permissions: ['database.view'] },
       ]
     }
   ];
-  const navItems = navSections.flatMap(s => s.items);
+
+  const isTabAllowed = (item) => {
+    if (!item) return false;
+    if (isSuperAdminUser(user)) return true;
+    if (item.superAdminOnly) return false;
+    if (!item.permissions || item.permissions.length === 0) return true;
+    return hasAnyPermission(user, item.permissions);
+  };
+
+  const navSections = allNavSections
+    .map((sec) => ({
+      ...sec,
+      items: sec.items.filter(isTabAllowed)
+    }))
+    .filter((sec) => sec.items.length > 0);
+
+  const navItems = navSections.flatMap((s) => s.items);
+
+  // Ensure custom-role users automatically land on their first permitted tab
+  useEffect(() => {
+    if (navItems.length > 0 && !navItems.some((n) => n.id === activeTab || (n.id === 'groups' && activeTab === 'chats'))) {
+      setActiveTab(navItems[0].id);
+    }
+  }, [navItems, activeTab]);
 
   if (auth.loading) {
     return <AdminDashboardSkeleton />;
@@ -2513,7 +2654,9 @@ export const AdminDashboard = () => {
             />
             <div className="text-left text-xs shrink-0">
               <div className="font-semibold text-white truncate max-w-[110px] leading-tight">{user?.username}</div>
-              <div className="text-[10px] text-violet-400/80 uppercase font-mono font-medium leading-tight">Super Admin</div>
+              <div className="text-[10px] text-violet-400/80 uppercase font-mono font-medium leading-tight">
+                {getRoleDisplayLabel(user)}
+              </div>
             </div>
           </div>
         </div>
@@ -2619,7 +2762,7 @@ export const AdminDashboard = () => {
         {/* Content Area */}
         <main className="flex-1 p-3 sm:p-6 lg:p-8 overflow-y-auto pb-28 md:pb-8 bg-[#161226] min-h-0">
           {/* Mobile Tab Scroller */}
-          <div className="md:hidden flex items-center space-x-2 overflow-x-auto pb-2.5 mb-3 scrollbar-none">
+          <div className="md:hidden flex items-center space-x-2 overflow-x-auto pb-2.5 mb-3 no-scrollbar">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id || (item.id === 'groups' && activeTab === 'chats');
@@ -3345,6 +3488,13 @@ export const AdminDashboard = () => {
                 searchKeys={['username', 'email', 'nickname']}
                 searchPlaceholder="Search users by name or email..."
                 dateKey="createdAt"
+                selectable={hasPermission(user, 'users.delete')}
+                selectedIds={selectedUserIds}
+                onSelectionChange={setSelectedUserIds}
+                isItemSelectable={(u) => u.role !== 'admin'}
+                onBulkDelete={hasPermission(user, 'users.delete') ? handleBulkDeleteUsers : undefined}
+                bulkDeleting={bulkDeletingUsers}
+                bulkDeleteLabel="Delete Users"
                 filters={[
                   {
                     key: 'role',
@@ -3384,10 +3534,12 @@ export const AdminDashboard = () => {
                             className={`shrink-0 px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold uppercase ${
                               u.role === 'admin'
                                 ? 'bg-violet-600/30 text-violet-300 border border-violet-500/40'
+                                : u.customRole?.name
+                                ? 'bg-indigo-600/25 text-indigo-300 border border-indigo-500/40'
                                 : 'bg-[#19142B] text-violet-300/70 border border-violet-900/30'
                             }`}
                           >
-                            {u.role}
+                            {u.role === 'admin' ? 'Super Admin' : u.customRole?.name || u.role}
                           </span>
                         </div>
                         <div className="text-[11px] text-violet-300/60 truncate max-w-full font-mono mt-0.5" title={u.email}>
@@ -3413,36 +3565,53 @@ export const AdminDashboard = () => {
                         </button>
                       )}
 
-                      <button
-                        onClick={() => handleOpenEditUser(u)}
-                        className="px-2.5 py-1.5 text-[11px] font-semibold bg-[#19142B] hover:bg-[#1E1833] text-violet-300 border border-violet-900/40 rounded-xl transition cursor-pointer flex items-center space-x-1 shrink-0"
-                        title="Edit user profile"
-                      >
-                        <Pencil className="w-3 h-3" />
-                        <span>Edit</span>
-                      </button>
+                      {hasPermission(user, 'users.edit') && (
+                        <button
+                          onClick={() => handleOpenEditUser(u)}
+                          className="px-2.5 py-1.5 text-[11px] font-semibold bg-[#19142B] hover:bg-[#1E1833] text-violet-300 border border-violet-900/40 rounded-xl transition cursor-pointer flex items-center space-x-1 shrink-0"
+                          title="Edit user profile"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
+                      )}
 
-                      <button
-                        onClick={() => handleRoleToggle(u)}
-                        className="px-2.5 py-1.5 text-[11px] font-semibold bg-[#19142B] hover:bg-[#1E1833] text-violet-200 border border-violet-900/30 rounded-xl transition cursor-pointer shrink-0"
-                        title="Toggle admin / user role"
-                      >
-                        {u.role === 'admin' ? 'Demote' : 'Make Admin'}
-                      </button>
+                      {isSuperAdminUser(user) && u.role !== 'admin' && (
+                        <button
+                          onClick={() => setAssignRoleUser(u)}
+                          className="px-2.5 py-1.5 text-[11px] font-semibold bg-indigo-950/50 hover:bg-indigo-900/50 text-indigo-300 border border-indigo-700/40 rounded-xl transition cursor-pointer flex items-center space-x-1 shrink-0"
+                          title="Assign custom role"
+                        >
+                          <Shield className="w-3 h-3" />
+                          <span>{u.customRole?.name ? 'Change Role' : 'Assign Role'}</span>
+                        </button>
+                      )}
 
-                      <button
-                        onClick={() => handleBanToggle(u)}
-                        className={`px-2.5 py-1.5 text-[11px] font-semibold rounded-xl transition cursor-pointer shrink-0 border ${
-                          u.isBanned
-                            ? 'bg-emerald-950/40 text-emerald-400 border-emerald-900/40 hover:bg-emerald-900/40'
-                            : 'bg-rose-950/40 text-rose-400 border-rose-900/40 hover:bg-rose-900/40'
-                        }`}
-                        title={u.isBanned ? 'Lift ban' : 'Ban account'}
-                      >
-                        {u.isBanned ? 'Unban' : 'Ban'}
-                      </button>
+                      {isSuperAdminUser(user) && (
+                        <button
+                          onClick={() => handleRoleToggle(u)}
+                          className="px-2.5 py-1.5 text-[11px] font-semibold bg-[#19142B] hover:bg-[#1E1833] text-violet-200 border border-violet-900/30 rounded-xl transition cursor-pointer shrink-0"
+                          title="Toggle admin / user role"
+                        >
+                          {u.role === 'admin' ? 'Demote' : 'Make Admin'}
+                        </button>
+                      )}
 
-                      {u.role !== 'admin' && (
+                      {((u.isBanned && hasPermission(user, 'users.unban')) || (!u.isBanned && hasPermission(user, 'users.ban'))) && (
+                        <button
+                          onClick={() => handleBanToggle(u)}
+                          className={`px-2.5 py-1.5 text-[11px] font-semibold rounded-xl transition cursor-pointer shrink-0 border ${
+                            u.isBanned
+                              ? 'bg-emerald-950/40 text-emerald-400 border-emerald-900/40 hover:bg-emerald-900/40'
+                              : 'bg-rose-950/40 text-rose-400 border-rose-900/40 hover:bg-rose-900/40'
+                          }`}
+                          title={u.isBanned ? 'Lift ban' : 'Ban account'}
+                        >
+                          {u.isBanned ? 'Unban' : 'Ban'}
+                        </button>
+                      )}
+
+                      {u.role !== 'admin' && hasPermission(user, 'users.delete') && (
                         <button
                           onClick={() => { setDeleteUserModal({ user: u }); setDeleteReason(''); }}
                           className="px-2.5 py-1.5 text-[11px] font-semibold bg-rose-950/50 text-rose-400 hover:bg-rose-900/70 border border-rose-900/50 rounded-xl transition cursor-pointer shrink-0"
@@ -3456,6 +3625,26 @@ export const AdminDashboard = () => {
                 )}
               />
             </div>
+          )}
+
+          {/* TAB: ROLE & PERMISSION MANAGEMENT (SUPER ADMIN ONLY) */}
+          {activeTab === 'roles' && (
+            isSuperAdminUser(user) ? (
+              <RoleManagementTab
+                authHeaders={authHeaders}
+                showMsg={showMsg}
+                onRolesChanged={() => {
+                  loadCustomRoles();
+                  loadUsers();
+                }}
+              />
+            ) : (
+              <AccessDenied
+                title="Super Admin Only"
+                message="Only the protected Super Admin can create, edit, or delete custom roles."
+                onBack={() => navItems[0] && setActiveTab(navItems[0].id)}
+              />
+            )
           )}
 
           {/* TAB 3: CHATS & MESSAGING */}
@@ -3621,22 +3810,97 @@ export const AdminDashboard = () => {
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+                <div className="space-y-4">
+                  {/* Multi-select Bar for Official Stories */}
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2.5 bg-[#1C1530] border border-violet-900/40 rounded-2xl">
+                    <div className="flex items-center space-x-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allIds = adminStories.map((s) => s._id);
+                          const allSelected = allIds.length > 0 && allIds.every((id) => selectedStoryIds.includes(id));
+                          setSelectedStoryIds(allSelected ? [] : allIds);
+                        }}
+                        className="flex items-center space-x-2 text-xs font-semibold text-violet-200 hover:text-white cursor-pointer"
+                      >
+                        <span
+                          className={`w-4 h-4 rounded border flex items-center justify-center transition ${
+                            adminStories.length > 0 && adminStories.every((s) => selectedStoryIds.includes(s._id))
+                              ? 'bg-gradient-to-tr from-violet-600 to-fuchsia-600 border-violet-400 text-white'
+                              : 'bg-[#19142B] border-violet-700/60 text-transparent'
+                          }`}
+                        >
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </span>
+                        <span>Select All ({adminStories.length})</span>
+                      </button>
+
+                      {selectedStoryIds.length > 0 && (
+                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-violet-600/30 text-violet-200 border border-violet-500/40 font-mono">
+                          {selectedStoryIds.length} selected
+                        </span>
+                      )}
+                    </div>
+
+                    {selectedStoryIds.length > 0 && (
+                      <div className="flex items-center space-x-2 ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStoryIds([])}
+                          className="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold text-violet-300 hover:text-white bg-white/5 hover:bg-white/10 transition cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleBulkDeleteStories(selectedStoryIds)}
+                          disabled={bulkDeletingStories}
+                          className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 disabled:opacity-50 shadow-md transition flex items-center space-x-1.5 cursor-pointer"
+                        >
+                          {bulkDeletingStories ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                          <span>Delete Selected ({selectedStoryIds.length})</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
                   {adminStories.map((story) => {
                     const isExpired = new Date(story.expiresAt) <= new Date();
                     const hoursRemaining = Math.max(0, Math.round((new Date(story.expiresAt) - new Date()) / (1000 * 60 * 60)));
                     const viewersCount = story.viewers?.length || 0;
                     const reactionsCount = story.reactions?.length || 0;
                     const pollTotalVotes = story.poll?.options?.reduce((acc, opt) => acc + (opt.votes?.length || 0), 0) || 0;
+                    const isSelectedStory = selectedStoryIds.includes(story._id);
 
                     return (
                       <div
                         key={story._id}
-                        className="rounded-3xl bg-[#1C1530] border border-violet-900/40 shadow-xl overflow-hidden flex flex-col justify-between transition hover:border-violet-600/50"
+                        className={`rounded-3xl bg-[#1C1530] border shadow-xl overflow-hidden flex flex-col justify-between transition ${
+                          isSelectedStory
+                            ? 'border-fuchsia-500 ring-2 ring-fuchsia-500/40'
+                            : 'border-violet-900/40 hover:border-violet-600/50'
+                        }`}
                       >
                         {/* Story Card Top Header */}
-                        <div className="p-4 border-b border-violet-900/30 flex items-center justify-between">
+                        <div className="p-4 border-b border-violet-900/30 flex items-center justify-between gap-2">
                           <div className="flex items-center space-x-2.5 min-w-0">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedStoryIds((prev) =>
+                                  prev.includes(story._id) ? prev.filter((id) => id !== story._id) : [...prev, story._id]
+                                )
+                              }
+                              aria-label={isSelectedStory ? 'Deselect story' : 'Select story'}
+                              className={`w-5 h-5 rounded-md border flex items-center justify-center transition cursor-pointer shrink-0 ${
+                                isSelectedStory
+                                  ? 'bg-gradient-to-tr from-violet-600 to-fuchsia-600 border-violet-400 text-white'
+                                  : 'bg-[#19142B] border-violet-700/60 hover:border-violet-400 text-transparent'
+                              }`}
+                            >
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            </button>
                             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-fuchsia-600 p-[1.5px] shrink-0">
                               <div className="w-full h-full rounded-full bg-[#1C1530] overflow-hidden flex items-center justify-center font-bold text-white text-xs">
                                 <img
@@ -3783,6 +4047,7 @@ export const AdminDashboard = () => {
                       </div>
                     );
                   })}
+                  </div>
                 </div>
               )}
                 </>
@@ -3990,6 +4255,12 @@ export const AdminDashboard = () => {
                 searchKeys={['title', 'content']}
                 searchPlaceholder="Search announcements..."
                 dateKey="createdAt"
+                selectable={true}
+                selectedIds={selectedAnnouncementIds}
+                onSelectionChange={setSelectedAnnouncementIds}
+                onBulkDelete={handleBulkDeleteAnnouncements}
+                bulkDeleting={bulkDeletingAnnouncements}
+                bulkDeleteLabel="Delete Selected"
                 headerActions={
                   <button
                     onClick={handleOpenCreateAnnouncement}
@@ -5052,6 +5323,7 @@ export const AdminDashboard = () => {
                 searchPlaceholder="Search audit events..."
                 dateKey="createdAt"
                 headerActions={
+                  isSuperAdminUser(user) ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -5095,6 +5367,7 @@ export const AdminDashboard = () => {
                       </button>
                     )}
                   </div>
+                  ) : null
                 }
                 renderItem={(log, mode) => {
                   const isSelected = selectedAuditLogs.has(log._id);
@@ -5454,8 +5727,23 @@ export const AdminDashboard = () => {
             </div>
           )}
 
-          {/* TAB: THEME & TYPOGRAPHY MANAGEMENT */}
-          {activeTab === 'theme' && (
+          {/* TAB: APP CUSTOMIZATION STUDIO (UNIFIED LOGO, COLORS, FONTS, RINGS) */}
+          {(activeTab === 'customization' || activeTab === 'theme') && (
+            hasPermission(user, 'system.manage_theme') ? (
+              <AppCustomizationTab
+                authHeaders={authHeaders}
+                token={token}
+                showMsg={showMsg}
+              />
+            ) : (
+              <AccessDenied
+                onBack={() => navItems[0] && setActiveTab(navItems[0].id)}
+              />
+            )
+          )}
+
+          {/* TAB: THEME & TYPOGRAPHY MANAGEMENT (LEGACY FALLBACK DISABLED) */}
+          {false && activeTab === 'theme' && (
             <div className="space-y-8 w-full">
               {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
@@ -9016,10 +9304,20 @@ export const AdminDashboard = () => {
         }}
       />
 
+      {/* Mobile Feedback Toast */}
+      {feedback && (
+        <div className="sm:hidden fixed bottom-20 left-3 right-3 z-50 flex items-center justify-center pointer-events-none">
+          <div className="inline-flex items-center space-x-2 px-4 py-2 rounded-2xl text-xs font-semibold bg-emerald-950/95 text-emerald-200 border border-emerald-500/40 shadow-2xl backdrop-blur-md">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{feedback}</span>
+          </div>
+        </div>
+      )}
+
       {/* ── MOBILE BOTTOM NAVIGATION BAR (Phones only) ────────────────────── */}
       <nav
         aria-label="Mobile Admin Navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#1E1833]/95 backdrop-blur-xl border-t border-violet-900/40 px-2 py-1 flex items-center justify-around shadow-2xl safe-area-bottom"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#1E1833]/95 backdrop-blur-xl border-t border-violet-900/40 px-2 pt-1 pb-[max(0.35rem,env(safe-area-inset-bottom))] flex items-center justify-around shadow-2xl"
       >
         {/* Overview */}
         <button
@@ -9198,6 +9496,19 @@ export const AdminDashboard = () => {
           </div>
         </div>
       )}
+
+      <RoleAssignmentModal
+        isOpen={Boolean(assignRoleUser)}
+        onClose={() => setAssignRoleUser(null)}
+        targetUser={assignRoleUser}
+        roles={customRoles}
+        authHeaders={authHeaders}
+        onAssigned={(data) => {
+          showMsg(data.message || 'Role updated.');
+          loadUsers();
+          loadCustomRoles();
+        }}
+      />
     </>
   );
 };

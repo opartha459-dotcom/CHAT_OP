@@ -238,6 +238,7 @@ const getUsers = async (req, res) => {
     const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
     const [users, total] = await Promise.all([
       User.find(filter)
+        .populate('customRole', 'name slug description permissions')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit, 10))
@@ -1408,6 +1409,10 @@ const getPublicTheme = async (req, res) => {
       config = await SystemConfig.create({ key: 'system_settings' });
     }
     const DEFAULT_THEME = {
+      appName: 'PulseChat',
+      appTagline: 'Encrypted Messenger',
+      appLogoUrl: '',
+      faviconUrl: '',
       accentColor: 'indigo',
       primaryColor: '#6366f1',
       primaryHover: '#4f46e5',

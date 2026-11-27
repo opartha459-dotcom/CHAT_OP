@@ -534,11 +534,25 @@ export const ChatProvider = ({ children }) => {
       }
     };
 
-    const handleConversationDeleted = ({ conversationId }) => {
-      if (!conversationId) return;
-      const cIdStr = conversationId.toString();
-      setConversations((prev) => prev.filter((c) => c._id?.toString() !== cIdStr));
+    const handleConversationDeleted = (payload) => {
+      const deletedId = payload?.conversationId || payload?._id || payload;
+      if (!deletedId) return;
+      const cIdStr = deletedId.toString();
       messageCacheRef.current.delete(cIdStr);
+
+      if (payload?.clearedOnly) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c._id?.toString() === cIdStr ? { ...c, lastMessage: null, unreadCount: 0 } : c
+          )
+        );
+        if (activeConversationRef.current?._id?.toString() === cIdStr) {
+          setMessages([]);
+        }
+        return;
+      }
+
+      setConversations((prev) => prev.filter((c) => c._id?.toString() !== cIdStr));
       if (activeConversationRef.current?._id?.toString() === cIdStr) {
         setActiveConversation(null);
         setMessages([]);
@@ -1067,7 +1081,7 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // Delete Conversation
+  // Delete / Clear Conversation history (keeps user in sidebar UI)
   const deleteConversation = async (conversationId) => {
     const res = await fetch(`/api/chats/${conversationId}`, {
       method: 'DELETE',
@@ -1076,14 +1090,52 @@ export const ChatProvider = ({ children }) => {
     });
     const data = await res.json();
     if (data.success) {
-      setConversations((prev) => prev.filter((c) => c._id !== conversationId));
       if (conversationId) {
         messageCacheRef.current.delete(conversationId.toString());
       }
+      setConversations((prev) =>
+        prev.map((c) =>
+          c._id === conversationId ? { ...c, lastMessage: null, unreadCount: 0 } : c
+        )
+      );
       if (activeConversation && activeConversation._id === conversationId) {
-        setActiveConversation(null);
         setMessages([]);
       }
+    }
+  };
+
+  const replyPrivatelyFromGroup = async (message) => {
+    const senderId = (message?.sender?._id || message?.sender)?.toString();
+    if (!senderId || senderId === user?._id?.toString()) return;
+
+    try {
+      let targetConv = conversations.find(
+        (c) =>
+          (c.type === 'private' || c.type === 'direct') &&
+          (c.otherUser?._id?.toString() === senderId ||
+            c.participants?.some((p) => (p._id || p)?.toString() === senderId))
+      );
+
+      if (!targetConv) {
+        const res = await fetch('/api/chats/private', {
+          method: 'POST',
+          headers: authHeaders(),
+          credentials: 'include',
+          body: JSON.stringify({ recipientId: senderId })
+        });
+        const data = await res.json();
+        if (!data.success || !data.conversation) {
+          console.error('[Reply Privately Error]', data.message);
+          return;
+        }
+        targetConv = data.conversation;
+        await fetchConversations();
+      }
+
+      selectConversation(targetConv);
+      setReplyMessage(message);
+    } catch (err) {
+      console.error('[Reply Privately Error]', err);
     }
   };
 
@@ -1102,6 +1154,7 @@ export const ChatProvider = ({ children }) => {
         tab,
         setTab,
         selectConversation,
+        replyPrivatelyFromGroup,
         sendMessage,
         editMessage,
         deleteMessage,

@@ -303,17 +303,19 @@ app.get('/api/system/maintenance', async (req, res) => {
 // API ROUTES
 // ============================================
 
+const { enforceMaintenance } = require('./middlewares/maintenanceGuard');
+
 app.use('/api/auth', authLimiter, authRoutes);
 
-app.use('/api/users', userRoutes);
-app.use('/api/chats', chatRoutes);
-app.use('/api/groups', groupRoutes);
-app.use('/api/messages', messageRoutes);
-app.use('/api/reports', reportRoutes);
+app.use('/api/users', enforceMaintenance(), userRoutes);
+app.use('/api/chats', enforceMaintenance('chat'), chatRoutes);
+app.use('/api/groups', enforceMaintenance('chat'), groupRoutes);
+app.use('/api/messages', enforceMaintenance('chat'), messageRoutes);
+app.use('/api/reports', enforceMaintenance(), reportRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/export', exportRoutes);
-app.use('/api/announcements', announcementRoutes);
-app.use('/api/status', statusRoutes);
+app.use('/api/export', enforceMaintenance(), exportRoutes);
+app.use('/api/announcements', enforceMaintenance(), announcementRoutes);
+app.use('/api/status', enforceMaintenance('status'), statusRoutes);
 
 // ============================================
 // 404 HANDLER

@@ -17,28 +17,11 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Authentication required. Please log in.' });
     }
 
-    let decoded = verifyToken(token);
-    let userId = decoded?.userId || decoded?.id;
-    let user = userId ? await User.findById(userId) : null;
-
-    // Smart Admin Route fallback: If an admin route is accessed and the current token does not have admin role,
-    // but the cookie token belongs to an administrator, safely use the admin session.
-    const isAdminRoute = (req.baseUrl && req.baseUrl.includes('/admin')) || (req.originalUrl && req.originalUrl.includes('/admin'));
-    if (isAdminRoute && (!user || user.role !== 'admin') && req.cookies?.token) {
-      try {
-        const cookieDecoded = verifyToken(req.cookies.token);
-        const cookieUserId = cookieDecoded?.userId || cookieDecoded?.id;
-        if (cookieUserId) {
-          const cookieUser = await User.findById(cookieUserId);
-          if (cookieUser && cookieUser.role === 'admin') {
-            user = cookieUser;
-            decoded = cookieDecoded;
-            token = req.cookies.token;
-            userId = cookieUserId;
-          }
-        }
-      } catch {}
-    }
+    const decoded = verifyToken(token);
+    const userId = decoded?.userId || decoded?.id;
+    const user = userId
+      ? await User.findById(userId).populate('customRole', 'name slug description permissions')
+      : null;
 
     if (!decoded || !userId || !user) {
       return res.status(401).json({ success: false, message: 'Invalid or expired session. Please log in again.' });

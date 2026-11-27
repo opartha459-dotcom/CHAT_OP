@@ -55,6 +55,7 @@ import { useCall } from '../../context/CallContext';
 import { useSocket } from '../../context/SocketContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useStatus } from '../../context/StatusContext';
+import { hasAdminAccess } from '../../utils/permissions';
 import { Avatar } from '../common/Avatar';
 import { SidebarSkeleton } from '../common/Skeleton';
 import { NewChatModal } from '../modals/NewChatModal';
@@ -594,7 +595,7 @@ export const Sidebar = () => {
                     <span className="font-medium">Pulse Story Privacy</span>
                   </button>
 
-                  {user?.role === 'admin' && (
+                  {hasAdminAccess(user) && (
                     <button
                       onClick={() => {
                         setIsMenuOpen(false);
@@ -1446,7 +1447,7 @@ export const Sidebar = () => {
 
               {/* Bottom Actions */}
               <div className="pt-2 space-y-2">
-                {user?.role === 'admin' && (
+                {hasAdminAccess(user) && (
                   <button
                     onClick={() => navigate('/admin')}
                     className="w-full flex items-center justify-between p-3.5 rounded-2xl text-xs font-semibold text-[#F43F5E] bg-[#1F101A] hover:bg-[#2C1424] border border-[#641A2D] transition cursor-pointer shadow-xs"

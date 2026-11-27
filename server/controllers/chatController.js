@@ -38,6 +38,12 @@ const getConversations = async (req, res) => {
 
       const unreadCount = (conv.unreadCounts && conv.unreadCounts[currentUserId.toString()]) || 0;
 
+      // Hide lastMessage preview if this user has deleted it for themselves
+      const lastMsgDeletedForUser = Boolean(
+        conv.lastMessage?.deletedFor?.some((id) => id.toString() === currentUserId.toString())
+      );
+      const effectiveLastMessage = lastMsgDeletedForUser ? null : conv.lastMessage;
+
       // Adjust participants' status to reflect true socket presence
       const participants = (conv.participants || []).map((p) => {
         if (!p || !p._id) return p;
@@ -78,7 +84,7 @@ const getConversations = async (req, res) => {
         isOfficial,
         participants,
         groupDetails: conv.groupDetails,
-        lastMessage: conv.lastMessage,
+        lastMessage: effectiveLastMessage,
         isEncrypted: conv.isEncrypted,
         isPinned,
         isArchived,
@@ -270,7 +276,7 @@ const toggleMute = async (req, res) => {
   }
 };
 
-// @desc Delete conversation for current user
+// @desc Delete/clear conversation history for current user (keeps contact/conversation in UI)
 // @route DELETE /api/chats/:id
 const deleteConversation = async (req, res) => {
   try {
@@ -282,24 +288,27 @@ const deleteConversation = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Conversation not found.' });
     }
 
-    if (!conversation.deletedFor.includes(currentUserId)) {
-      conversation.deletedFor.push(currentUserId);
-    }
-
-    // Also mark messages as deleted for this user
+    // Mark all messages as deleted for this user, while keeping the conversation/user in their sidebar UI
     await Message.updateMany(
       { conversation: id, deletedFor: { $ne: currentUserId } },
       { $addToSet: { deletedFor: currentUserId } }
     );
 
+    if (conversation.unreadCounts && typeof conversation.unreadCounts.set === 'function') {
+      conversation.unreadCounts.set(currentUserId.toString(), 0);
+    }
+
     await conversation.save();
 
     const io = req.app.get('io');
     if (io) {
-      io.to(`user:${currentUserId}`).emit('conversation:deleted', { conversationId: id });
+      io.to(`user:${currentUserId}`).emit('conversation:deleted', {
+        conversationId: id,
+        clearedOnly: true
+      });
     }
 
-    return res.json({ success: true, message: 'Conversation deleted.' });
+    return res.json({ success: true, clearedOnly: true, message: 'Conversation history cleared.' });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Error deleting conversation.' });
   }

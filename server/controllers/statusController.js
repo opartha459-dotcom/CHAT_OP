@@ -19,7 +19,11 @@ const getId = (value) => {
 };
 
 const isExpired = (status) => {
-  return !status?.expiresAt || new Date(status.expiresAt) <= new Date();
+  if (!status) return true;
+  if (status.lifeMode === 'forever' || status.expiresAt === null || status.expiresAt === undefined) {
+    return false;
+  }
+  return new Date(status.expiresAt) <= new Date();
 };
 
 const populateStatus = async (id) => {
@@ -273,7 +277,9 @@ const createStatus = async (req, res) => {
       style,
       privacy,
       hasPoll,
-      poll
+      poll,
+      lifeMode = '24h',
+      customExpiresAt
     } = req.body;
 
     const currentUserId = req.user._id;
@@ -334,6 +340,24 @@ const createStatus = async (req, res) => {
       });
     }
 
+    let resolvedLifeMode = '24h';
+    let resolvedExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    if (lifeMode === 'forever') {
+      resolvedLifeMode = 'forever';
+      resolvedExpiresAt = null;
+    } else if (lifeMode === 'custom') {
+      const parsedDate = customExpiresAt ? new Date(customExpiresAt) : null;
+      if (!parsedDate || Number.isNaN(parsedDate.getTime()) || parsedDate.getTime() <= Date.now()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please choose a valid future expiry date and time.'
+        });
+      }
+      resolvedLifeMode = 'custom';
+      resolvedExpiresAt = parsedDate;
+    }
+
     const status = await Status.create({
       user: currentUserId,
       type,
@@ -369,7 +393,8 @@ const createStatus = async (req, res) => {
       hasPoll: Boolean(pollData),
       poll: pollData || undefined,
 
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+      lifeMode: resolvedLifeMode,
+      expiresAt: resolvedExpiresAt
     });
 
     const populated = await populateStatus(status._id);
@@ -421,10 +446,19 @@ const getStatusFeed = async (req, res) => {
     );
 
     const activeStatuses = await Status.find({
-      expiresAt: { $gt: now },
-      $or: [
-        { isAdminStory: true },
-        { user: { $nin: blockedUserIds } }
+      $and: [
+        {
+          $or: [
+            { expiresAt: { $gt: now } },
+            { expiresAt: null }
+          ]
+        },
+        {
+          $or: [
+            { isAdminStory: true },
+            { user: { $nin: blockedUserIds } }
+          ]
+        }
       ]
     })
       .sort({ createdAt: 1 })
@@ -601,7 +635,10 @@ const getMyStatuses = async (req, res) => {
 
     const statuses = await Status.find({
       user: currentUserId,
-      expiresAt: { $gt: new Date() }
+      $or: [
+        { expiresAt: { $gt: new Date() } },
+        { expiresAt: null }
+      ]
     })
       .sort({ createdAt: -1 })
       .populate('viewers.user', PUBLIC_USER_FIELDS)

@@ -11,7 +11,7 @@ const {
   deleteAnnouncement
 } = require('../controllers/announcementController');
 const { protect } = require('../middlewares/auth');
-const { requireAdmin } = require('../middlewares/adminAuth');
+const { requireAdmin, requirePermission } = require('../middlewares/adminAuth');
 
 // Public or User-authenticated routes
 router.get('/', protect, getActiveAnnouncements);
@@ -19,10 +19,10 @@ router.post('/:id/acknowledge', protect, acknowledgeAnnouncement);
 router.post('/:id/poll/vote', protect, voteAnnouncementPoll);
 
 // Protected Admin management routes
-router.get('/admin/all', protect, requireAdmin, getAllAnnouncementsAdmin);
-router.post('/admin', protect, requireAdmin, createAnnouncement);
-router.post('/admin/:id/poll/close', protect, requireAdmin, toggleAnnouncementPollClosed);
-router.put('/admin/:id', protect, requireAdmin, updateAnnouncement);
-router.delete('/admin/:id', protect, requireAdmin, deleteAnnouncement);
+router.get('/admin/all', protect, requireAdmin, requirePermission('announcements.view'), getAllAnnouncementsAdmin);
+router.post('/admin', protect, requireAdmin, requirePermission('announcements.create'), createAnnouncement);
+router.post('/admin/:id/poll/close', protect, requireAdmin, requirePermission('announcements.edit'), toggleAnnouncementPollClosed);
+router.put('/admin/:id', protect, requireAdmin, requirePermission('announcements.edit'), updateAnnouncement);
+router.delete('/admin/:id', protect, requireAdmin, requirePermission('announcements.delete'), deleteAnnouncement);
 
 module.exports = router;

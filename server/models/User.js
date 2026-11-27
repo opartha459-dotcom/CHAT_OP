@@ -105,6 +105,13 @@ const userSchema = new mongoose.Schema(
       index: true
     },
 
+    customRole: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Role',
+      default: null,
+      index: true
+    },
+
     isOfficial: {
       type: Boolean,
       default: false,

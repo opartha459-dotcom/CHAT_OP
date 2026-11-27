@@ -1,6 +1,7 @@
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const Block = require('../models/Block');
+const User = require('../models/User');
 
 // @desc Get paginated messages in a conversation
 // @route GET /api/messages/:conversationId
@@ -876,9 +877,213 @@ const closePoll = async (req, res) => {
   }
 };
 
+// @desc Forward one or more messages to conversations or users
+// @route POST /api/messages/forward
+const forwardMessages = async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+    const { items = [], messageIds = [], targetConversationIds = [], targetUserIds = [] } = req.body;
+
+    const normalizedItems = Array.isArray(items) && items.length > 0
+      ? items
+      : (Array.isArray(messageIds) ? messageIds.map((id) => ({ messageId: id })) : []);
+
+    if (normalizedItems.length === 0) {
+      return res.status(400).json({ success: false, message: 'No messages selected to forward.' });
+    }
+
+    const convTargets = Array.isArray(targetConversationIds) ? [...new Set(targetConversationIds.map(String))] : [];
+    const userTargets = Array.isArray(targetUserIds) ? [...new Set(targetUserIds.map(String))] : [];
+
+    if (convTargets.length === 0 && userTargets.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please select at least one recipient or chat.' });
+    }
+
+    const requestedIds = normalizedItems.map((it) => it.messageId).filter(Boolean);
+    const contentOverrideMap = new Map(
+      normalizedItems.map((it) => [String(it.messageId), typeof it.content === 'string' ? it.content : null])
+    );
+
+    const sourceMessages = await Message.find({ _id: { $in: requestedIds } }).sort({ createdAt: 1 });
+    if (sourceMessages.length === 0) {
+      return res.status(404).json({ success: false, message: 'Selected messages not found.' });
+    }
+
+    // Verify user participates in all source conversations
+    const sourceConvIds = [...new Set(sourceMessages.map((m) => m.conversation.toString()))];
+    const allowedSourceConvs = await Conversation.find({
+      _id: { $in: sourceConvIds },
+      participants: currentUserId
+    }).select('_id');
+    const allowedSourceSet = new Set(allowedSourceConvs.map((c) => c._id.toString()));
+
+    const validSources = sourceMessages.filter(
+      (m) => allowedSourceSet.has(m.conversation.toString()) && !m.isDeletedForEveryone
+    );
+    if (validSources.length === 0) {
+      return res.status(403).json({ success: false, message: 'You cannot forward these messages.' });
+    }
+
+    // Resolve all target conversations
+    const targetConversations = [];
+    const seenConvIds = new Set();
+
+    if (convTargets.length > 0) {
+      const existingConvs = await Conversation.find({
+        _id: { $in: convTargets },
+        participants: currentUserId
+      });
+      for (const conv of existingConvs) {
+        if (!seenConvIds.has(conv._id.toString())) {
+          seenConvIds.add(conv._id.toString());
+          targetConversations.push(conv);
+        }
+      }
+    }
+
+    for (const targetUserId of userTargets) {
+      if (targetUserId === currentUserId.toString()) continue;
+      const recipient = await User.findById(targetUserId).select('_id isBanned isDeactivated');
+      if (!recipient || recipient.isBanned || recipient.isDeactivated) continue;
+
+      const isBlocked = await Block.findOne({
+        $or: [
+          { blocker: currentUserId, blocked: targetUserId },
+          { blocker: targetUserId, blocked: currentUserId }
+        ]
+      });
+      if (isBlocked) continue;
+
+      let privConv = await Conversation.findOne({
+        type: 'private',
+        participants: { $all: [currentUserId, targetUserId], $size: 2 }
+      });
+
+      if (!privConv) {
+        privConv = await Conversation.create({
+          type: 'private',
+          participants: [currentUserId, targetUserId],
+          isEncrypted: true,
+          unreadCounts: {
+            [currentUserId.toString()]: 0,
+            [targetUserId.toString()]: 0
+          }
+        });
+      }
+
+      if (!seenConvIds.has(privConv._id.toString())) {
+        seenConvIds.add(privConv._id.toString());
+        targetConversations.push(privConv);
+      }
+    }
+
+    const io = req.app.get('io');
+    const createdMessages = [];
+
+    for (const targetConv of targetConversations) {
+      // Check block for private convs
+      if (targetConv.type === 'private') {
+        const otherId = targetConv.participants.find((p) => p.toString() !== currentUserId.toString());
+        if (otherId) {
+          const isBlocked = await Block.findOne({
+            $or: [
+              { blocker: currentUserId, blocked: otherId },
+              { blocker: otherId, blocked: currentUserId }
+            ]
+          });
+          if (isBlocked) continue;
+        }
+      }
+
+      // Check admin-only restriction for groups
+      if (targetConv.type === 'group' && targetConv.groupDetails?.onlyAdminsCanMessage) {
+        const isAdmin = targetConv.groupDetails.admins?.some((a) => a.toString() === currentUserId.toString());
+        const isOwner = targetConv.groupDetails.owner?.toString() === currentUserId.toString();
+        if (!isAdmin && !isOwner) continue;
+      }
+
+      if (!targetConv.unreadCounts) targetConv.unreadCounts = new Map();
+
+      for (const src of validSources) {
+        const overrideText = contentOverrideMap.get(src._id.toString());
+        const forwardContent = overrideText !== null && overrideText !== undefined
+          ? overrideText
+          : (src.messageType === 'poll' ? `[Poll] ${src.poll?.question || ''}`.trim() : src.content || '');
+
+        const forwardType = ['text', 'image', 'video', 'file', 'audio'].includes(src.messageType)
+          ? src.messageType
+          : 'text';
+
+        const hasValidStoryReply = Boolean(
+          src.storyReply?.statusId || src.storyReply?.storyText || src.storyReply?.storyMediaUrl
+        );
+
+        const created = await Message.create({
+          conversation: targetConv._id,
+          sender: currentUserId,
+          content: forwardContent,
+          isEncrypted: false,
+          encryptionMetadata: {},
+          messageType: forwardType,
+          fileUrl: src.fileUrl || '',
+          fileName: src.fileName || '',
+          fileSize: src.fileSize || 0,
+          fileMimeType: src.fileMimeType || '',
+          forwardFrom: src._id,
+          ...(hasValidStoryReply ? { storyReply: src.storyReply } : { storyReply: undefined }),
+          readBy: [{ user: currentUserId, readAt: new Date() }],
+          deliveredTo: [{ user: currentUserId, deliveredAt: new Date() }]
+        });
+
+        targetConv.lastMessage = created._id;
+        targetConv.participants.forEach((pId) => {
+          if (pId.toString() !== currentUserId.toString()) {
+            const cur = targetConv.unreadCounts.get(pId.toString()) || 0;
+            targetConv.unreadCounts.set(pId.toString(), cur + 1);
+          }
+        });
+
+        const populated = await Message.findById(created._id)
+          .populate('sender', 'username nickname avatar status');
+
+        createdMessages.push(populated);
+
+        if (io) {
+          const convIdStr = targetConv._id.toString();
+          io.to(convIdStr).emit('message:received', populated);
+          io.to(convIdStr).emit('message:new', populated);
+          targetConv.participants.forEach((pId) => {
+            const userRoom = `user:${pId.toString()}`;
+            io.to(userRoom).emit('message:received', populated);
+            io.to(userRoom).emit('message:new', populated);
+            io.to(userRoom).emit('conversation:updated', {
+              conversationId: convIdStr,
+              lastMessage: populated,
+              unreadCounts: Object.fromEntries(targetConv.unreadCounts)
+            });
+          });
+        }
+      }
+
+      targetConv.deletedFor = [];
+      await targetConv.save();
+    }
+
+    return res.status(201).json({
+      success: true,
+      forwardedCount: createdMessages.length,
+      targetCount: targetConversations.length
+    });
+  } catch (error) {
+    console.error('[Forward Messages Error]', error);
+    return res.status(500).json({ success: false, message: 'Error forwarding messages.' });
+  }
+};
+
 module.exports = {
   getMessages,
   sendMessage,
+  forwardMessages,
   editMessage,
   deleteMessage,
   reactToMessage,

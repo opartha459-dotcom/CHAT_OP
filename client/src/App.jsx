@@ -4,7 +4,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
 import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
-import { MaintenanceProvider } from './context/MaintenanceContext';
+import { MaintenanceProvider, useMaintenance } from './context/MaintenanceContext';
 import { ChatProvider, useChat } from './context/ChatContext';
 import { CallProvider } from './context/CallContext';
 import { StatusProvider } from './context/StatusContext';
@@ -20,6 +20,8 @@ import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { ConfirmDeletionPage } from './pages/ConfirmDeletionPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { DeletionAppealPage } from './pages/DeletionAppealPage';
+import { NotFoundPage } from './pages/NotFoundPage';
+import { hasAdminAccess } from './utils/permissions';
 import { DashboardSkeleton, AuthCardSkeleton, AdminDashboardSkeleton } from './components/common/Skeleton';
 import { PulseLogo } from './components/common/PulseLogo';
 import { IncomingCallModal } from './components/call/IncomingCallModal';
@@ -40,14 +42,14 @@ const ProtectedRoute = ({ children }) => {
   }
 
   if (!isAuthenticated) {
-    // replace: true so back-button from landing never loops back through /chat
-    return <Navigate to="/" replace />;
+    // replace: true so back-button never loops back through protected routes
+    return <Navigate to="/login" replace />;
   }
 
   return children;
 };
 
-// Admin Route wrapper
+// Admin Route wrapper — non-admin users receive 404 so admin routes remain hidden
 const AdminRoute = ({ children }) => {
   const { isAuthenticated, user, loading } = useAuth();
 
@@ -59,8 +61,8 @@ const AdminRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (user?.role !== 'admin') {
-    return <Navigate to="/chat" replace />;
+  if (!hasAdminAccess(user)) {
+    return <NotFoundPage />;
   }
 
   return children;
@@ -149,6 +151,28 @@ const JoinGroupHandler = () => {
   );
 };
 
+const MaintenanceGate = ({ children }) => {
+  const { activeMaintenance, maintenanceLoading } = useMaintenance();
+  const { user, loading: authLoading } = useAuth();
+
+  if (maintenanceLoading || authLoading) {
+    return (
+      <div className="min-h-screen bg-[#090D16] flex flex-col items-center justify-center space-y-3">
+        <PulseLogo size="md" animated={true} />
+        <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
+      </div>
+    );
+  }
+
+  // During full-system maintenance, non-admins see ONLY the MaintenanceScreen;
+  // ChatProvider, CallProvider, StatusProvider, and Routes are NOT mounted at all.
+  if (activeMaintenance?.scope === 'full_system' && user?.role !== 'admin') {
+    return <MaintenanceScreen />;
+  }
+
+  return children;
+};
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -158,6 +182,7 @@ export default function App() {
             <ThemeProvider>
               <FeatureFlagsProvider>
                 <MaintenanceProvider>
+                  <MaintenanceGate>
                   <ChatProvider>
                     <CallProvider>
                       <BrowserRouter>
@@ -227,8 +252,8 @@ export default function App() {
                             path="/deletion-appeal"
                             element={<DeletionAppealPage />}
                           />
-                          {/* Fallback to Home / Chat with replace */}
-                          <Route path="*" element={<Navigate to="/" replace />} />
+                          <Route path="/404" element={<NotFoundPage />} />
+                          <Route path="*" element={<NotFoundPage />} />
                         </Routes>
 
                         {/* WebRTC Audio/Video Call Modals */}
@@ -238,15 +263,13 @@ export default function App() {
                         {/* Manual Admin Verification Code Delivery Modal */}
                         <IncomingCodeModal />
 
-                        {/* Full-System Scheduled Maintenance Overlay */}
-                        <MaintenanceScreen />
-
                         {/* Sci-Fi 01 Green Data Cloud Split-Screen Intro Animation */}
                         <CyberSplitscreenLoader />
                       </StatusProvider>
                     </BrowserRouter>
                   </CallProvider>
                 </ChatProvider>
+                </MaintenanceGate>
               </MaintenanceProvider>
             </FeatureFlagsProvider>
           </ThemeProvider>

@@ -7,7 +7,9 @@ import {
   X,
   ChevronDown,
   Sparkles,
-  Zap
+  Zap,
+  Forward,
+  CheckSquare
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { useSocket } from '../../context/SocketContext';
@@ -17,6 +19,7 @@ import { MessageInput } from './MessageInput';
 import { ChatMessagesSkeleton } from '../common/Skeleton';
 import { GroupInfoDrawer } from '../modals/GroupInfoDrawer';
 import { UserInfoDrawer } from '../modals/UserInfoDrawer';
+import { ForwardModal } from '../modals/ForwardModal';
 
 export const ChatArea = ({ onBackToSidebar }) => {
   const { activeConversation, messages, loadingMessages } = useChat();
@@ -26,6 +29,31 @@ export const ChatArea = ({ onBackToSidebar }) => {
   const [inChatSearchQuery, setInChatSearchQuery] = useState('');
   const [infoDrawerOpen, setInfoDrawerOpen] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState([]);
+  const [forwardModalMessages, setForwardModalMessages] = useState([]);
+
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedMessageIds([]);
+    setForwardModalMessages([]);
+  }, [activeConversation?._id]);
+
+  const toggleSelectMessage = (msgId) => {
+    setSelectedMessageIds((prev) =>
+      prev.includes(msgId) ? prev.filter((id) => id !== msgId) : [...prev, msgId]
+    );
+  };
+
+  const startSelectMessage = (msgId) => {
+    setSelectionMode(true);
+    setSelectedMessageIds([msgId]);
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedMessageIds([]);
+  };
 
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -60,6 +88,10 @@ export const ChatArea = ({ onBackToSidebar }) => {
         m.content?.toLowerCase().includes(inChatSearchQuery.toLowerCase())
       )
     : messages;
+
+  const selectableMessages = filteredMessages.filter(
+    (m) => !m.isDeletedForEveryone && m.messageType !== 'system' && m.messageType !== 'call'
+  );
 
   const formatDateHeader = (dateStr) => {
     const d = new Date(dateStr);
@@ -153,7 +185,7 @@ export const ChatArea = ({ onBackToSidebar }) => {
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 py-3 space-y-1 relative"
+        className="flex-1 overflow-y-auto overflow-x-hidden px-3 sm:px-4 py-3 space-y-1 relative"
       >
         {loadingMessages ? (
           <ChatMessagesSkeleton />
@@ -181,7 +213,15 @@ export const ChatArea = ({ onBackToSidebar }) => {
                     </span>
                   </div>
                 )}
-                <MessageBubble message={msg} isGroup={isGroup} />
+                <MessageBubble
+                  message={msg}
+                  isGroup={isGroup}
+                  selectionMode={selectionMode}
+                  isSelected={selectedMessageIds.includes(msg._id)}
+                  onToggleSelect={toggleSelectMessage}
+                  onStartSelect={startSelectMessage}
+                  onForwardSingle={(m) => setForwardModalMessages([m])}
+                />
               </React.Fragment>
             );
           })
@@ -200,8 +240,63 @@ export const ChatArea = ({ onBackToSidebar }) => {
         </button>
       )}
 
-      {/* Input area */}
-      <MessageInput />
+      {/* Input area or Multi-Select Action Bar */}
+      {selectionMode ? (
+        <div className="px-4 py-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 select-none">
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={exitSelectionMode}
+              className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-pointer"
+              title="Cancel selection"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-bold text-slate-800 dark:text-white">
+              {selectedMessageIds.length} selected
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedMessageIds(
+                  selectedMessageIds.length === selectableMessages.length
+                    ? []
+                    : selectableMessages.map((m) => m._id)
+                )
+              }
+              className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline px-2 py-1 cursor-pointer flex items-center space-x-1"
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              <span>
+                {selectedMessageIds.length === selectableMessages.length ? 'Clear All' : 'Select All'}
+              </span>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            disabled={selectedMessageIds.length === 0}
+            onClick={() => {
+              const chosen = messages.filter((m) => selectedMessageIds.includes(m._id));
+              setForwardModalMessages(chosen);
+            }}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-40 text-white text-xs font-bold flex items-center space-x-1.5 shadow-md cursor-pointer transition"
+          >
+            <Forward className="w-3.5 h-3.5" />
+            <span>Forward ({selectedMessageIds.length})</span>
+          </button>
+        </div>
+      ) : (
+        <MessageInput />
+      )}
+
+      {/* Forward Modal */}
+      <ForwardModal
+        isOpen={forwardModalMessages.length > 0}
+        onClose={() => setForwardModalMessages([])}
+        messages={forwardModalMessages}
+        onForwarded={exitSelectionMode}
+      />
 
       {/* Info Drawers */}
       {isGroup ? (

@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   getMessages,
   sendMessage,
+  forwardMessages,
   editMessage,
   deleteMessage,
   reactToMessage,
@@ -20,6 +21,7 @@ const { protect } = require('../middlewares/auth');
 const { checkFeature } = require('../middlewares/checkFeature');
 
 router.get('/search', protect, searchMessages);
+router.post('/forward', protect, checkFeature('chat'), forwardMessages);
 router.get('/calls/history', protect, getCallHistory);
 router.delete('/calls/history', protect, deleteCallHistory);
 router.get('/pins/:conversationId', protect, getPinnedMessages);

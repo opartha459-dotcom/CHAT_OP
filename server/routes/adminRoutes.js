@@ -59,81 +59,111 @@ const {
   sendOfficialReply,
   deleteAdminConversation
 } = require('../controllers/adminController');
+const {
+  getPermissionCatalog,
+  getRoles,
+  getRoleById,
+  createRole,
+  updateRole,
+  duplicateRole,
+  deleteRole,
+  assignCustomRoleToUser
+} = require('../controllers/roleController');
 const { protect } = require('../middlewares/auth');
-const { requireAdmin } = require('../middlewares/adminAuth');
+const {
+  requireAdmin,
+  requireSuperAdmin,
+  requirePermission,
+  requireAnyPermission
+} = require('../middlewares/adminAuth');
 const upload = require('../middlewares/upload');
 const { uploadFile } = require('../controllers/userController');
 
 router.use(protect);
 router.use(requireAdmin);
 
-router.get('/stats', getDashboardStats);
-router.get('/analytics', getAnalytics);
-router.get('/users', getUsers);
-router.put('/users/:id', updateUserAdmin);
-router.delete('/users/:id', deleteUser);
-router.post('/users/:id/ban', banUser);
-router.post('/users/:id/unban', unbanUser);
-router.post('/users/:id/role', updateUserRole);
-router.get('/reports', getReports);
-router.post('/reports/:id/resolve', resolveReport);
-router.get('/audit-logs', getAuditLogs);
-router.delete('/audit-logs', deleteAuditLogs);
+// RBAC: Role & Permission Management (Super Admin Only)
+router.get('/permissions', requireSuperAdmin, getPermissionCatalog);
+router.get('/roles', requireSuperAdmin, getRoles);
+router.get('/roles/:id', requireSuperAdmin, getRoleById);
+router.post('/roles', requireSuperAdmin, createRole);
+router.put('/roles/:id', requireSuperAdmin, updateRole);
+router.post('/roles/:id/duplicate', requireSuperAdmin, duplicateRole);
+router.delete('/roles/:id', requireSuperAdmin, deleteRole);
+router.put('/users/:id/custom-role', requireSuperAdmin, assignCustomRoleToUser);
+
+// Overview & Analytics
+router.get('/stats', requirePermission('analytics.view'), getDashboardStats);
+router.get('/analytics', requirePermission('analytics.view'), getAnalytics);
+
+// User Management
+router.get('/users', requirePermission('users.view'), getUsers);
+router.put('/users/:id', requirePermission('users.edit'), updateUserAdmin);
+router.delete('/users/:id', requirePermission('users.delete'), deleteUser);
+router.post('/users/:id/ban', requirePermission('users.ban'), banUser);
+router.post('/users/:id/unban', requirePermission('users.unban'), unbanUser);
+router.post('/users/:id/role', requireSuperAdmin, updateUserRole);
+
+// Reports & Audit Logs
+router.get('/reports', requirePermission('reports.view'), getReports);
+router.post('/reports/:id/resolve', requirePermission('reports.resolve'), resolveReport);
+router.get('/audit-logs', requirePermission('audit.view'), getAuditLogs);
+router.delete('/audit-logs', requireSuperAdmin, deleteAuditLogs);
 
 // System & Database Management
-router.get('/database/status', getDatabaseStatus);
-router.post('/retention/run', runManualRetention);
-router.get('/trash/accounts', getTrashAccounts);
-router.post('/trash/restore/:id', restoreTrashAccount);
-router.delete('/trash/purge/:id', purgeTrashAccount);
-router.post('/trash/purge-expired', purgeExpiredTrashAccounts);
-router.get('/storage/metrics', getStorageMetrics);
-router.post('/storage/cleanup', runStorageCleanup);
-router.get('/settings', getSystemSettings);
-router.put('/settings', updateSystemSettings);
-router.put('/theme', updateSystemTheme);
-router.get('/landing', getLandingConfig);
-router.put('/landing', updateLandingConfig);
-router.get('/contact', getAdminContact);
-router.put('/contact', updateAdminContact);
-router.post('/upload', upload.single('file'), uploadFile);
+router.get('/database/status', requireAnyPermission(['database.view', 'analytics.view']), getDatabaseStatus);
+router.post('/retention/run', requirePermission('database.cleanup'), runManualRetention);
+router.get('/trash/accounts', requirePermission('users.manage_deletion_requests'), getTrashAccounts);
+router.post('/trash/restore/:id', requirePermission('users.manage_deletion_requests'), restoreTrashAccount);
+router.delete('/trash/purge/:id', requirePermission('users.manage_deletion_requests'), purgeTrashAccount);
+router.post('/trash/purge-expired', requirePermission('users.manage_deletion_requests'), purgeExpiredTrashAccounts);
+router.get('/storage/metrics', requirePermission('database.view'), getStorageMetrics);
+router.post('/storage/cleanup', requirePermission('database.cleanup'), runStorageCleanup);
+router.get('/settings', requireAnyPermission(['system.manage_settings', 'system.manage_features']), getSystemSettings);
+router.put('/settings', requireAnyPermission(['system.manage_settings', 'system.manage_features']), updateSystemSettings);
+router.put('/theme', requirePermission('system.manage_theme'), updateSystemTheme);
+router.get('/landing', requirePermission('system.manage_landing'), getLandingConfig);
+router.put('/landing', requirePermission('system.manage_landing'), updateLandingConfig);
+router.get('/contact', requirePermission('system.manage_settings'), getAdminContact);
+router.put('/contact', requirePermission('system.manage_settings'), updateAdminContact);
+router.post('/upload', requireAnyPermission(['statuses.create', 'statuses.edit', 'system.manage_landing', 'system.manage_settings']), upload.single('file'), uploadFile);
 
 // Scheduled Maintenance Management
-router.get('/maintenance', getMaintenanceSchedules);
-router.post('/maintenance', createMaintenanceSchedule);
-router.put('/maintenance/:id', updateMaintenanceSchedule);
-router.post('/maintenance/:id/activate', activateMaintenanceSchedule);
-router.post('/maintenance/:id/end', endMaintenanceSchedule);
-router.delete('/maintenance/history', deleteMaintenanceHistory);
-router.delete('/maintenance/:id/permanent', deleteSingleMaintenance);
-router.delete('/maintenance/:id', cancelMaintenanceSchedule);
-router.get('/recoveries', getRecoveryRequests);
-router.post('/recoveries/:id/resolve', resolveRecoveryRequest);
-router.post('/recoveries/:id/items/:itemKey/resolve', resolveDataItem);
-router.delete('/recoveries', deleteRecoveryRequests);
+router.get('/maintenance', requirePermission('system.manage_maintenance'), getMaintenanceSchedules);
+router.post('/maintenance', requirePermission('system.manage_maintenance'), createMaintenanceSchedule);
+router.put('/maintenance/:id', requirePermission('system.manage_maintenance'), updateMaintenanceSchedule);
+router.post('/maintenance/:id/activate', requirePermission('system.manage_maintenance'), activateMaintenanceSchedule);
+router.post('/maintenance/:id/end', requirePermission('system.manage_maintenance'), endMaintenanceSchedule);
+router.delete('/maintenance/history', requirePermission('system.manage_maintenance'), deleteMaintenanceHistory);
+router.delete('/maintenance/:id/permanent', requirePermission('system.manage_maintenance'), deleteSingleMaintenance);
+router.delete('/maintenance/:id', requirePermission('system.manage_maintenance'), cancelMaintenanceSchedule);
+router.get('/recoveries', requirePermission('recoveries.view'), getRecoveryRequests);
+router.post('/recoveries/:id/resolve', requirePermission('recoveries.resolve'), resolveRecoveryRequest);
+router.post('/recoveries/:id/items/:itemKey/resolve', requirePermission('recoveries.resolve'), resolveDataItem);
+router.delete('/recoveries', requirePermission('recoveries.resolve'), deleteRecoveryRequests);
 
 // Verification Codes (Manual Admin Dispatch & Generation)
-router.get('/verification-codes', getVerificationCodes);
-router.post('/verification-codes/generate', generateVerificationCode);
-router.post('/verification-codes/:id/send', sendVerificationCode);
-router.post('/verification-codes/:id/revoke', revokeVerificationCode);
-router.delete('/verification-codes', deleteVerificationCodes);
+router.get('/verification-codes', requirePermission('codes.view'), getVerificationCodes);
+router.post('/verification-codes/generate', requirePermission('codes.generate'), generateVerificationCode);
+router.post('/verification-codes/:id/send', requirePermission('codes.generate'), sendVerificationCode);
+router.post('/verification-codes/:id/revoke', requirePermission('codes.revoke'), revokeVerificationCode);
+router.delete('/verification-codes', requirePermission('codes.revoke'), deleteVerificationCodes);
 
 // Platform Chat Monitoring & Moderation
-router.get('/chats', getAllChats);
-router.get('/chats/:id/messages', getChatMessages);
-router.delete('/chats/:id', deleteChat);
-router.delete('/messages/:id', deleteAdminMessage);
+router.get('/chats', requirePermission('chats.view'), getAllChats);
+router.get('/chats/:id/messages', requirePermission('chats.view'), getChatMessages);
+router.delete('/chats/:id', requirePermission('chats.delete'), deleteChat);
+router.delete('/messages/:id', requirePermission('chats.moderate_messages'), deleteAdminMessage);
 
 // Official PulseChat Stories & Replies
-router.get('/stories', getAdminStories);
-router.get('/stories/replies', getAdminStoryReplies);
-router.get('/stories/replies/conversation/:userId', getOfficialConversationMessages);
-router.post('/stories/replies/send', sendOfficialReply);
-router.delete('/stories/replies/conversation/:id', deleteAdminConversation);
-router.post('/stories', createAdminStory);
-router.put('/stories/:id', updateAdminStory);
-router.delete('/stories/:id', deleteAdminStory);
-router.post('/stories/:id/poll/close', toggleAdminStoryPoll);
+router.get('/stories', requirePermission('statuses.view'), getAdminStories);
+router.get('/stories/replies', requirePermission('statuses.view'), getAdminStoryReplies);
+router.get('/stories/replies/conversation/:userId', requirePermission('statuses.view'), getOfficialConversationMessages);
+router.post('/stories/replies/send', requirePermission('statuses.reply'), sendOfficialReply);
+router.delete('/stories/replies/conversation/:id', requirePermission('statuses.delete'), deleteAdminConversation);
+router.post('/stories', requirePermission('statuses.create'), createAdminStory);
+router.put('/stories/:id', requirePermission('statuses.edit'), updateAdminStory);
+router.delete('/stories/:id', requirePermission('statuses.delete'), deleteAdminStory);
+router.post('/stories/:id/poll/close', requirePermission('statuses.edit'), toggleAdminStoryPoll);
 
 module.exports = router;
