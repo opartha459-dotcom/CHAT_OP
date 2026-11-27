@@ -86,6 +86,7 @@ import { OfficialContactSettingsCard } from '../components/admin/OfficialContact
 import { StorageManagementTab } from '../components/admin/StorageManagementTab';
 import { AdminAnalyticsCharts } from '../components/admin/AdminAnalyticsCharts';
 import { ChatsManagementTab } from '../components/admin/ChatsManagementTab';
+import { StoryRingsCustomizationTab } from '../components/admin/StoryRingsCustomizationTab';
 import {
   PRESET_BACKGROUNDS,
   PRESET_TEXT_COLORS,
@@ -3546,6 +3547,18 @@ export const AdminDashboard = () => {
                     </span>
                   )}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setStorySubTab('rings')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 cursor-pointer ${
+                    storySubTab === 'rings'
+                      ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-950/60'
+                      : 'text-violet-300/70 hover:text-white hover:bg-violet-900/20'
+                  }`}
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                  <span>Story Rings Customization</span>
+                </button>
               </div>
 
               {storySubTab === 'stories' && (
@@ -3955,6 +3968,13 @@ export const AdminDashboard = () => {
                     );
                   })()}
                 </div>
+              )}
+
+              {storySubTab === 'rings' && (
+                <StoryRingsCustomizationTab
+                  authHeaders={authHeaders}
+                  showMsg={showMsg}
+                />
               )}
             </div>
           )}

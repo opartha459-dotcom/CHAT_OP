@@ -37,6 +37,27 @@ const systemConfigSchema = new mongoose.Schema(
       headingLetterSpacing: { type: String, default: '-0.02em' },
       headingTransform: { type: String, default: 'none' }
     },
+    storyRingConfig: {
+      official: {
+        type: { type: String, enum: ['solid', 'gradient'], default: 'gradient' },
+        solidColor: { type: String, default: '#8b5cf6' },
+        gradientColors: {
+          type: [String],
+          default: ['#8b5cf6', '#d946ef', '#6366f1']
+        },
+        gradientAngle: { type: Number, default: 45 }
+      },
+      user: {
+        type: { type: String, enum: ['solid', 'gradient'], default: 'gradient' },
+        solidColor: { type: String, default: '#6366f1' },
+        gradientColors: {
+          type: [String],
+          default: ['#6366f1', '#a855f7', '#ec4899']
+        },
+        gradientAngle: { type: Number, default: 45 }
+      },
+      viewedColor: { type: String, default: '#94a3b8' }
+    },
     databaseAssignments: {
       authDb: { type: String, default: 'primary' },
       messagesDb: { type: String, default: 'primary' },

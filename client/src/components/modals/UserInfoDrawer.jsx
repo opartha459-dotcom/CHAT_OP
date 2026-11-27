@@ -2,10 +2,13 @@ import React, { useState } from 'react';
 import { X, Lock, Flag, UserX } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { Avatar } from '../common/Avatar';
+import { StoryRing } from '../common/StoryRing';
+import { useStatus } from '../../context/StatusContext';
 import { ReportModal } from './ReportModal';
 
 export const UserInfoDrawer = ({ isOpen, onClose, targetUser }) => {
   const { authHeaders, fetchConversations } = useChat();
+  const { hasActiveStatus, hasUnviewedStatus, setActiveUserId } = useStatus();
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -50,7 +53,33 @@ export const UserInfoDrawer = ({ isOpen, onClose, targetUser }) => {
 
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
             <div className="flex flex-col items-center text-center">
-              <Avatar src={targetUser.avatar} name={targetUser.nickname || targetUser.username} size="xl" />
+              {(() => {
+                const targetId = targetUser._id?.toString();
+                const hasStatus = hasActiveStatus(targetId);
+                const hasUnviewed = hasUnviewedStatus(targetId);
+                const isOfficial = Boolean(targetUser.isOfficial || (targetUser.nickname || targetUser.username || '').toLowerCase().includes('pulsechat'));
+
+                return (
+                  <StoryRing
+                    size="xl"
+                    hasStatus={hasStatus}
+                    hasUnviewed={hasUnviewed}
+                    isOfficial={isOfficial}
+                    onClick={hasStatus ? () => {
+                      onClose();
+                      setActiveUserId(targetId);
+                    } : undefined}
+                    title={hasStatus ? 'View Story' : ''}
+                  >
+                    <Avatar
+                      src={targetUser.avatar}
+                      name={targetUser.nickname || targetUser.username}
+                      size="xl"
+                      noRing={hasStatus}
+                    />
+                  </StoryRing>
+                );
+              })()}
               <h3 className="mt-3 text-base font-bold text-white tracking-tight">
                 {targetUser.nickname || targetUser.username}
               </h3>

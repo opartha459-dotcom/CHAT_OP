@@ -1257,6 +1257,43 @@ const updateSystemSettings = async (req, res) => {
     if (loaderConfig) {
       config.loaderConfig = { ...(config.loaderConfig?.toObject ? config.loaderConfig.toObject() : config.loaderConfig || {}), ...loaderConfig };
     }
+    if (req.body.storyRingConfig) {
+      const isValidColor = (c) =>
+        typeof c === 'string' &&
+        /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$|^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(\s*,\s*(0|1|0?\.\d+))?\s*\)$/i.test(c.trim());
+
+      const sanitizeRingSection = (section, fallback) => {
+        if (!section || typeof section !== 'object') return fallback;
+        const type = section.type === 'solid' ? 'solid' : 'gradient';
+        const solidColor = isValidColor(section.solidColor) ? section.solidColor.trim() : fallback.solidColor;
+        const rawColors = Array.isArray(section.gradientColors)
+          ? section.gradientColors.filter(isValidColor).map((c) => c.trim())
+          : fallback.gradientColors;
+        const gradientColors = rawColors.length >= 2 ? rawColors.slice(0, 6) : fallback.gradientColors;
+        const angleNum = Number(section.gradientAngle);
+        const gradientAngle = Number.isFinite(angleNum) ? Math.max(0, Math.min(360, angleNum)) : fallback.gradientAngle;
+        return { type, solidColor, gradientColors, gradientAngle };
+      };
+
+      const currentRing = config.storyRingConfig?.toObject ? config.storyRingConfig.toObject() : config.storyRingConfig || {};
+      const incoming = req.body.storyRingConfig;
+      config.storyRingConfig = {
+        official: sanitizeRingSection(incoming.official, currentRing.official || {
+          type: 'gradient',
+          solidColor: '#8b5cf6',
+          gradientColors: ['#8b5cf6', '#d946ef', '#6366f1'],
+          gradientAngle: 45
+        }),
+        user: sanitizeRingSection(incoming.user, currentRing.user || {
+          type: 'gradient',
+          solidColor: '#6366f1',
+          gradientColors: ['#6366f1', '#a855f7', '#ec4899'],
+          gradientAngle: 45
+        }),
+        viewedColor: isValidColor(incoming.viewedColor) ? incoming.viewedColor.trim() : (currentRing.viewedColor || '#94a3b8')
+      };
+      config.markModified('storyRingConfig');
+    }
 
     config.lastUpdatedBy = req.user._id;
     await config.save();
@@ -1270,6 +1307,9 @@ const updateSystemSettings = async (req, res) => {
       }
       if (req.body.loaderConfig) {
         io.emit('system:loader_updated', config.loaderConfig);
+      }
+      if (req.body.storyRingConfig) {
+        io.emit('system:story_rings_updated', config.storyRingConfig);
       }
     }
 
@@ -1319,6 +1359,21 @@ const getPublicFeatureFlags = async (req, res) => {
       featureFlags: {
         ...DEFAULT_FLAGS,
         ...(config?.featureFlags || {})
+      },
+      storyRingConfig: config?.storyRingConfig || {
+        official: {
+          type: 'gradient',
+          solidColor: '#8b5cf6',
+          gradientColors: ['#8b5cf6', '#d946ef', '#6366f1'],
+          gradientAngle: 45
+        },
+        user: {
+          type: 'gradient',
+          solidColor: '#6366f1',
+          gradientColors: ['#6366f1', '#a855f7', '#ec4899'],
+          gradientAngle: 45
+        },
+        viewedColor: '#94a3b8'
       }
     });
   } catch (error) {

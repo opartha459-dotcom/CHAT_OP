@@ -8,6 +8,7 @@ import { MaintenanceProvider } from './context/MaintenanceContext';
 import { ChatProvider, useChat } from './context/ChatContext';
 import { CallProvider } from './context/CallContext';
 import { StatusProvider } from './context/StatusContext';
+import { StoryRingProvider } from './context/StoryRingContext';
 
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
@@ -153,13 +154,14 @@ export default function App() {
     <ErrorBoundary>
       <AuthProvider>
         <SocketProvider>
-          <ThemeProvider>
-            <FeatureFlagsProvider>
-              <MaintenanceProvider>
-                <ChatProvider>
-                  <CallProvider>
-                    <BrowserRouter>
-                      <StatusProvider>
+          <StoryRingProvider>
+            <ThemeProvider>
+              <FeatureFlagsProvider>
+                <MaintenanceProvider>
+                  <ChatProvider>
+                    <CallProvider>
+                      <BrowserRouter>
+                        <StatusProvider>
                         <MaintenanceBanner />
                         <Routes>
                           {/* Landing — smart home: logged-in users go straight to /chat (replace keeps history clean) */}
@@ -248,7 +250,8 @@ export default function App() {
               </MaintenanceProvider>
             </FeatureFlagsProvider>
           </ThemeProvider>
-        </SocketProvider>
+        </StoryRingProvider>
+      </SocketProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

@@ -22,6 +22,8 @@ import { useChat } from '../../context/ChatContext';
 import { useSocket } from '../../context/SocketContext';
 import { useCall } from '../../context/CallContext';
 import { Avatar } from '../common/Avatar';
+import { StoryRing } from '../common/StoryRing';
+import { useStatus } from '../../context/StatusContext';
 import { ExportModal } from '../modals/ExportModal';
 import { ReportModal } from '../modals/ReportModal';
 import { E2EEVerifyModal } from '../modals/E2EEVerifyModal';
@@ -33,6 +35,7 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
   const { onlineUsers, typingMap } = useSocket();
   const { startCall } = useCall();
   const { featureFlags } = useFeatureFlags();
+  const { hasActiveStatus, hasUnviewedStatus, setActiveUserId } = useStatus();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -52,6 +55,8 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
 
   const otherUserId = activeConversation.otherUser?._id?.toString();
   const isOnline = !isGroup && Boolean(otherUserId && onlineUsers.has(otherUserId));
+  const hasStatus = !isGroup && hasActiveStatus(otherUserId);
+  const hasUnviewed = !isGroup && hasUnviewedStatus(otherUserId);
 
   const rawTypers = typingMap[activeConversation._id] || [];
   const typers = rawTypers
@@ -71,14 +76,31 @@ export const ChatHeader = ({ onToggleSearch, onOpenInfo, onBack }) => {
             <ChevronLeft className="w-5 h-5" />
           </button>
 
-          <div className="cursor-pointer flex-shrink-0" onClick={onOpenInfo}>
-            <Avatar
-              src={avatarUrl}
-              name={title}
+          <div className="cursor-pointer flex-shrink-0">
+            <StoryRing
               size="md"
-              showOnlineStatus={!isGroup}
-              isOnline={isOnline}
-            />
+              hasStatus={hasStatus}
+              hasUnviewed={hasUnviewed}
+              isOfficial={Boolean(activeConversation.isOfficial || (title || '').toLowerCase().includes('pulsechat'))}
+              onClick={(e) => {
+                if (hasStatus) {
+                  e.stopPropagation();
+                  setActiveUserId(otherUserId);
+                } else {
+                  onOpenInfo();
+                }
+              }}
+              title={hasStatus ? 'View Status Update' : title}
+            >
+              <Avatar
+                src={avatarUrl}
+                name={title}
+                size="md"
+                noRing={hasStatus}
+                showOnlineStatus={!isGroup && !hasStatus}
+                isOnline={isOnline}
+              />
+            </StoryRing>
           </div>
 
           <div className="overflow-hidden cursor-pointer min-w-0" onClick={onOpenInfo}>

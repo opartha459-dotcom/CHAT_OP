@@ -22,12 +22,12 @@ import {
   Send,
   MessageCircle,
   ChevronDown,
-  ChevronUp,
-  FastForward
+  ChevronUp
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import { Avatar } from '../common/Avatar';
+import { StoryRing } from '../common/StoryRing';
 import { getStoryTextStyle } from '../../utils/storyStyles';
 import { autolinkStoryHtml, getPlainTextFromHtml } from '../../utils/storyRichText';
 
@@ -37,6 +37,7 @@ export const StatusViewerModal = ({
   isOpen,
   onClose,
   statusGroup,
+  initialSlideMode = 'auto',
   onNextUser,
   onPrevUser,
   onStatusDeleted,
@@ -59,10 +60,12 @@ export const StatusViewerModal = ({
   const [replySuccess, setReplySuccess] = useState(false);
   const [isTextExpanded, setIsTextExpanded] = useState(false);
   const [autoAdvance, setAutoAdvance] = useState(true);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [isHolding2x, setIsHolding2x] = useState(false);
+  const [mediaError, setMediaError] = useState(false);
+
+  const viewerRef = useRef(null);
+  const videoRef = useRef(null);
   const holdTimerRef = useRef(null);
-  const pressStartRef = useRef(null);
+  const gestureRef = useRef(null);
 
   const activeStatusRef = useRef(activeStatus);
   // Ref mirror of `voting` so socket closures always see the live value.
@@ -109,25 +112,35 @@ export const StatusViewerModal = ({
     }, 2800);
   };
 
-  // Resume directly from the first uncompleted story in this sequence
+  // Set starting slide index when switching to a user's story group
   useEffect(() => {
     if (!statuses || statuses.length === 0) {
       setCurrentIndex(0);
       return;
     }
 
-    // Find the first uncompleted story in this group
-    const firstUncompletedIndex = statuses.findIndex(
-      (s) => !s.hasViewed
-    );
+    let targetIndex = 0;
+    if (initialSlideMode === 'last') {
+      targetIndex = statuses.length - 1;
+    } else if (initialSlideMode === 'first') {
+      targetIndex = 0;
+    } else {
+      const firstUncompletedIndex = statuses.findIndex((s) => !s.hasViewed);
+      targetIndex = firstUncompletedIndex >= 0 ? firstUncompletedIndex : 0;
+    }
 
-    // If there is an uncompleted story, resume at that index; if all were already finished, start at 0
-    const targetIndex = firstUncompletedIndex >= 0 ? firstUncompletedIndex : 0;
     setCurrentIndex(targetIndex);
     elapsedRef.current = 0;
     setProgress(0);
     setSheetTab(null);
-  }, [statusGroup?.user?._id, statusGroup?.user]);
+  }, [statusGroup?.user?._id, statusGroup?.user, initialSlideMode]);
+
+  // Clamp currentIndex if statuses shrink (e.g. deleted status)
+  useEffect(() => {
+    if (statuses.length > 0 && currentIndex >= statuses.length) {
+      setCurrentIndex(statuses.length - 1);
+    }
+  }, [statuses.length, currentIndex]);
 
   // Sync activeStatus whenever slide index or statusGroup updates.
   useEffect(() => {
@@ -168,59 +181,6 @@ export const StatusViewerModal = ({
       setActiveStatus(null);
     }
   }, [currentIndex, statusGroup]);
-
-  // Keyboard navigation.
-  useEffect(() => {
-    if (!isOpen) return undefined;
-
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-
-      if (event.key === 'ArrowRight') {
-        elapsedRef.current = 0;
-        setProgress(0);
-        setSheetTab(null);
-
-        if (activeStatusRef.current?._id) {
-          handleCompleteCurrentStatus(activeStatusRef.current._id);
-        }
-
-        setCurrentIndex((previous) =>
-          previous < statuses.length - 1 ? previous + 1 : previous
-        );
-
-        if (currentIndex >= statuses.length - 1) {
-          if (onNextUser) onNextUser();
-          else onClose();
-        }
-      }
-
-      if (event.key === 'ArrowLeft') {
-        elapsedRef.current = 0;
-        setProgress(0);
-        setSheetTab(null);
-
-        if (currentIndex > 0) {
-          setCurrentIndex((previous) => previous - 1);
-        } else {
-          onPrevUser?.();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    isOpen,
-    currentIndex,
-    statuses.length,
-    onClose,
-    onNextUser,
-    onPrevUser
-  ]);
 
   // Mark status item as fully completed (only called when user finishes watching it or advances)
   const handleCompleteCurrentStatus = useCallback(
@@ -478,6 +438,13 @@ export const StatusViewerModal = ({
     };
   }, [socket, isOpen, isOwnerOrAdmin]);
 
+  const isVideoStatus = Boolean(
+    activeStatus?.mediaUrl &&
+    !mediaError &&
+    (/(\.mp4|\.webm|\.ogg|\.mov)(\?.*)?$/i.test(activeStatus.mediaUrl) ||
+      activeStatus.mediaUrl.startsWith('data:video/'))
+  );
+
   // Determine if story timer must stay paused
   const shouldPause = Boolean(
     !autoAdvance ||
@@ -489,81 +456,11 @@ export const StatusViewerModal = ({
     sheetTab !== null
   );
 
-  // Story timer and animated progress bar.
-  useEffect(() => {
-    if (!isOpen || shouldPause || !activeStatus) {
-      return undefined;
+  const handleNext = useCallback(() => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
     }
-
-    const interval = 50;
-    const speedMultiplier = playbackSpeed === 2 ? 2 : 1;
-
-    timerRef.current = setInterval(() => {
-      elapsedRef.current = Math.min(
-        DURATION_MS,
-        elapsedRef.current + interval * speedMultiplier
-      );
-
-      setProgress((elapsedRef.current / DURATION_MS) * 100);
-
-      if (elapsedRef.current >= DURATION_MS) {
-        elapsedRef.current = 0;
-        setProgress(0);
-
-        if (activeStatusRef.current?._id) {
-          handleCompleteCurrentStatus(activeStatusRef.current._id);
-        }
-
-        if (currentIndex < statuses.length - 1) {
-          setCurrentIndex((previous) => previous + 1);
-        } else if (onNextUser) {
-          onNextUser();
-        } else {
-          onClose();
-        }
-      }
-    }, interval);
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [
-    isOpen,
-    shouldPause,
-    playbackSpeed,
-    autoAdvance,
-    currentIndex,
-    statuses.length,
-    onNextUser,
-    onClose,
-    activeStatus?._id
-  ]);
-
-  // Reset elapsed time whenever the displayed status changes.
-  useEffect(() => {
-    elapsedRef.current = 0;
-    setProgress(0);
-    setReplyText('');
-    setIsReplying(false);
-    setIsPaused(false);
-    setIsTextExpanded(false);
-  }, [activeStatus?._id]);
-
-  useEffect(() => {
-    return () => {
-      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-    };
-  }, []);
-
-  if (!isOpen || !activeStatus) return null;
-
-  const formatTime = (d) =>
-    d ? new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-
-  const handleNext = () => {
     elapsedRef.current = 0;
     setProgress(0);
     setSheetTab(null);
@@ -583,9 +480,13 @@ export const StatusViewerModal = ({
     } else {
       onClose();
     }
-  };
+  }, [currentIndex, statuses.length, handleCompleteCurrentStatus, onNextUser, onClose]);
 
-  const handlePrev = () => {
+  const handlePrev = useCallback(() => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
     elapsedRef.current = 0;
     setProgress(0);
     setSheetTab(null);
@@ -599,63 +500,202 @@ export const StatusViewerModal = ({
     } else if (onPrevUser) {
       onPrevUser();
     }
-  };
+  }, [currentIndex, onPrevUser]);
 
-  // Hold-to-pause (left / center zone) handlers
-  const handleLeftPointerDown = (e) => {
-    e.stopPropagation();
-    pressStartRef.current = { side: 'left', time: Date.now() };
-    setIsPaused(true);
-  };
+  // Keyboard navigation (Desktop: Arrows, Escape, Spacebar)
+  useEffect(() => {
+    if (!isOpen) return undefined;
 
-  const handleLeftPointerUp = (e) => {
-    e.stopPropagation();
-    const elapsed = Date.now() - (pressStartRef.current?.time || 0);
+    const handleKeyDown = (event) => {
+      const target = event.target;
+      const isTyping =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (isTyping) return;
+
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        handleNext();
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        handlePrev();
+      } else if (event.code === 'Space' || event.key === ' ') {
+        event.preventDefault();
+        setIsPaused((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleNext, handlePrev, onClose]);
+
+  // Story timer and animated progress bar (images & text; videos advance on onEnded).
+  useEffect(() => {
+    if (!isOpen || shouldPause || !activeStatus || isVideoStatus) {
+      return undefined;
+    }
+
+    const interval = 50;
+
+    timerRef.current = setInterval(() => {
+      elapsedRef.current = Math.min(DURATION_MS, elapsedRef.current + interval);
+      setProgress((elapsedRef.current / DURATION_MS) * 100);
+
+      if (elapsedRef.current >= DURATION_MS) {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        handleNext();
+      }
+    }, interval);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [isOpen, shouldPause, activeStatus, isVideoStatus, handleNext]);
+
+  // Sync video playback with pause/resume state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isVideoStatus) return;
+
+    if (shouldPause || !isOpen) {
+      video.pause();
+    } else {
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {});
+      }
+    }
+  }, [shouldPause, isOpen, isVideoStatus, activeStatus?._id]);
+
+  // Reset elapsed time and media error whenever the displayed status changes.
+  useEffect(() => {
+    elapsedRef.current = 0;
+    setProgress(0);
+    setReplyText('');
+    setIsReplying(false);
     setIsPaused(false);
-    if (pressStartRef.current?.side === 'left' && elapsed < 250) {
-      if (isReplying || replyText.trim()) {
-        if (!replyText.trim()) {
-          setIsReplying(false);
-        }
-        return;
-      }
-      if (isTextExpanded) {
-        setIsTextExpanded(false);
-        return;
-      }
-      handlePrev();
-    }
-    pressStartRef.current = null;
-  };
+    setIsTextExpanded(false);
+    setMediaError(false);
 
-  const handleLeftPointerLeave = () => {
-    if (pressStartRef.current?.side === 'left') {
-      setIsPaused(false);
-      pressStartRef.current = null;
-    }
-  };
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.pause();
+      }
+    };
+  }, [activeStatus?._id]);
 
-  // Hold-to-2x Speed (designated right-side zone) handlers
-  const handleRightPointerDown = (e) => {
-    e.stopPropagation();
-    pressStartRef.current = { side: 'right', time: Date.now() };
-    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      if (videoRef.current) videoRef.current.pause();
+    };
+  }, []);
+
+  if (!isOpen || !activeStatus) return null;
+
+  const formatTime = (d) =>
+    d ? new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+  // Unified Pointer Events for Tap, Swipe Left/Right, and Long-Press Pause
+  const handlePointerDown = (e) => {
+    // Only primary mouse button (0) or touch/pen
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // Ignore interactions with buttons, links, inputs, polls, or explicit no-gesture regions
+    if (e.target.closest('button, input, textarea, a, [data-no-gesture="true"]')) return;
+
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+
+    gestureRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startTime: Date.now(),
+      moved: false,
+      wasHold: false
+    };
+
     holdTimerRef.current = setTimeout(() => {
-      setPlaybackSpeed(2);
-      setIsHolding2x(true);
-    }, 150);
+      if (gestureRef.current && !gestureRef.current.moved) {
+        gestureRef.current.wasHold = true;
+        setIsPaused(true);
+      }
+    }, 180);
   };
 
-  const handleRightPointerUp = (e) => {
-    e.stopPropagation();
-    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-    const elapsed = Date.now() - (pressStartRef.current?.time || 0);
-    setPlaybackSpeed(1);
-    setIsHolding2x(false);
-    if (pressStartRef.current?.side === 'right' && elapsed < 250) {
+  const handlePointerMove = (e) => {
+    const g = gestureRef.current;
+    if (!g || g.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - g.startX;
+    const dy = e.clientY - g.startY;
+    if (Math.hypot(dx, dy) > 10) {
+      g.moved = true;
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = null;
+      }
+    }
+  };
+
+  const handlePointerUp = (e) => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+
+    const g = gestureRef.current;
+    gestureRef.current = null;
+
+    if (!g || g.pointerId !== e.pointerId) return;
+
+    if (g.wasHold) {
+      if (!isReplying && !replyText.trim() && !sendingReply) {
+        setIsPaused(false);
+      }
+      return;
+    }
+
+    const dx = e.clientX - g.startX;
+    const dy = e.clientY - g.startY;
+    const dt = Date.now() - g.startTime;
+
+    // Horizontal swipe threshold: >= 48px and predominantly horizontal
+    if (Math.abs(dx) >= 48 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      if (dx < 0) {
+        // Swipe left -> Next user's story (or close if final user)
+        if (onNextUser) onNextUser();
+        else onClose();
+      } else {
+        // Swipe right -> Previous user's story (or stay if first user)
+        if (onPrevUser) onPrevUser();
+      }
+      return;
+    }
+
+    // Tap detection (no significant movement, short duration)
+    if (!g.moved && dt < 260) {
       if (isReplying || replyText.trim()) {
         if (!replyText.trim()) {
           setIsReplying(false);
+          setIsPaused(false);
         }
         return;
       }
@@ -663,16 +703,33 @@ export const StatusViewerModal = ({
         setIsTextExpanded(false);
         return;
       }
-      handleNext();
+
+      const rect = viewerRef.current?.getBoundingClientRect();
+      if (rect) {
+        const relX = e.clientX - rect.left;
+        if (relX < rect.width * 0.35) {
+          handlePrev();
+        } else {
+          handleNext();
+        }
+      } else {
+        handleNext();
+      }
     }
-    pressStartRef.current = null;
   };
 
-  const handleRightPointerLeave = () => {
-    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-    setPlaybackSpeed(1);
-    setIsHolding2x(false);
-    pressStartRef.current = null;
+  const handlePointerCancel = (e) => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    const g = gestureRef.current;
+    if (g && (!e || g.pointerId === e.pointerId)) {
+      if (g.wasHold && !isReplying && !replyText.trim() && !sendingReply) {
+        setIsPaused(false);
+      }
+      gestureRef.current = null;
+    }
   };
 
   const handleDelete = async () => {
@@ -988,27 +1045,20 @@ export const StatusViewerModal = ({
   const isPollClosed = Boolean(poll?.isClosed);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/95 backdrop-blur-xl animate-in fade-in duration-200 select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/95 backdrop-blur-xl animate-in fade-in duration-200 select-none overscroll-none">
       <div
-        className="relative w-full sm:max-w-md h-full sm:h-[690px] sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col justify-between p-5 no-scrollbar"
+        ref={viewerRef}
+        className="relative w-full sm:max-w-md h-[100dvh] sm:h-[690px] sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col justify-between pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] px-4 sm:p-5 no-scrollbar touch-pan-y select-none overscroll-none"
         style={{ background: bgStyle }}
-        onMouseDown={(e) => {
-          if (e.target.closest('button, input, textarea, a, .no-pause')) return;
-          setIsPaused(true);
-        }}
-        onMouseUp={() => {
-          if (!isReplying && !replyText.trim() && !sendingReply) {
-            setIsPaused(false);
-          }
-        }}
-        onTouchStart={(e) => {
-          if (e.target.closest('button, input, textarea, a, .no-pause')) return;
-          setIsPaused(true);
-        }}
-        onTouchEnd={() => {
-          if (!isReplying && !replyText.trim() && !sendingReply) {
-            setIsPaused(false);
-          }
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onPointerLeave={handlePointerCancel}
+        onContextMenu={(e) => {
+          if (e.target.closest('input, textarea, a')) return;
+          e.preventDefault();
+          handleNext();
         }}
       >
         {/* Top Segmented Progress Bars */}
@@ -1040,8 +1090,13 @@ export const StatusViewerModal = ({
         {/* Header: User Info & Controls */}
         <div className="flex items-center justify-between text-white mt-3 relative z-20">
           <div className="flex items-center space-x-2.5">
-            {Boolean(activeStatus?.isAdminStory || statusGroup.user?.isOfficial || (statusGroup.user?.nickname || '').toLowerCase().includes('pulsechat')) ? (
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-white/40 shadow-sm shrink-0 bg-slate-900 flex items-center justify-center">
+            <StoryRing
+              size="sm"
+              hasStatus={true}
+              hasUnviewed={true}
+              isOfficial={Boolean(activeStatus?.isAdminStory || statusGroup.user?.isOfficial || (statusGroup.user?.nickname || '').toLowerCase().includes('pulsechat'))}
+            >
+              {Boolean(activeStatus?.isAdminStory || statusGroup.user?.isOfficial || (statusGroup.user?.nickname || '').toLowerCase().includes('pulsechat')) ? (
                 <img
                   src={
                     (activeStatus?.officialAuthorAvatar && !activeStatus.officialAuthorAvatar.includes('1618005182384'))
@@ -1057,17 +1112,18 @@ export const StatusViewerModal = ({
                     e.currentTarget.src = '/icons/icon.svg';
                   }}
                 />
-              </div>
-            ) : (
-              <Avatar
-                src={statusGroup.user?.avatar}
-                name={
-                  statusGroup.user?.nickname ||
-                  statusGroup.user?.username
-                }
-                size="sm"
-              />
-            )}
+              ) : (
+                <Avatar
+                  src={statusGroup.user?.avatar}
+                  name={
+                    statusGroup.user?.nickname ||
+                    statusGroup.user?.username
+                  }
+                  size="sm"
+                  noRing={true}
+                />
+              )}
+            </StoryRing>
 
             <div>
               <div className="font-bold text-xs flex items-center space-x-1.5">
@@ -1129,57 +1185,58 @@ export const StatusViewerModal = ({
 
             <button
               type="button"
-              onClick={onClose}
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
               className="p-1.5 hover:bg-black/20 rounded-full transition cursor-pointer"
-              title="Close"
+              title="Close (Esc)"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Temporary 2x Speed Visual Indicator on Hold */}
-        {isHolding2x && (
-          <div className="absolute top-16 right-4 z-40 px-3 py-1 bg-amber-500/85 backdrop-blur-md rounded-full text-white text-[11px] font-black tracking-wider flex items-center space-x-1.5 animate-pulse shadow-xl pointer-events-none border border-amber-300/40">
-            <FastForward className="w-3.5 h-3.5 fill-current" />
-            <span>2× SPEED</span>
-          </div>
-        )}
-
-        {/* Interactive Tap & Hold Zones */}
-        {/* Left: Tap for Previous, Hold for Pause */}
-        <div
-          onMouseDown={handleLeftPointerDown}
-          onMouseUp={handleLeftPointerUp}
-          onMouseLeave={handleLeftPointerLeave}
-          onTouchStart={handleLeftPointerDown}
-          onTouchEnd={handleLeftPointerUp}
-          onTouchCancel={handleLeftPointerLeave}
-          className="absolute left-0 top-16 bottom-24 w-1/3 z-10 cursor-pointer"
-          title="Tap: Previous • Hold: Pause"
-        />
-
-        {/* Right: Tap for Next, Hold for 2× Speed */}
-        <div
-          onMouseDown={handleRightPointerDown}
-          onMouseUp={handleRightPointerUp}
-          onMouseLeave={handleRightPointerLeave}
-          onTouchStart={handleRightPointerDown}
-          onTouchEnd={handleRightPointerUp}
-          onTouchCancel={handleRightPointerLeave}
-          className="absolute right-0 top-16 bottom-24 w-2/3 z-10 cursor-pointer"
-          title="Tap: Next • Hold: 2× Speed"
-        />
-
         {/* Center Display */}
         <div
-          onWheel={(e) => {
-            if (playbackSpeed === 2 && e.currentTarget) {
-              e.currentTarget.scrollTop += e.deltaY;
-            }
-          }}
-          className="flex-1 flex flex-col items-center justify-center p-3 text-center text-white relative z-20 overflow-y-auto no-scrollbar space-y-3 max-h-[75vh]"
+          className="flex-1 flex flex-col items-center justify-center p-3 text-center text-white relative z-20 overflow-y-auto no-scrollbar space-y-3 max-h-[75dvh]"
         >
+          {/* Media Display (Portrait/Landscape Images & Videos without cropping) */}
+          {activeStatus.mediaUrl && (
+            <div className="w-full flex items-center justify-center shrink-0">
+              {mediaError ? (
+                <div className="px-4 py-3 rounded-2xl bg-black/50 border border-white/20 text-xs text-white/80 flex items-center space-x-2">
+                  <AlertCircle className="w-4 h-4 text-rose-300 shrink-0" />
+                  <span>Media unavailable</span>
+                </div>
+              ) : isVideoStatus ? (
+                <video
+                  ref={videoRef}
+                  src={activeStatus.mediaUrl}
+                  playsInline
+                  autoPlay
+                  className="max-w-full max-h-[52dvh] sm:max-h-[420px] w-auto h-auto object-contain rounded-2xl shadow-xl pointer-events-none"
+                  onTimeUpdate={(e) => {
+                    const vid = e.currentTarget;
+                    if (vid.duration && Number.isFinite(vid.duration)) {
+                      setProgress((vid.currentTime / vid.duration) * 100);
+                    }
+                  }}
+                  onEnded={() => {
+                    handleNext();
+                  }}
+                  onError={() => setMediaError(true)}
+                />
+              ) : (
+                <img
+                  src={activeStatus.mediaUrl}
+                  alt="Status media"
+                  className="max-w-full max-h-[52dvh] sm:max-h-[420px] w-auto h-auto object-contain rounded-2xl shadow-xl pointer-events-none"
+                  onError={() => setMediaError(true)}
+                />
+              )}
+            </div>
+          )}
           {activeStatus.text && (() => {
             const plainStoryText = getPlainTextFromHtml(activeStatus.text);
             const isLongText = Boolean(
@@ -1266,17 +1323,10 @@ export const StatusViewerModal = ({
           {/* Status Poll Widget */}
           {activeStatus.hasPoll && poll && (
             <div
+              data-no-gesture="true"
               onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                setIsPaused(true);
-              }}
               onMouseEnter={() => setIsPaused(true)}
               onMouseLeave={() => setIsPaused(false)}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                setIsPaused(true);
-              }}
               className="w-full max-w-sm max-h-[290px] overflow-y-auto no-scrollbar p-3.5 bg-black/60 backdrop-blur-xl border border-white/25 rounded-2xl text-left space-y-2.5 z-30 shadow-2xl relative select-none flex-shrink-0"
             >
               {/* Poll Header */}
@@ -1503,6 +1553,7 @@ export const StatusViewerModal = ({
           {/* Reactions Summary - ONLY CREATOR CAN VIEW REACTION BREAKDOWN */}
           {isMine && reactionsList.length > 0 && (
             <div
+              data-no-gesture="true"
               onClick={(e) => {
                 e.stopPropagation();
                 setSheetTab('reactions');
@@ -1547,7 +1598,7 @@ export const StatusViewerModal = ({
 
         {/* Bottom Bar */}
         {isOwnerOrAdmin ? (
-          <div className="relative z-30 flex items-center justify-center space-x-2">
+          <div data-no-gesture="true" className="relative z-30 flex items-center justify-center space-x-2">
             <button
               type="button"
               onClick={() => {
@@ -1603,7 +1654,7 @@ export const StatusViewerModal = ({
             )}
           </div>
         ) : (
-          <div className="relative z-30 w-full max-w-sm mx-auto flex flex-col items-center space-y-2.5 px-3">
+          <div data-no-gesture="true" className="relative z-30 w-full max-w-sm mx-auto flex flex-col items-center space-y-2.5 px-3">
             {/* Quick emoji reaction bar */}
             <div className="flex items-center justify-center space-x-2 bg-black/50 backdrop-blur-xl border border-white/20 py-1.5 px-3 rounded-full shadow-xl">
               {QUICK_EMOJIS.map((emoji) => {

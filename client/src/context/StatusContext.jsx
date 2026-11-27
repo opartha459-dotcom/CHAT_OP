@@ -15,6 +15,7 @@ const defaultStatusContext = {
   otherStatusGroups: [],
   hasActiveStatus: () => false,
   hasUnviewedStatus: () => false,
+  hasPartiallyViewedStatus: () => false,
   hasAnyUnviewed: false,
   markStatusViewed: () => {},
   createModalOpen: false,
@@ -30,7 +31,13 @@ export const StatusProvider = ({ children }) => {
 
   const [feed, setFeed] = useState([]);
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [activeUserId, setActiveUserId] = useState(null);
+  const [activeUserId, setActiveUserIdState] = useState(null);
+  const [initialSlideMode, setInitialSlideMode] = useState('auto');
+
+  const setActiveUserId = useCallback((userId) => {
+    setInitialSlideMode('auto');
+    setActiveUserIdState(userId);
+  }, []);
 
   const fetchFeed = useCallback(async () => {
     if (!token) return;
@@ -168,6 +175,18 @@ export const StatusProvider = ({ children }) => {
     [feed]
   );
 
+  const hasPartiallyViewedStatus = useCallback(
+    (targetUserId) => {
+      if (!targetUserId) return false;
+      const idStr = targetUserId.toString();
+      const group = feed.find((g) => g.user?._id?.toString() === idStr);
+      if (!group || !Array.isArray(group.statuses) || group.statuses.length < 2) return false;
+      const viewedCount = group.statuses.filter((s) => Boolean(s.hasViewed)).length;
+      return viewedCount > 0 && viewedCount < group.statuses.length;
+    },
+    [feed]
+  );
+
   const hasAnyUnviewed = useMemo(
     () => otherStatusGroups.some((g) => !g.allViewed),
     [otherStatusGroups]
@@ -175,15 +194,17 @@ export const StatusProvider = ({ children }) => {
 
   const handleNextUser = useCallback(() => {
     if (activeGroupIndex >= 0 && activeGroupIndex < feed.length - 1) {
-      setActiveUserId(feed[activeGroupIndex + 1].user?._id?.toString());
+      setInitialSlideMode('first');
+      setActiveUserIdState(feed[activeGroupIndex + 1].user?._id?.toString());
     } else {
-      setActiveUserId(null);
+      setActiveUserIdState(null);
     }
   }, [activeGroupIndex, feed]);
 
   const handlePrevUser = useCallback(() => {
     if (activeGroupIndex > 0) {
-      setActiveUserId(feed[activeGroupIndex - 1].user?._id?.toString());
+      setInitialSlideMode('last');
+      setActiveUserIdState(feed[activeGroupIndex - 1].user?._id?.toString());
     }
   }, [activeGroupIndex, feed]);
 
@@ -197,6 +218,7 @@ export const StatusProvider = ({ children }) => {
     otherStatusGroups,
     hasActiveStatus,
     hasUnviewedStatus,
+    hasPartiallyViewedStatus,
     hasAnyUnviewed,
     markStatusViewed,
     createModalOpen,
@@ -212,8 +234,9 @@ export const StatusProvider = ({ children }) => {
         <StatusViewerModal
           isOpen={true}
           statusGroup={activeGroup}
+          initialSlideMode={initialSlideMode}
           onClose={() => {
-            setActiveUserId(null);
+            setActiveUserIdState(null);
             fetchFeed();
           }}
           onNextUser={handleNextUser}

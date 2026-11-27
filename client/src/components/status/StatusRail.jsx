@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useFeatureFlags } from '../../context/FeatureFlagsContext';
 import { useStatus } from '../../context/StatusContext';
+import { StoryRing } from '../common/StoryRing';
 
 export const StatusRail = () => {
   const { user } = useAuth();
@@ -82,6 +83,12 @@ export const StatusRail = () => {
       ? Boolean(myStatusGroup && !myStatusGroup.allViewed)
       : group?.allViewed !== true;
 
+    const isPartiallyViewed = Boolean(
+      group?.statuses?.length > 1 &&
+      group.statuses.some((s) => s.hasViewed) &&
+      group.statuses.some((s) => !s.hasViewed)
+    );
+
     return (
       <button
         key={person?._id?.toString() || 'my-status'}
@@ -100,34 +107,21 @@ export const StatusRail = () => {
             : `View ${displayName}'s story`
         }
       >
-        <span
-          className={`relative block w-14 h-14 rounded-full p-[2px] transition-transform group-hover:scale-105 group-active:scale-95 ${
-            isOwn
-              ? myStatusGroup
-                ? hasUnviewed
-                  ? 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-md'
-                  : 'border-2 border-slate-300/80 dark:border-slate-700/80 opacity-70 hover:opacity-100'
-                : 'border-2 border-dashed border-slate-300 dark:border-slate-700'
-              : person?.isOfficial
-                ? hasUnviewed
-                  ? 'bg-gradient-to-tr from-violet-500 via-fuchsia-500 to-indigo-500 shadow-lg shadow-violet-500/20'
-                  : 'border-2 border-slate-300/80 dark:border-slate-700/80 opacity-60 hover:opacity-100'
-                : hasUnviewed
-                ? 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-md'
-                : 'border-2 border-slate-300/80 dark:border-slate-700/80 opacity-60 hover:opacity-100'
-          }`}
+        <StoryRing
+          size="lg"
+          hasStatus={isOwn ? Boolean(myStatusGroup) : true}
+          hasUnviewed={hasUnviewed}
+          isPartiallyViewed={isPartiallyViewed}
+          isOfficial={Boolean(person?.isOfficial)}
+          isOwn={isOwn}
+          showAddBadge={isOwn}
+          onAddClick={openMyStatus}
+          title={isOwn ? (myStatusGroup ? 'View my story' : 'Add a Pulse Story') : `View ${displayName}'s story`}
         >
-          <span className="flex w-full h-full rounded-full overflow-hidden bg-white dark:bg-slate-900 border-2 border-white dark:border-slate-900 items-center justify-center font-bold text-slate-700 dark:text-slate-200 text-xs">
+          <div className="w-full h-full flex items-center justify-center font-bold text-slate-700 dark:text-slate-200 text-xs overflow-hidden">
             {renderAvatar(person || user, isOwn ? 'Y' : 'U')}
-          </span>
-
-          {/* Add status indicator */}
-          {isOwn && (
-            <span className="absolute -right-0.5 -bottom-0.5 w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center border-2 border-white dark:border-slate-950 shadow">
-              <Plus className="w-3 h-3 stroke-[3]" />
-            </span>
-          )}
-        </span>
+          </div>
+        </StoryRing>
 
         <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300 mt-1 max-w-[62px] truncate text-center">
           {displayName}

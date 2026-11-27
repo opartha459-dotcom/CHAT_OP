@@ -65,6 +65,7 @@ import { SettingsPanel } from '../settings/SettingsPanel';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { StatusRail } from '../status/StatusRail';
+import { StoryRing } from '../common/StoryRing';
 
 export const Sidebar = () => {
   const navigate = useNavigate();
@@ -93,6 +94,7 @@ export const Sidebar = () => {
     feed: statusFeed,
     hasActiveStatus,
     hasUnviewedStatus,
+    hasPartiallyViewedStatus,
     hasAnyUnviewed,
     setActiveUserId,
     myStatusGroup,
@@ -810,6 +812,7 @@ export const Sidebar = () => {
 
                   const hasStatus = !isGroup && hasActiveStatus(otherUserId);
                   const hasUnviewed = !isGroup && hasUnviewedStatus(otherUserId);
+                  const isPartiallyViewed = !isGroup && hasPartiallyViewedStatus(otherUserId);
 
                   const rawTypers = typingMap[conv._id] || [];
                   const isTyping = rawTypers.length > 0;
@@ -827,31 +830,29 @@ export const Sidebar = () => {
                         : 'hover:bg-slate-50 dark:hover:bg-slate-900/60'
                         }`}
                     >
-                      {/* Avatar with WhatsApp Status Ring */}
+                      {/* Avatar with Dynamic Story Ring */}
                       <div className="relative flex-shrink-0">
-                        <div
-                          onClick={(e) => {
-                            if (hasStatus) {
-                              e.stopPropagation();
-                              setActiveUserId(otherUserId?.toString());
-                            }
-                          }}
-                          className={`rounded-full p-0.5 transition-transform ${hasStatus
-                            ? hasUnviewed
-                              ? 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-sm cursor-pointer hover:scale-105 active:scale-95'
-                              : 'border-2 border-slate-300/80 dark:border-slate-700/80 p-0.5 opacity-60 hover:opacity-100 cursor-pointer'
-                            : ''
-                            }`}
+                        <StoryRing
+                          size="md"
+                          hasStatus={hasStatus}
+                          hasUnviewed={hasUnviewed}
+                          isPartiallyViewed={isPartiallyViewed}
+                          isOfficial={Boolean(conv.otherUser?.isOfficial || (title || '').toLowerCase().includes('pulsechat'))}
+                          onClick={hasStatus ? (e) => {
+                            e.stopPropagation();
+                            setActiveUserId(otherUserId?.toString());
+                          } : undefined}
                           title={hasStatus ? 'View Status Update' : ''}
                         >
                           <Avatar
                             src={avatarUrl}
                             name={title}
                             size="md"
+                            noRing={hasStatus}
                             isOnline={isOnline}
                             showOnlineStatus={!hasStatus}
                           />
-                        </div>
+                        </StoryRing>
                       </div>
 
                       {/* Chat details */}
@@ -959,27 +960,37 @@ export const Sidebar = () => {
                     className="flex items-center space-x-3 p-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-900/70 cursor-pointer transition-colors active:scale-[0.98]"
                   >
                     <div className="relative flex-shrink-0">
-                      <div className={`p-0.5 rounded-full ${myStatusGroup
-                        ? !myStatusGroup.allViewed
-                          ? 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-sm'
-                          : 'border-2 border-slate-300/80 dark:border-slate-700/80 opacity-70'
-                        : 'bg-slate-200 dark:bg-slate-800'
-                        }`}>
-                        <div className="bg-white dark:bg-slate-950 p-0.5 rounded-full">
-                          <Avatar src={user?.avatar} name={user?.nickname || user?.username} size="md" />
-                        </div>
-                      </div>
-                      {/* Add (+) badge */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
+                      <StoryRing
+                        size="md"
+                        hasStatus={Boolean(myStatusGroup)}
+                        hasUnviewed={Boolean(myStatusGroup && !myStatusGroup.allViewed)}
+                        isPartiallyViewed={Boolean(
+                          myStatusGroup?.statuses?.length > 1 &&
+                          myStatusGroup.statuses.some((s) => s.hasViewed) &&
+                          myStatusGroup.statuses.some((s) => !s.hasViewed)
+                        )}
+                        isOwn={true}
+                        showAddBadge={true}
+                        onAddClick={(e) => {
                           e.stopPropagation();
                           setCreateModalOpen(true);
                         }}
-                        className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center border-2 border-white dark:border-slate-950 shadow cursor-pointer transition-transform active:scale-90"
+                        onClick={() => {
+                          if (myStatusGroup) {
+                            setActiveUserId(user?._id?.toString());
+                          } else {
+                            setCreateModalOpen(true);
+                          }
+                        }}
+                        title={myStatusGroup ? 'View your story' : 'Add a Pulse Story'}
                       >
-                        <Plus className="w-3 h-3 stroke-[3]" />
-                      </button>
+                        <Avatar
+                          src={user?.avatar}
+                          name={user?.nickname || user?.username}
+                          size="md"
+                          noRing={true}
+                        />
+                      </StoryRing>
                     </div>
 
                     <div className="flex-1 min-w-0">
@@ -1013,14 +1024,26 @@ export const Sidebar = () => {
                               className="flex items-center space-x-3 p-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-900/70 cursor-pointer transition-colors active:scale-[0.98]"
                             >
                               <div className="relative flex-shrink-0">
-                                <div className={`p-0.5 rounded-full shadow-sm ${group.isOfficial
-                                  ? 'bg-gradient-to-tr from-violet-500 via-fuchsia-500 to-indigo-500'
-                                  : 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500'
-                                  }`}>
-                                  <div className="bg-white dark:bg-slate-950 p-0.5 rounded-full">
-                                    <Avatar src={group.user?.avatar} name={displayName} size="md" />
-                                  </div>
-                                </div>
+                                <StoryRing
+                                  size="md"
+                                  hasStatus={true}
+                                  hasUnviewed={true}
+                                  isPartiallyViewed={Boolean(
+                                    group.statuses?.length > 1 &&
+                                    group.statuses.some((s) => s.hasViewed) &&
+                                    group.statuses.some((s) => !s.hasViewed)
+                                  )}
+                                  isOfficial={Boolean(group.isOfficial)}
+                                  onClick={() => setActiveUserId(group.user?._id?.toString())}
+                                  title={`View ${displayName}'s story`}
+                                >
+                                  <Avatar
+                                    src={group.user?.avatar}
+                                    name={displayName}
+                                    size="md"
+                                    noRing={true}
+                                  />
+                                </StoryRing>
                               </div>
 
                               <div className="flex-1 min-w-0">
@@ -1059,8 +1082,22 @@ export const Sidebar = () => {
                                 onClick={() => setActiveUserId(group.user?._id?.toString())}
                                 className="flex items-center space-x-3 p-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-900/70 cursor-pointer transition-colors opacity-70 hover:opacity-100 active:scale-[0.98]"
                               >
-                                <div className="p-0.5 rounded-full border-2 border-slate-300/80 dark:border-slate-700/80 opacity-60 flex-shrink-0">
-                                  <Avatar src={group.user?.avatar} name={displayName} size="md" />
+                                <div className="relative flex-shrink-0">
+                                  <StoryRing
+                                    size="md"
+                                    hasStatus={true}
+                                    hasUnviewed={false}
+                                    isOfficial={Boolean(group.isOfficial)}
+                                    onClick={() => setActiveUserId(group.user?._id?.toString())}
+                                    title={`View ${displayName}'s story`}
+                                  >
+                                    <Avatar
+                                      src={group.user?.avatar}
+                                      name={displayName}
+                                      size="md"
+                                      noRing={true}
+                                    />
+                                  </StoryRing>
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="font-medium text-sm text-slate-700 dark:text-slate-300 truncate">{displayName}</div>
